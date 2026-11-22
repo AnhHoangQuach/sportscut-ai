@@ -79,6 +79,7 @@ class Task:
     questions: list[str] = field(default_factory=list)
     checkpoint: dict[str, Any] | None = None
     pr_url: str = ""
+    eval_score: float | None = None  # quality metric measured on this task's branch (eval_cmd)
     conflicts: int = 0            # merge conflicts with the base branch so far
     merge_conflict: bool = False  # the next dev step must merge the base branch and resolve
     history: list[dict[str, Any]] = field(default_factory=list)

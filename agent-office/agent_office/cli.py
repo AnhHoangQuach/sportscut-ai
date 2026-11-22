@@ -25,6 +25,23 @@ def _repo(args) -> Path:
     return Path(args.repo).resolve()
 
 
+def write_team_rules(repo: Path) -> list[str]:
+    """AGENTS.md (Codex) and CLAUDE.md (Claude) with the team's practices, if the repo has none."""
+    from importlib import resources
+    written = []
+    for name in ("AGENTS.md", "CLAUDE.md"):
+        if not (repo / name).exists():
+            text = resources.files("agent_office.templates").joinpath(name).read_text(encoding="utf-8")
+            (repo / name).write_text(text, encoding="utf-8")
+            written.append(name)
+    return written
+
+
+def superpowers_installed() -> bool:
+    root = Path.home() / ".claude" / "plugins"
+    return root.exists() and any("superpowers" in p.name for p in root.rglob("*") if p.is_dir())
+
+
 def cmd_init(args) -> int:
     repo = _repo(args)
     if not (repo / ".git").exists():
@@ -34,6 +51,10 @@ def cmd_init(args) -> int:
     store.init()
     cfg = write_default_config(store.dir)
     print(f"Agent office ready in {store.dir}\nEdit {cfg} (base_branch, test_cmd), then `office doctor`.")
+    written = write_team_rules(repo)
+    if written:
+        print(f"Wrote team rules {', '.join(written)} (TDD, evidence before claims, measure first). "
+              "Fill in 'Project specifics' and commit them so every worktree has them.")
     return 0
 
 
@@ -313,6 +334,11 @@ def cmd_doctor(args) -> int:
         p = subprocess.run(cmd, capture_output=True, text=True, env=subscription_env())
         print(f"{'ok' if p.returncode == 0 else 'FAIL':<7} {name}: {(p.stdout or p.stderr).strip().splitlines()[0:1]}")
         ok = ok and (p.returncode == 0 or name == "gh")
+    for name in ("AGENTS.md", "CLAUDE.md"):
+        print(f"{'ok' if (repo / name).exists() else 'note':<7} {name}: "
+              + ("found" if (repo / name).exists() else "missing (`office init` writes a template)"))
+    print(f"{'ok' if superpowers_installed() else 'note':<7} superpowers plugin for claude: "
+          + ("installed" if superpowers_installed() else "not found (optional; the practices are also in the prompts)"))
     if not store.exists():
         print("FAIL    office: not initialised here (run `office init`)")
         return 1

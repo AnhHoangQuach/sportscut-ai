@@ -28,6 +28,7 @@ class Store:
         self.tasks: dict[str, Task] = {}
         self.agents: dict[str, Agent] = {}
         self.requests: dict[str, Request] = {}
+        self.meta: dict[str, Any] = {}  # office-wide values, e.g. the eval baseline on the base branch
 
     # ---------- lifecycle ----------
     def exists(self) -> bool:
@@ -50,6 +51,7 @@ class Store:
         for n in AGENT_NAMES:
             self.agents.setdefault(n, Agent(name=n))
         self.requests = {r["id"]: Request(**r) for r in data.get("requests", [])}
+        self.meta = dict(data.get("meta", {}))
         return self
 
     def save(self) -> None:
@@ -59,6 +61,7 @@ class Store:
             "agents": [a.to_dict() for a in self.agents.values()],
             "requests": [asdict(r) for r in self.requests.values()],
             "tasks": [t.to_dict() for t in self.tasks.values()],
+            "meta": self.meta,
         }
         self.dir.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=self.dir, prefix=".state.", suffix=".json")

@@ -13,6 +13,14 @@ $brief
 
 $po_answer
 
+## How to write it (Superpowers `writing-plans` discipline, if available follow that skill)
+- The spec is an implementation plan a developer with no context can follow: exact files
+  to create/change, function signatures, data formats, and an ordered list of small steps.
+- Order the steps test-first: for each behaviour, the failing test to write, then the code.
+- Give the exact commands that prove the task is done (test command, CLI example, eval
+  command and the minimum score if the task touches accuracy).
+- DRY, YAGNI: no options, layers or abstractions the acceptance criteria do not need.
+
 ## Rules
 - Acceptance criteria must be concrete and verifiable by an automated test or a command.
 - The test plan names the tests to write (unit/integration) and any fixture needed.

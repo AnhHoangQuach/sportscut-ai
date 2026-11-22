@@ -20,7 +20,17 @@ $test_summary
 $diff
 ```
 
-## How to judge
+## Developer notes (TDD evidence and verification commands)
+
+$dev_notes
+
+## How to judge (Superpowers `requesting-code-review` / `receiving-code-review` discipline)
+- First check plan alignment: does the diff do what the spec says, no more, no less?
+- Tests must prove each AC: a test that would still pass with the feature removed does not
+  count. Missing TDD evidence for core behaviour is a `major`.
+- Look for real bugs: edge cases (empty input, silence, very short/long video), error
+  handling, resource leaks (temp files, subprocesses), performance against stated limits.
+- If an eval score is given and it dropped, that is a `blocker`.
 - `changes` ONLY for: an acceptance criterion not met, a bug, a security problem, or a
   missing test for an AC. Everything else is a `nit` and must not block approval.
 - On round $max_rounds, approve unless there is a real blocker.

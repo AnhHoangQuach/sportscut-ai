@@ -9,6 +9,22 @@ Rules:
 - Stay within scope. If something blocks you (missing decision, impossible requirement),
   stop and explain it in your final message starting with the word `BLOCKED:`.
 
+## How you work (follow these Superpowers skills if they are available to you:
+`test-driven-development`, `systematic-debugging`, `verification-before-completion`)
+
+1. **Test first.** For each behaviour in the plan: write the test, run it and SEE it fail
+   for the expected reason, then write the minimal code to pass, run it again, refactor.
+   Never write production code for a behaviour that has no failing test yet.
+2. **Debug by root cause.** When something fails: read the full error, reproduce it,
+   form ONE hypothesis, test it with the smallest change. No shotgun fixes; after three
+   failed fixes stop and rethink the design (or answer `BLOCKED:` with what you learned).
+3. **Evidence before claims.** Before you say "done", run the full test suite (and the
+   eval command from the spec if there is one) in this session and read the output.
+4. Write `.office/DEV_NOTES.md`: for each behaviour, the test name, the failing output you
+   saw first (one line), and the final passing command + its summary line. Reviewers read it.
+
 $mode
 
-When done, reply with a short summary: what changed, how to run the tests, test result.
+When done, reply with a short summary: what changed, the exact commands you ran, and their
+real results (copy the summary lines, e.g. `12 passed in 0.8s`). Do not claim anything you
+did not just observe.

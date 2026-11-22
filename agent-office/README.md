@@ -129,6 +129,35 @@ sạch, orchestrator chạy lại `test_cmd` trên bản đã gộp trước khi
 số lần hết quota, số phiên đang chạy, số xung đột đã gỡ, số lần rào chắn dừng task. Dashboard
 hiện số này trên thẻ từng agent; văn phòng 3D hiện "Codex 2 việc T-002, T-004".
 
+## Kỷ luật kỹ thuật và cổng chất lượng (Superpowers)
+
+Mỗi vai có sẵn kỷ luật của bộ skill [Superpowers](https://github.com/obra/superpowers) ngay trong
+prompt, nên có tác dụng cả khi chưa cài plugin:
+
+| Vai | Kỷ luật |
+|---|---|
+| Claude chia việc | `brainstorming`: nêu mục tiêu đo được, so 2–3 hướng, chọn hướng đơn giản; việc liên quan chất lượng thì task đầu là xây phép đo |
+| Claude viết spec | `writing-plans`: file cụ thể, các bước nhỏ theo thứ tự test trước, lệnh chứng minh xong |
+| Codex code | `test-driven-development`: test đỏ trước rồi mới code; `systematic-debugging` khi lỗi; ghi bằng chứng vào `.office/DEV_NOTES.md` |
+| Codex test | `verification-before-completion`: thử làm hỏng code để chắc test bắt được lỗi; mọi khẳng định phải có lệnh chạy thật |
+| Claude review | `requesting-code-review`: đối chiếu spec, test phải chứng minh AC, đọc DEV_NOTES, điểm eval tụt là blocker |
+
+Cài plugin cho Claude (tùy chọn, `office doctor` sẽ báo đã có hay chưa):
+
+```
+claude
+/plugin marketplace add obra/superpowers-marketplace
+/plugin install superpowers@superpowers-marketplace
+```
+
+`office init` tạo `AGENTS.md` (Codex đọc) và `CLAUDE.md` (Claude đọc, import AGENTS.md) với cùng
+quy tắc; điền phần "Project specifics" rồi commit.
+
+**Cổng chất lượng** (`[quality]`): đặt `eval_cmd` là lệnh in JSON có chỉ số (mặc định `f1`).
+Sau khi test pass, orchestrator chạy eval trên nhánh của task; nếu điểm thấp hơn điểm đang có
+trên `main` (quá `max_drop`) thì task quay lại Codex kèm số liệu. Merge xong thì điểm đó thành
+mốc mới. `office stats` in lịch sử điểm, reviewer thấy điểm trong phần kết quả test.
+
 ## Chế độ tự động hoàn toàn
 
 - `merge_mode = "auto"` (mặc định): Claude approve và test pass thì task được merge vào
@@ -202,7 +231,7 @@ Trong mỗi worktree, thư mục `.office/` chứa `TASK.md`, `CHECKPOINT.md`, `
 
 ```bash
 pip install -e '.[dev]'
-python -m pytest -q        # gồm test chạy song song, rào chắn, dashboard, văn phòng 3D, demo
+python -m pytest -q        # gồm test prompt/eval, chạy song song, rào chắn, dashboard, văn phòng 3D, demo
 ```
 
 Test dùng `tests/fake_agent.py` thay cho `claude`/`codex`, nên không tốn quota.

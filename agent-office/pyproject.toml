@@ -20,7 +20,7 @@ office = "agent_office.cli:main"
 include = ["agent_office*"]
 
 [tool.setuptools.package-data]
-agent_office = ["prompts/*.md", "dashboard/static/*", "dashboard/static/vendor/*"]
+agent_office = ["prompts/*.md", "templates/*.md", "dashboard/static/*", "dashboard/static/vendor/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

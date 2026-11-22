@@ -53,6 +53,15 @@ backoff_minutes = [15, 30, 60]
 claude = 1
 codex = 2
 
+[quality]
+# Command that measures product quality in a worktree and prints JSON with the metric, e.g.
+# `sportscut eval data/eval --json` -> {"f1": 0.74, "precision": 0.8, "recall": 0.69}.
+# When set, a task may not lower the metric below what is already on the base branch.
+eval_cmd = ""
+metric = "f1"
+higher_is_better = true
+max_drop = 0.0
+
 [guardrails]
 # Agent calls per agent per day (local time); 0 = no cap. When reached the agent rests until midnight.
 max_calls_per_day = { claude = 0, codex = 0 }
@@ -94,6 +103,10 @@ class Config:
     max_tasks_per_request: int = 12
     max_diff_lines: int = 4000
     block_secrets: bool = True
+    eval_cmd: str = ""
+    eval_metric: str = "f1"
+    eval_higher_is_better: bool = True
+    eval_max_drop: float = 0.0
 
     def worktrees_path(self, repo: Path) -> Path:
         p = Path(self.worktrees_dir.format(repo=repo.name))
@@ -116,6 +129,7 @@ def load_config(office_dir: Path) -> Config:
     o = raw.get("office", {})
     par = raw.get("parallel", {})
     g = raw.get("guardrails", {})
+    q = raw.get("quality", {})
     caps = g.get("max_calls_per_day", {}) if isinstance(g.get("max_calls_per_day"), dict) else {}
     return Config(
         base_branch=o.get("base_branch", "main"),
@@ -136,6 +150,10 @@ def load_config(office_dir: Path) -> Config:
         max_tasks_per_request=int(g.get("max_tasks_per_request", 12)),
         max_diff_lines=int(g.get("max_diff_lines", 4000)),
         block_secrets=bool(g.get("block_secrets", True)),
+        eval_cmd=str(q.get("eval_cmd", "")),
+        eval_metric=str(q.get("metric", "f1")),
+        eval_higher_is_better=bool(q.get("higher_is_better", True)),
+        eval_max_drop=float(q.get("max_drop", 0.0)),
     )
 
 
