@@ -35,7 +35,8 @@ Rồi:
 ```bash
 office doctor --live
 pip install -e './agent-office[dashboard]'
-office dashboard     # gửi yêu cầu, bấm Bắt đầu, trả lời khi Claude hỏi
+office dashboard     # gửi yêu cầu, bấm Bắt đầu, trả lời khi Claude hỏi; nút "Văn phòng 3D"
+office demo          # xem các agent phối hợp bằng agent mô phỏng, không tốn quota
 ```
 
 Hoặc chỉ dùng terminal: `office request -f agent-office/examples/sportscut/po_request.md`

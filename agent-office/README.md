@@ -14,7 +14,8 @@ vòng) → mở PR → bạn merge.
 
 Giai đoạn 1 là CLI, giai đoạn 2 thêm **dashboard 2D realtime** và **chế độ tự động hoàn toàn**:
 các agent tự làm tới khi yêu cầu được giao xong, tự merge khi review đạt và test pass, chỉ hỏi
-PO khi yêu cầu chưa rõ. Văn phòng 3D (giai đoạn 3) sẽ đọc cùng `state.json` và `events.jsonl`.
+PO khi yêu cầu chưa rõ. Giai đoạn 3 thêm **văn phòng 3D**: nhìn thấy Claude và Codex giao việc,
+báo xong, review, hết quota và nghỉ, merge vào main.
 
 ## Cài đặt
 
@@ -71,6 +72,29 @@ Trên dashboard anh làm được mọi việc mà không cần terminal:
 Dashboard chỉ nghe ở `127.0.0.1`. Mọi thao tác của PO (từ dashboard hay CLI) đi qua
 `.agent-office/inbox.jsonl`; runner đang chạy sẽ nhận ở bước kế tiếp, nên không ghi đè state của nhau.
 
+## Văn phòng 3D (giai đoạn 3)
+
+Xem thử ngay, không cần `claude`/`codex`, không tốn quota:
+
+```bash
+pip install -e './agent-office[dashboard]'
+office demo            # tạo repo mẫu ở ~/agent-office-demo, chạy agent mô phỏng, mở /office
+```
+
+Trong demo, Claude tách yêu cầu SportsCut thành 5 task, giao cho Codex, Codex code + test rồi
+đưa Claude review; một task bị yêu cầu sửa, Codex hết quota giữa chừng và nghỉ, Claude vẫn
+làm task khác; cuối cùng mọi task được merge và Claude báo PO là xong.
+
+Với agent thật: `office dashboard` rồi bấm **Văn phòng 3D** (hoặc `office dashboard --page office`).
+
+- Mỗi agent có bàn riêng; màn hình và đèn bàn đổi theo trạng thái (rảnh, đang làm, nghỉ Zzz).
+- Mỗi tin nhắn giữa agent là một tờ giấy bay từ bàn người gửi sang bàn người nhận, kèm bong bóng
+  thoại; merge thì giấy bay vào server `main`.
+- Bảng Kanban trên tường, khung **Hội thoại trong văn phòng** bên phải, ô trả lời khi Claude hỏi.
+- Tin nhắn là sự kiện `message` trong `events.jsonl` (`frm`, `to`, `text`, `task_id`, `topic`).
+
+`simulate = true` trong `config.toml` bật agent mô phỏng cho repo bất kỳ (`sim_delay` = số giây mỗi bước).
+
 ## Chế độ tự động hoàn toàn
 
 - `merge_mode = "auto"` (mặc định): Claude approve và test pass thì task được merge vào
@@ -126,8 +150,10 @@ agent_office/
   store.py      state.json (ghi nguyên tử) + events.jsonl
   limits.py     nhận diện usage limit + giờ reset
   worktree.py   git worktree, commit, diff, gh pr
-  agents/       claude.py, codex.py
-  dashboard/    server.py (FastAPI + WebSocket), static/ (HTML/CSS/JS, không cần build)
+  agents/       claude.py, codex.py, sim.py (agent mô phỏng cho demo)
+  runner_proc.py  bật/tắt `office run --watch` từ dashboard
+  dashboard/    server.py (FastAPI + WebSocket), static/ (HTML/CSS/JS, không cần build;
+                office.* = văn phòng 3D, vendor/ = three.js r160)
   prompts/      prompt từng vai (sửa thoải mái)
 examples/sportscut/   yêu cầu PO mẫu cho dự án đầu tiên
 tests/                test end-to-end với CLI giả lập
@@ -141,7 +167,7 @@ Trong mỗi worktree, thư mục `.office/` chứa `TASK.md`, `CHECKPOINT.md`, `
 
 ```bash
 pip install -e '.[dev]'
-python -m pytest -q        # gồm test dashboard (FastAPI TestClient) và chế độ tự động
+python -m pytest -q        # gồm test dashboard, văn phòng 3D, demo mô phỏng, chế độ tự động
 ```
 
 Test dùng `tests/fake_agent.py` thay cho `claude`/`codex`, nên không tốn quota.

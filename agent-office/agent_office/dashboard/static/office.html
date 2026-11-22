@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Văn phòng 3D</title>
+<link rel="stylesheet" href="/static/office.css">
+<script type="importmap">{"imports": {"three": "/static/vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand"><b>Agent Office</b><span class="muted" id="repo">…</span></div>
+    <div class="bar-right">
+      <a class="btn" href="/">Kanban</a>
+      <span class="conn" id="conn"><i></i><span>đang kết nối</span></span>
+      <span class="runner" id="runner-state">Runner …</span>
+      <button class="btn primary" id="runner-btn">Bắt đầu</button>
+    </div>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="scene" aria-label="Văn phòng 3D: Claude, Codex và PO làm việc"></canvas>
+    <div class="overlay" id="overlay"></div>
+    <div class="legend">
+      <span><i class="dot claude"></i>Claude: PM, Tech Lead, Reviewer</span>
+      <span><i class="dot codex"></i>Codex: Developer, Tester</span>
+      <span><i class="dot po"></i>Bạn: Product Owner</span>
+    </div>
+    <div class="ask" id="ask" hidden>
+      <div class="ask-head">Claude đang hỏi anh</div>
+      <div id="ask-list"></div>
+    </div>
+  </div>
+
+  <aside class="chat">
+    <div class="chat-head">
+      <b>Hội thoại trong văn phòng</b>
+      <span class="muted" id="chat-count"></span>
+    </div>
+    <ol class="msgs" id="msgs"></ol>
+    <form class="compose" id="compose">
+      <textarea id="compose-text" rows="2" placeholder="Gửi yêu cầu mới cho team…"></textarea>
+      <button class="btn primary" type="submit">Gửi</button>
+    </form>
+  </aside>
+</div>
+<script type="module" src="/static/office.js"></script>
+</body>
+</html>

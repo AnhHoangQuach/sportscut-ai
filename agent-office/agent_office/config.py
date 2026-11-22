@@ -24,6 +24,9 @@ merge_mode = "auto"
 # After all tasks of a request are merged, Claude checks the result against the request and
 # may plan follow-up tasks. This caps those extra rounds per request.
 max_goal_rounds = 3
+# true = use built-in simulated agents (no CLI calls, no quota). `office demo` sets this.
+simulate = false
+sim_delay = 3.0
 # Paths agents must never change (e.g. the orchestrator itself when it lives in the same repo).
 protected_paths = []
 
@@ -65,6 +68,8 @@ class Config:
     protected_paths: list[str] = field(default_factory=list)
     merge_mode: str = "auto"
     max_goal_rounds: int = 3
+    simulate: bool = False
+    sim_delay: float = 3.0
     claude: AgentConfig = field(default_factory=lambda: AgentConfig(cmd="claude"))
     codex: AgentConfig = field(default_factory=lambda: AgentConfig(cmd="codex", timeout_sec=3600))
     backoff_minutes: list[int] = field(default_factory=lambda: [15, 30, 60])
@@ -97,6 +102,8 @@ def load_config(office_dir: Path) -> Config:
         protected_paths=[str(x) for x in o.get("protected_paths", [])],
         merge_mode=str(o.get("merge_mode", "auto")).lower(),
         max_goal_rounds=int(o.get("max_goal_rounds", 3)),
+        simulate=bool(o.get("simulate", False)),
+        sim_delay=float(o.get("sim_delay", 3.0)),
         claude=_agent(raw.get("claude", {}), "claude", 1800),
         codex=_agent(raw.get("codex", {}), "codex", 3600),
         backoff_minutes=list(raw.get("limits", {}).get("backoff_minutes", [15, 30, 60])) or [15, 30, 60],

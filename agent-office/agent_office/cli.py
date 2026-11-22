@@ -193,7 +193,51 @@ def cmd_dashboard(args) -> int:
               "  pip install -e './agent-office[dashboard]'")
         return 1
     Store(_repo(args)).load()  # fail early with a clear message if not initialised
-    return serve(_repo(args), args.host, args.port, open_browser=not args.no_browser)
+    return serve(_repo(args), args.host, args.port, open_browser=not args.no_browser, page=args.page)
+
+
+DEMO_REQUEST = """# SportsCut MVP: tự động cắt highlight trận bóng đá
+
+Tôi cần CLI `sportscut cut match.mp4` tự tìm khoảnh khắc hay trong video bóng đá và xuất
+tối đa 10 clip 10-30 giây, một file highlights.mp4 ghép lại và highlights.json liệt kê thời điểm.
+Chỉ dùng tín hiệu rẻ (audio + chuyển cảnh), dùng ffmpeg, có test tự động.
+"""
+
+
+def cmd_demo(args) -> int:
+    try:
+        from .dashboard.server import serve
+    except ImportError as e:
+        print(f"Dashboard dependencies missing ({e.name}). Install them with:\n"
+              "  pip install -e './agent-office[dashboard]'")
+        return 1
+    from . import runner_proc
+    from .pipeline import Office
+
+    repo = Path(args.dir).expanduser().resolve()
+    fresh = not (repo / ".agent-office" / "state.json").exists()
+    if fresh:
+        repo.mkdir(parents=True, exist_ok=True)
+        if not (repo / ".git").exists():
+            ident = ["-c", "user.name=Agent Office", "-c", "user.email=agent-office@localhost"]
+            subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+            (repo / "README.md").write_text("# SportsCut (demo)\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", *ident, "commit", "-q", "-m", "init"], cwd=repo, check=True)
+        store = Store(repo)
+        store.init()
+        cfg = write_default_config(store.dir)
+        text = cfg.read_text(encoding="utf-8")
+        text = (text.replace("simulate = false", "simulate = true")
+                    .replace("sim_delay = 3.0", f"sim_delay = {args.delay}")
+                    .replace("open_pr = true", "open_pr = false"))
+        cfg.write_text(text, encoding="utf-8")
+        Office(repo).submit({"cmd": "request", "text": DEMO_REQUEST})
+        print(f"Demo office created in {repo} (simulated agents, no quota used).")
+    else:
+        print(f"Reusing demo office in {repo}. Delete the folder to start over.")
+    runner_proc.start(repo)
+    return serve(repo, args.host, args.port, open_browser=not args.no_browser, page="office")
 
 
 def cmd_sync(args) -> int:
@@ -271,7 +315,15 @@ def main(argv: list[str] | None = None) -> int:
     db.add_argument("--host", default="127.0.0.1")
     db.add_argument("--port", type=int, default=8765)
     db.add_argument("--no-browser", action="store_true")
+    db.add_argument("--page", default="", choices=["", "office"], help="open the 3D office directly")
     db.set_defaults(fn=cmd_dashboard)
+    dm = sub.add_parser("demo", help="watch simulated Claude + Codex build SportsCut in the 3D office (free)")
+    dm.add_argument("--dir", default=str(Path.home() / "agent-office-demo"))
+    dm.add_argument("--delay", type=float, default=3.0, help="seconds per simulated agent call")
+    dm.add_argument("--host", default="127.0.0.1")
+    dm.add_argument("--port", type=int, default=8765)
+    dm.add_argument("--no-browser", action="store_true")
+    dm.set_defaults(fn=cmd_demo)
     sub.add_parser("sync", help="mark tasks done whose PRs were merged").set_defaults(fn=cmd_sync)
     d = sub.add_parser("doctor", help="check CLIs, logins and config")
     d.add_argument("--live", action="store_true")
