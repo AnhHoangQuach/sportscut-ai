@@ -75,6 +75,6 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .msg-body { background: var(--panel-2); border-radius: 4px 10px 10px 10px; padding: 6px 9px; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
 .msg.k-question .msg-body, .msg.k-rest .msg-body { background: var(--warn-soft); }
 .msg.k-merged .msg-body, .msg.k-done .msg-body, .msg.k-approve .msg-body { box-shadow: inset 3px 0 0 var(--good); }
-.msg.k-changes .msg-body { box-shadow: inset 3px 0 0 var(--warn); }
+.msg.k-changes .msg-body, .msg.k-conflict .msg-body { box-shadow: inset 3px 0 0 var(--warn); }
 .compose { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); align-items: flex-end; }
 .empty { color: var(--muted); text-align: center; padding: 24px 8px; }

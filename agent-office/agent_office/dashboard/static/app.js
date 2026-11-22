@@ -13,6 +13,23 @@ const REQ_STATUS = { new: "mới", planned: "đang làm", done: "xong", blocked:
 let state = null;
 let events = [];
 const working = {}; // agent -> {task, label}
+const sessions = {};         // agent -> {task_id: label}; Codex may run several tasks at once
+function syncWorking(a) {
+  const ent = Object.entries(sessions[a] || {});
+  if (!ent.length) { delete working[a]; return; }
+  working[a] = { task: ent.map((e) => e[0]).join(", "), label: ent.length > 1 ? `${ent.length} việc` : ent[0][1], n: ent.length };
+}
+function startWork(a, task, label) { (sessions[a] ||= {})[task] = label; syncWorking(a); }
+function endWork(a, task) { if (sessions[a]) delete sessions[a][task]; syncWorking(a); }
+function clearWork(a) { sessions[a] = {}; syncWorking(a); }
+function syncFromState(a) {
+  if (a.status !== "working") { clearWork(a.name); return; }
+  if (!Array.isArray(a.active)) return;
+  const cur = sessions[a.name] || {};
+  sessions[a.name] = Object.fromEntries(a.active.map((t) => [t, cur[t] || "đang làm"]));
+  syncWorking(a.name);
+}
+function activeTasks() { return new Set(Object.values(sessions).flatMap((m) => Object.keys(m))); }
 let openTask = null;
 let openTab = "overview";
 
@@ -65,13 +82,14 @@ function setConn(s) {
   el.querySelector("span").textContent = s === "ok" ? "realtime" : s === "bad" ? "mất kết nối" : "đang kết nối";
 }
 function trackWorking(e) {
-  if (e.event === "agent_working") working[e.agent] = { task: e.task_id, label: e.label };
-  else if (["agent_done", "agent_failed", "agent_resting"].includes(e.event)) delete working[e.agent];
+  if (e.event === "agent_working") startWork(e.agent, e.task_id, e.label);
+  else if (["agent_done", "agent_failed"].includes(e.event)) endWork(e.agent, e.task_id);
+  else if (e.event === "agent_resting") clearWork(e.agent);
 }
 
 function setState(s) {
   state = s;
-  for (const a of s.agents || []) if (a.status !== "working") delete working[a.name];
+  for (const a of s.agents || []) syncFromState(a);
   render();
   if (openTask) renderDrawer();
 }
@@ -114,10 +132,19 @@ function renderAgents() {
         <div class="agent-name">${a.name === "claude" ? "Claude" : "Codex"}</div>
         <div class="agent-role">${ROLES[a.name] || ""}</div>
         <div class="agent-status"><span class="status-dot"></span>${status}</div>
+        ${usage(a)}
         ${a.last_error && a.status === "resting" ? `<div class="hint">${esc(a.last_error).slice(0, 120)}</div>` : ""}
       </div>${wake}</div>`;
   }).join("");
   tickCountdowns();
+}
+function usage(a) {
+  const cfg = state.config || {};
+  const today = new Date().toLocaleDateString("sv-SE");
+  const calls = a.calls_day === today ? a.calls_today || 0 : 0;
+  const cap = (cfg.max_calls_per_day || {})[a.name] || 0;
+  const par = (cfg.parallel || {})[a.name] || 1;
+  return `<div class="hint">Hôm nay ${calls}${cap ? `/${cap}` : ""} lượt · ${(a.active || []).length}/${par} phiên · đã nghỉ ${a.rests_total || 0} lần</div>`;
 }
 function tickCountdowns() {
   document.querySelectorAll("[data-until]").forEach((el) => {
@@ -167,18 +194,18 @@ function renderRequests() {
 
 function renderBoard() {
   const tasks = (state.tasks || []).slice().sort((a, b) => a.id.localeCompare(b.id));
-  const activeTasks = new Set(Object.values(working).map((w) => w.task));
+  const active = activeTasks();
   $("board").innerHTML = STAGES.map(([stage, who]) => {
     const list = tasks.filter((t) => t.stage === stage);
     const cards = list.map((t) => {
       const agent = STAGE_AGENT[t.stage] || "";
       const meta = [];
-      if (activeTasks.has(t.id)) meta.push(`<span class="badge planned">đang chạy</span>`);
+      if (active.has(t.id)) meta.push(`<span class="badge planned">đang chạy</span>`);
       if (t.review_round) meta.push(`<span class="badge">review ${t.review_round}/3</span>`);
       if (t.test_attempts) meta.push(`<span class="badge">test fail ${t.test_attempts}</span>`);
       if (t.checkpoint) meta.push(`<span class="badge blocked">checkpoint</span>`);
       if (t.depends_on && t.depends_on.length && t.stage === "todo") meta.push(`<span class="badge">sau ${esc(t.depends_on.join(", "))}</span>`);
-      return `<button class="tcard ${agent} ${activeTasks.has(t.id) ? "active" : ""}" data-task="${esc(t.id)}">
+      return `<button class="tcard ${agent} ${active.has(t.id) ? "active" : ""}" data-task="${esc(t.id)}">
         <div class="tid">${esc(t.id)} · ${esc(t.request_id)}</div>
         <div class="ttitle">${esc(t.title)}</div>
         <div class="tmeta">${meta.join("")}</div></button>`;
@@ -201,7 +228,7 @@ function renderWaiting() {
 
 // ---------------------------------------------------------------- feed
 function describe(e) {
-  const who = (a) => `<span class="who ${esc(a)}">${a === "claude" ? "Claude" : a === "codex" ? "Codex" : esc(a)}</span>`;
+  const who = (a) => `<span class="who ${esc(a)}">${a === "claude" ? "Claude" : a === "codex" ? "Codex" : a === "po" ? "PO" : esc(a)}</span>`;
   switch (e.event) {
     case "request_added": return `PO gửi <b>${esc(e.request_id)}</b>`;
     case "task_created": return `Claude tạo <b>${esc(e.task_id)}</b> ${esc(e.title)}`;
@@ -225,10 +252,17 @@ function describe(e) {
     case "runner_started": return `Runner bắt đầu`;
     case "runner_stopped": return `Runner dừng sau ${esc(e.steps)} bước`;
     case "worktree_ready": return `Worktree cho <b>${esc(e.task_id)}</b>: ${esc(e.branch)}`;
+    case "message": return `${who(e.frm)} → ${e.to === "all" ? "mọi người" : who(e.to)}: ${esc(String(e.text || "").slice(0, 160))}`;
+    case "merge_conflict": return `<b>${esc(e.task_id)}</b> <span class="ev-warn">xung đột merge</span>, Codex sẽ gỡ (lần ${esc(e.round)})`;
+    case "conflict_resolved": return `<span class="ev-good">Đã gỡ xung đột</span> <b>${esc(e.task_id)}</b>`;
+    case "guardrail": return `<span class="ev-bad">Rào chắn</span> dừng <b>${esc(e.task_id || e.request_id)}</b> (${esc(e.rule)})`;
+    case "budget_reached": return `${who(e.agent)} <span class="ev-warn">hết ngân sách hôm nay</span> (${esc(e.calls)}/${esc(e.cap)})`;
+    case "step_crashed": return `<span class="ev-bad">Lỗi bước</span> ${esc(e.kind)} ${esc(e.target)}: ${esc(e.error)}`;
     default: return esc(e.event);
   }
 }
-const feedItem = (e) => `<li><time>${hhmm(e.at)}</time>${describe(e)}</li>`;
+const QUIET = new Set(["dispatch"]);
+const feedItem = (e) => QUIET.has(e.event) ? "" : `<li><time>${hhmm(e.at)}</time>${describe(e)}</li>`;
 function renderFeed() {
   $("feed").innerHTML = events.slice(-200).reverse().map(feedItem).join("") || `<li class="empty-note">Chưa có hoạt động.</li>`;
 }

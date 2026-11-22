@@ -153,3 +153,68 @@ def merge_pr(repo: Path, url: str, remote: str, base: str) -> None:
         git(repo, "merge", "--ff-only", f"{remote}/{base}")
     else:
         git(repo, "fetch", remote, f"{base}:{base}")
+
+
+# ---------- merge conflicts (resolved by the developer agent) ----------
+_IDENT = ["-c", "user.name=Agent Office", "-c", "user.email=agent-office@localhost"]
+
+
+def merge_in_progress(wt: Path) -> bool:
+    return bool(git(wt, "rev-parse", "-q", "--verify", "MERGE_HEAD", check=False))
+
+
+def start_merge(wt: Path, base: str) -> list[str]:
+    """Merge `base` into the task branch and leave conflicts in place. Returns conflicted files
+    ([] when the merge went through cleanly and is already committed)."""
+    if merge_in_progress(wt):
+        return conflicted_files(wt) or ["(merge in progress)"]
+    p = subprocess.run(["git", *_IDENT, "merge", "--no-edit", base], cwd=wt, capture_output=True, text=True)
+    if p.returncode == 0:
+        return []
+    files = conflicted_files(wt)
+    if not files:  # failed for another reason (e.g. dirty tree): leave nothing half done
+        git(wt, "merge", "--abort", check=False)
+        raise GitError(f"git merge {base} failed: {p.stderr.strip() or p.stdout.strip()}")
+    return files
+
+
+def conflicted_files(wt: Path) -> list[str]:
+    return [f for f in git(wt, "diff", "--name-only", "--diff-filter=U", check=False).splitlines() if f]
+
+
+def conflict_markers(wt: Path) -> list[str]:
+    """Tracked or new files that still contain conflict markers."""
+    out = subprocess.run(["git", "grep", "-l", "--untracked", "-E", "^(<<<<<<<|>>>>>>>) "],
+                         cwd=wt, capture_output=True, text=True).stdout
+    return [f for f in out.splitlines() if f and not f.startswith(".office/")]
+
+
+def finish_merge(wt: Path, message: str) -> None:
+    git(wt, "add", "-A")
+    git(wt, *_IDENT, "commit", "-q", "--no-edit", "-m", message)
+
+
+def abort_merge(wt: Path) -> None:
+    if merge_in_progress(wt):
+        git(wt, "merge", "--abort", check=False)
+
+
+def added_lines(wt: Path, base_sha: str) -> list[tuple[str, str]]:
+    """(file, line) for every line the task branch adds compared with base."""
+    out = git(wt, "diff", "--unified=0", "--no-color", f"{base_sha}...HEAD", check=False)
+    cur, lines = "", []
+    for ln in out.splitlines():
+        if ln.startswith("+++ "):
+            cur = ln[6:] if ln.startswith("+++ b/") else ""
+        elif ln.startswith("+") and not ln.startswith("+++") and cur:
+            lines.append((cur, ln[1:]))
+    return lines
+
+
+def changed_line_count(wt: Path, base_sha: str) -> int:
+    total = 0
+    for row in git(wt, "diff", "--numstat", f"{base_sha}...HEAD", check=False).splitlines():
+        parts = row.split("\t")
+        if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+            total += int(parts[0]) + int(parts[1])
+    return total

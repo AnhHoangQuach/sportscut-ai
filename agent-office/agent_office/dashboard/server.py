@@ -45,7 +45,8 @@ def snapshot(repo: Path) -> dict[str, Any]:
     cfg = load_config(store.dir)
     plan = next_step(store, datetime.now(timezone.utc), cfg.merge_mode == "auto")
     raw["config"] = {"merge_mode": cfg.merge_mode, "base_branch": cfg.base_branch, "open_pr": cfg.open_pr,
-                     "max_goal_rounds": cfg.max_goal_rounds}
+                     "max_goal_rounds": cfg.max_goal_rounds, "parallel": cfg.parallel,
+                     "max_calls_per_day": cfg.max_calls_per_day}
     raw["repo"] = {"name": repo.name, "path": str(repo)}
     raw["runner"] = {"pid": store.runner_pid(), "running": store.runner_pid() is not None}
     raw["waiting_on"] = plan.waiting_on or []
@@ -103,6 +104,15 @@ def create_app(repo: Path) -> FastAPI:
     @app.get("/api/state")
     def get_state():
         return snapshot(repo)
+
+    @app.get("/api/stats")
+    def get_stats():
+        from .. import stats
+        store = Store(repo)
+        if not store.exists():
+            raise HTTPException(404, "office not initialised (run `office init`)")
+        store.load()
+        return stats.collect(store, load_config(store.dir))
 
     @app.get("/api/events")
     def get_events(limit: int = 200):

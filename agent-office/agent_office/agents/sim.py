@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,21 @@ SPORTSCUT_TASKS = [
     {"key": "5", "title": "Chọn highlight và xuất clip", "depends_on": ["3", "4"],
      "brief": "Top N, đệm 8s/4s, xuất clip + highlights.mp4 + highlights.json."},
 ]
+
+
+_STATE_LOCK = threading.Lock()  # sessions run in parallel threads and share one state file
+
+
+def _resolve_conflicts(cwd: Path) -> None:
+    """Keep both sides of every conflict (each task only appends its own lines)."""
+    out = subprocess.run(["git", "diff", "--name-only", "--diff-filter=U"], cwd=cwd, capture_output=True,
+                         text=True).stdout
+    for name in filter(None, out.splitlines()):
+        f = cwd / name
+        keep = [ln for ln in f.read_text().splitlines(keepends=True)
+                if not ln.startswith(("<<<<<<< ", "=======", ">>>>>>> "))]
+        f.write_text("".join(keep))
+    subprocess.run(["git", "add", "-A"], cwd=cwd, capture_output=True)
 
 
 def _slug(text: str) -> str:
@@ -51,13 +68,16 @@ class SimAgent(CliAgent):
 
     def run(self, prompt: str, cwd: Path, log_path: Path | None = None, **extra: Any) -> AgentResult:
         cwd = Path(cwd)
-        st = self._state()
         kind = self._kind(prompt)
-        n = st.get(f"{self.name}:{kind}", 0) + 1
-        st[f"{self.name}:{kind}"] = n
-        self._save(st)
+        with _STATE_LOCK:
+            st = self._state()
+            n = st.get(f"{self.name}:{kind}", 0) + 1
+            st[f"{self.name}:{kind}"] = n
+            self._save(st)
         time.sleep(0.2 if kind == "probe" else self.delay)
-        out, err, code = self._answer(kind, n, prompt, cwd, st)
+        with _STATE_LOCK:
+            st = self._state()
+            out, err, code = self._answer(kind, n, prompt, cwd, st)
         res = AgentResult(self.name, code, out, err, text=out if code == 0 else "")
         res.limit = detect(self.name, out, err, code)
         if log_path:
@@ -108,6 +128,9 @@ class SimAgent(CliAgent):
             return json.dumps({"done": True, "summary": "`sportscut cut match.mp4` tìm khoảnh khắc hay theo audio "
                                                         "và chuyển cảnh, xuất clip + highlights.json."},
                               ensure_ascii=False), "", 0
+        if kind == "dev" and "MERGE CONFLICT" in prompt:
+            _resolve_conflicts(cwd)
+            return "Đã gộp main, giữ cả hai phần trong sportscut/commands.py, pytest pass.", "", 0
         if kind == "dev":
             if n == 2 and not st.get("limit_done"):  # run out of quota once, mid-task
                 st["limit_done"] = True
@@ -119,6 +142,10 @@ class SimAgent(CliAgent):
             (cwd / "sportscut").mkdir(exist_ok=True)
             (cwd / "tests").mkdir(exist_ok=True)
             (cwd / "sportscut" / "__init__.py").touch()
+            reg = cwd / "sportscut" / "commands.py"  # every task registers here -> parallel tasks conflict
+            lines = reg.read_text() if reg.exists() else "COMMANDS = []\n"
+            if f"'{tid}'" not in lines:
+                reg.write_text(lines + f"COMMANDS.append('{tid}')\n")
             (cwd / "sportscut" / f"{slug}.py").write_text(f'"""{tid} (simulated)."""\n\n\ndef run():\n    return "{tid}"\n')
             (cwd / "tests" / f"test_{slug}.py").write_text(
                 f"from sportscut.{slug} import run\n\n\ndef test_run():\n    assert run() == \"{tid}\"\n")

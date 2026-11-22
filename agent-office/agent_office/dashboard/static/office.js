@@ -13,6 +13,23 @@ const dark = matchMedia("(prefers-color-scheme: dark)").matches;
 
 let state = null;
 const working = {};          // agent -> {task, label}
+const sessions = {};         // agent -> {task_id: label}; Codex may run several tasks at once
+function syncWorking(a) {
+  const ent = Object.entries(sessions[a] || {});
+  if (!ent.length) { delete working[a]; return; }
+  working[a] = { task: ent.map((e) => e[0]).join(", "), label: ent.length > 1 ? `${ent.length} việc` : ent[0][1], n: ent.length };
+}
+function startWork(a, task, label) { (sessions[a] ||= {})[task] = label; syncWorking(a); }
+function endWork(a, task) { if (sessions[a]) delete sessions[a][task]; syncWorking(a); }
+function clearWork(a) { sessions[a] = {}; syncWorking(a); }
+function syncFromState(a) {
+  if (a.status !== "working") { clearWork(a.name); return; }
+  if (!Array.isArray(a.active)) return;
+  const cur = sessions[a.name] || {};
+  sessions[a.name] = Object.fromEntries(a.active.map((t) => [t, cur[t] || "đang làm"]));
+  syncWorking(a.name);
+}
+function activeTasks() { return new Set(Object.values(sessions).flatMap((m) => Object.keys(m))); }
 const messages = [];
 const seenMessages = new Set();
 
@@ -181,7 +198,7 @@ function drawKanban() {
   ctx.fillText(req ? clip(ctx, `${req.id} · ${req.text.trim().split("\n")[0].replace(/^#+\s*/, "")}`, W - 60) : "Chưa có yêu cầu", 28, 52);
   const colW = (W - 40) / STAGES.length;
   const tasks = (state?.tasks || []).slice().sort((a, b) => a.id.localeCompare(b.id));
-  const active = new Set(Object.values(working).map((w) => w.task));
+  const active = activeTasks();
   STAGES.forEach((s, i) => {
     const x = 20 + i * colW;
     ctx.fillStyle = s === "blocked" ? "#f8ecd5" : "#eef0f3";
@@ -294,7 +311,7 @@ function pendingQuestions() {
 function applyState(s) {
   state = s;
   for (const a of s.agents || []) {
-    if (a.status !== "working") delete working[a.name];
+    syncFromState(a);
     if (stations[a.name]) stations[a.name].status = a.status === "resting" ? "resting" : working[a.name] ? "working" : "idle";
   }
   stations.po.status = pendingQuestions().length ? "asking" : "idle";
@@ -311,8 +328,9 @@ function applyState(s) {
 }
 
 function onEvent(e, live) {
-  if (e.event === "agent_working") { working[e.agent] = { task: e.task_id, label: e.label }; if (stations[e.agent]) stations[e.agent].status = "working"; }
-  if (["agent_done", "agent_failed", "agent_resting"].includes(e.event)) { delete working[e.agent]; if (stations[e.agent]) stations[e.agent].status = e.event === "agent_resting" ? "resting" : "idle"; }
+  if (e.event === "agent_working") { startWork(e.agent, e.task_id, e.label); if (stations[e.agent]) stations[e.agent].status = "working"; }
+  if (["agent_done", "agent_failed"].includes(e.event)) { endWork(e.agent, e.task_id); if (stations[e.agent]) stations[e.agent].status = working[e.agent] ? "working" : "idle"; }
+  if (e.event === "agent_resting") { clearWork(e.agent); if (stations[e.agent]) stations[e.agent].status = "resting"; }
   if (e.event === "message") {
     const id = `${e.at}|${e.frm}|${e.text}`;
     if (seenMessages.has(id)) return;

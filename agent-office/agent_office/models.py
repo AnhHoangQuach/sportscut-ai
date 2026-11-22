@@ -40,13 +40,14 @@ TRANSITIONS: dict[Stage, set[Stage]] = {
     Stage.DEV: {Stage.TEST, Stage.BLOCKED},
     Stage.TEST: {Stage.REVIEW, Stage.DEV, Stage.BLOCKED},
     Stage.REVIEW: {Stage.PR, Stage.DEV, Stage.BLOCKED},
-    Stage.PR: {Stage.DONE, Stage.BLOCKED},
+    Stage.PR: {Stage.DONE, Stage.DEV, Stage.BLOCKED},  # dev: merge conflict to resolve
     Stage.DONE: set(),
     Stage.BLOCKED: {Stage.SPEC, Stage.DEV, Stage.TEST, Stage.REVIEW, Stage.PR},
 }
 
 MAX_REVIEW_ROUNDS = 3
 MAX_TEST_ATTEMPTS = 3
+MAX_CONFLICT_ROUNDS = 2  # times the developer may resolve a merge conflict on one task
 
 
 class InvalidTransition(Exception):
@@ -78,6 +79,8 @@ class Task:
     questions: list[str] = field(default_factory=list)
     checkpoint: dict[str, Any] | None = None
     pr_url: str = ""
+    conflicts: int = 0            # merge conflicts with the base branch so far
+    merge_conflict: bool = False  # the next dev step must merge the base branch and resolve
     history: list[dict[str, Any]] = field(default_factory=list)
     created_at: str = field(default_factory=now_iso)
 
@@ -120,6 +123,18 @@ class Agent:
     reset_known: bool = False
     failures: int = 0  # consecutive non-limit failures
     last_error: str = ""
+    active: list[str] = field(default_factory=list)  # task/request ids this agent works on right now
+    calls_day: str = ""     # local date (YYYY-MM-DD) that calls_today counts
+    calls_today: int = 0
+    calls_total: int = 0
+    rests_total: int = 0
+    limits_today: int = 0
+
+    def count_call(self, day: str) -> None:
+        if self.calls_day != day:
+            self.calls_day, self.calls_today, self.limits_today = day, 0, 0
+        self.calls_today += 1
+        self.calls_total += 1
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
