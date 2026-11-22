@@ -75,6 +75,7 @@ class Task:
     blocked_reason: str = ""
     blocked_from: str = ""
     po_answer: str = ""
+    questions: list[str] = field(default_factory=list)
     checkpoint: dict[str, Any] | None = None
     pr_url: str = ""
     history: list[dict[str, Any]] = field(default_factory=list)
@@ -139,5 +140,10 @@ class Request:
     text: str
     created_at: str = field(default_factory=now_iso)
     task_ids: list[str] = field(default_factory=list)
-    status: str = "new"  # new -> planned | blocked
+    status: str = "new"  # new -> planned -> done; blocked when the PO must answer
     note: str = ""
+    goal_rounds: int = 0          # follow-up planning rounds done by the goal check
+    blocked_stage: str = ""       # "new" or "planned": where an answer sends it back
+    po_answers: list[str] = field(default_factory=list)
+    questions: list[str] = field(default_factory=list)
+    summary: str = ""

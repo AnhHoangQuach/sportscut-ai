@@ -27,14 +27,18 @@ Sửa `.agent-office/config.toml` cho repo này:
 base_branch = "main"
 test_cmd = "python -m pytest -q tests"
 protected_paths = ["agent-office/"]   # agent không được sửa chính orchestrator
+merge_mode = "auto"                   # review đạt + test pass thì tự merge vào main
 ```
 
 Rồi:
 
 ```bash
 office doctor --live
-office request -f agent-office/examples/sportscut/po_request.md
-office run
+pip install -e './agent-office[dashboard]'
+office dashboard     # gửi yêu cầu, bấm Bắt đầu, trả lời khi Claude hỏi
 ```
+
+Hoặc chỉ dùng terminal: `office request -f agent-office/examples/sportscut/po_request.md`
+rồi `office run --watch`.
 
 Chi tiết: [agent-office/README.md](agent-office/README.md).

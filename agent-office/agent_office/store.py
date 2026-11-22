@@ -86,3 +86,71 @@ class Store:
         d.mkdir(parents=True, exist_ok=True)
         n = len(list(d.iterdir())) + 1
         return d / f"{n:03d}-{label}.log"
+
+    # ---------- inbox (commands from the CLI / dashboard while a runner may be active) ----------
+    @property
+    def inbox_path(self) -> Path:
+        return self.dir / "inbox.jsonl"
+
+    @property
+    def pid_path(self) -> Path:
+        return self.dir / "runner.pid"
+
+    def append_inbox(self, cmd: dict[str, Any]) -> None:
+        self.dir.mkdir(parents=True, exist_ok=True)
+        with self.inbox_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"at": now_iso(), **cmd}, ensure_ascii=False) + "\n")
+
+    def take_inbox(self) -> list[dict[str, Any]]:
+        """Atomically take every queued command (new appends go to a fresh file)."""
+        if not self.inbox_path.exists():
+            return []
+        taking = self.dir / f".inbox.{os.getpid()}.jsonl"
+        os.replace(self.inbox_path, taking)
+        cmds = []
+        for line in taking.read_text(encoding="utf-8").splitlines():
+            try:
+                cmds.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        taking.unlink(missing_ok=True)
+        return cmds
+
+    # ---------- runner process ----------
+    def runner_pid(self) -> int | None:
+        try:
+            pid = int(self.pid_path.read_text().strip())
+        except (OSError, ValueError):
+            return None
+        return pid if pid_alive(pid) else None
+
+    def claim_runner(self) -> bool:
+        other = self.runner_pid()
+        if other and other != os.getpid():
+            return False
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.pid_path.write_text(str(os.getpid()))
+        return True
+
+    def release_runner(self) -> None:
+        if self.runner_pid() == os.getpid():
+            self.pid_path.unlink(missing_ok=True)
+
+
+def pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":  # pragma: no cover
+        import ctypes
+        h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+        if not h:
+            return False
+        ctypes.windll.kernel32.CloseHandle(h)
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True

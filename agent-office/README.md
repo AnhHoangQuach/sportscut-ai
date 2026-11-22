@@ -12,8 +12,9 @@ Luồng: yêu cầu của PO → Claude tách task + viết spec/acceptance crit
 trong **git worktree riêng của task** → orchestrator chạy lại test → Claude review diff (tối đa 3
 vòng) → mở PR → bạn merge.
 
-Đây là **giai đoạn 1** (CLI). Dashboard 2D và văn phòng 3D ở giai đoạn sau chỉ cần đọc
-`.agent-office/state.json` và `.agent-office/events.jsonl`.
+Giai đoạn 1 là CLI, giai đoạn 2 thêm **dashboard 2D realtime** và **chế độ tự động hoàn toàn**:
+các agent tự làm tới khi yêu cầu được giao xong, tự merge khi review đạt và test pass, chỉ hỏi
+PO khi yêu cầu chưa rõ. Văn phòng 3D (giai đoạn 3) sẽ đọc cùng `state.json` và `events.jsonl`.
 
 ## Cài đặt
 
@@ -43,12 +44,45 @@ office run                          # chạy đến khi hết việc; tự ngủ
 office status                       # agent + task
 office board                        # kanban theo stage
 office show T-001                   # spec, AC, lịch sử, đường dẫn log
-office answer T-002 "Dùng ffmpeg, bỏ qua GPU"   # trả lời task bị blocked
+office answer T-002 "Dùng ffmpeg, bỏ qua GPU"   # trả lời task (hoặc yêu cầu R-xxx) bị blocked
 office sync                         # đánh dấu done các task đã merge (run cũng tự gọi)
 office wake codex                   # bắt agent làm việc lại ngay
 ```
 
 `office run --once` chạy đúng một bước; `--no-wait` thoát thay vì ngủ khi agent đang nghỉ.
+
+## Dashboard 2D (giai đoạn 2)
+
+```bash
+pip install -e './agent-office[dashboard]'   # FastAPI + uvicorn
+office dashboard                             # mở http://127.0.0.1:8765
+```
+
+Trên dashboard anh làm được mọi việc mà không cần terminal:
+
+- Gửi yêu cầu mới, bấm **Bắt đầu** / **Dừng** runner (`office run --watch` chạy nền,
+  log ở `.agent-office/logs/runner.log`).
+- Xem Kanban 8 cột (todo → done + blocked), task nào đang được agent nào làm.
+- Thẻ agent: rảnh / đang làm gì / nghỉ vì hết quota đến mấy giờ (đếm ngược), nút "Làm lại ngay".
+- Khung **Cần anh trả lời**: câu hỏi của Claude cho yêu cầu hoặc task bị chặn, trả lời tại chỗ.
+- Bấm vào task: spec, acceptance criteria, ghi chú review/test, lịch sử, log từng lần gọi agent.
+- Feed hoạt động realtime qua WebSocket.
+
+Dashboard chỉ nghe ở `127.0.0.1`. Mọi thao tác của PO (từ dashboard hay CLI) đi qua
+`.agent-office/inbox.jsonl`; runner đang chạy sẽ nhận ở bước kế tiếp, nên không ghi đè state của nhau.
+
+## Chế độ tự động hoàn toàn
+
+- `merge_mode = "auto"` (mặc định): Claude approve và test pass thì task được merge vào
+  `base_branch` ngay (PR mode: `gh pr merge --squash`; `open_pr = false`: fast-forward branch local),
+  task phụ thuộc chạy tiếp. Đặt `"manual"` để dừng ở PR chờ PO merge như giai đoạn 1.
+- Claude PM chỉ hỏi khi yêu cầu thật sự mơ hồ (`{"questions": [...]}` lúc tách task hoặc viết spec).
+  Yêu cầu/task đó chuyển `blocked`, các task khác vẫn chạy. Trả lời bằng dashboard hoặc
+  `office answer R-001 "..."` / `office answer T-004 "..."`.
+- Khi mọi task của một yêu cầu đã merge, Claude kiểm tra repo so với yêu cầu gốc: đủ thì đánh dấu
+  yêu cầu `done` kèm tóm tắt, thiếu thì tự tạo task bổ sung. Tối đa `max_goal_rounds` vòng (mặc định 3),
+  quá thì hỏi PO.
+- `office run --watch` chạy mãi, ngủ khi agent hết quota và nhận yêu cầu mới từ inbox.
 
 ## State machine
 
@@ -62,7 +96,8 @@ todo → spec → dev → test → review → pr → done
 ```
 
 Task chỉ sang `spec` khi các task nó phụ thuộc đã `done` (đã merge), để worktree mới luôn có code
-của task trước.
+của task trước. Trước khi merge, orchestrator merge `base_branch` mới nhất vào branch của task;
+xung đột thì task bị `blocked`.
 
 ## Hết quota (usage limit)
 
@@ -92,6 +127,7 @@ agent_office/
   limits.py     nhận diện usage limit + giờ reset
   worktree.py   git worktree, commit, diff, gh pr
   agents/       claude.py, codex.py
+  dashboard/    server.py (FastAPI + WebSocket), static/ (HTML/CSS/JS, không cần build)
   prompts/      prompt từng vai (sửa thoải mái)
 examples/sportscut/   yêu cầu PO mẫu cho dự án đầu tiên
 tests/                test end-to-end với CLI giả lập
@@ -105,7 +141,7 @@ Trong mỗi worktree, thư mục `.office/` chứa `TASK.md`, `CHECKPOINT.md`, `
 
 ```bash
 pip install -e '.[dev]'
-python -m pytest -q
+python -m pytest -q        # gồm test dashboard (FastAPI TestClient) và chế độ tự động
 ```
 
 Test dùng `tests/fake_agent.py` thay cho `claude`/`codex`, nên không tốn quota.
