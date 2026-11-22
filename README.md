@@ -46,4 +46,6 @@ Khi MVP xong, giao yêu cầu thứ hai để tăng độ chính xác bằng s�
 `office request -f agent-office/examples/sportscut/po_request_accuracy.md`. Quy tắc làm việc
 chung của các agent (TDD, đo trước tối ưu sau, có bằng chứng mới báo xong) ở [AGENTS.md](AGENTS.md).
 
+Tài liệu đầy đủ (kiến trúc multi-agent, code, văn phòng 3D, công nghệ SportsCut, áp dụng cho dự án khác): [docs/](docs/README.md).
+
 Chi tiết: [agent-office/README.md](agent-office/README.md).
