@@ -15,7 +15,8 @@ vòng) → mở PR → bạn merge.
 Giai đoạn 1 là CLI, giai đoạn 2 thêm **dashboard 2D realtime** và **chế độ tự động hoàn toàn**:
 các agent tự làm tới khi yêu cầu được giao xong, tự merge khi review đạt và test pass, chỉ hỏi
 PO khi yêu cầu chưa rõ. Giai đoạn 3 thêm **văn phòng 3D**: nhìn thấy Claude và Codex giao việc,
-báo xong, review, hết quota và nghỉ, merge vào main.
+báo xong, review, hết quota và nghỉ, merge vào main. Giai đoạn 4 cho các agent **làm song song**
+(Codex 2 task cùng lúc), tự gỡ xung đột merge, và thêm rào chắn + thống kê quota.
 
 ## Cài đặt
 
@@ -95,6 +96,39 @@ Với agent thật: `office dashboard` rồi bấm **Văn phòng 3D** (hoặc `o
 
 `simulate = true` trong `config.toml` bật agent mô phỏng cho repo bất kỳ (`sim_delay` = số giây mỗi bước).
 
+## Làm song song và rào chắn (giai đoạn 4)
+
+`office run` chạy song song theo số phiên trong `config.toml`:
+
+```toml
+[parallel]
+claude = 1   # spec, review, kiểm tra mục tiêu
+codex = 2    # code + test hai task độc lập cùng lúc, mỗi task một worktree
+```
+
+Trong lúc Codex code T-002 và T-004, Claude vẫn viết spec hay review task khác. Thêm phiên
+thì nhanh hơn nhưng hết quota sớm hơn; khi một phiên chạm giới hạn, cả agent đó nghỉ, mọi task
+dở dang được lưu checkpoint. `office run --sequential` chạy từng bước một như trước.
+
+**Xung đột merge:** khi task khác vừa merge và đụng cùng dòng, task quay về Codex với
+`git merge main` đang dở; Codex gỡ xung đột, orchestrator kiểm tra không còn marker, rồi task
+đi lại test → review → merge (tối đa 2 lần, sau đó hỏi PO). Nếu `main` đã đổi mà merge vẫn
+sạch, orchestrator chạy lại `test_cmd` trên bản đã gộp trước khi merge.
+
+**Rào chắn** (`[guardrails]`):
+
+| Khóa | Mặc định | Tác dụng |
+|---|---|---|
+| `max_calls_per_day` | `{ claude = 0, codex = 0 }` | Số lượt gọi mỗi agent mỗi ngày (0 = không giới hạn); chạm trần thì nghỉ tới nửa đêm |
+| `max_tasks_per_request` | 12 | Số task tối đa Claude được tạo cho một yêu cầu |
+| `max_diff_lines` | 4000 | Diff lớn hơn thì dừng và hỏi PO thay vì review |
+| `block_secrets` | true | Diff có thứ giống key/token/private key thì dừng task |
+| `protected_paths` | `[]` | Đường dẫn agent không được sửa |
+
+**Thống kê:** `office stats` (hoặc `--json`, hoặc `GET /api/stats`) cho biết lượt gọi hôm nay,
+số lần hết quota, số phiên đang chạy, số xung đột đã gỡ, số lần rào chắn dừng task. Dashboard
+hiện số này trên thẻ từng agent; văn phòng 3D hiện "Codex 2 việc T-002, T-004".
+
 ## Chế độ tự động hoàn toàn
 
 - `merge_mode = "auto"` (mặc định): Claude approve và test pass thì task được merge vào
@@ -152,6 +186,7 @@ agent_office/
   worktree.py   git worktree, commit, diff, gh pr
   agents/       claude.py, codex.py, sim.py (agent mô phỏng cho demo)
   runner_proc.py  bật/tắt `office run --watch` từ dashboard
+  stats.py      thống kê lượt gọi, quota, xung đột, rào chắn
   dashboard/    server.py (FastAPI + WebSocket), static/ (HTML/CSS/JS, không cần build;
                 office.* = văn phòng 3D, vendor/ = three.js r160)
   prompts/      prompt từng vai (sửa thoải mái)
@@ -167,7 +202,7 @@ Trong mỗi worktree, thư mục `.office/` chứa `TASK.md`, `CHECKPOINT.md`, `
 
 ```bash
 pip install -e '.[dev]'
-python -m pytest -q        # gồm test dashboard, văn phòng 3D, demo mô phỏng, chế độ tự động
+python -m pytest -q        # gồm test chạy song song, rào chắn, dashboard, văn phòng 3D, demo
 ```
 
 Test dùng `tests/fake_agent.py` thay cho `claude`/`codex`, nên không tốn quota.

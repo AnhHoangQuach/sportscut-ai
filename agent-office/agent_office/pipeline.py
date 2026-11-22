@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
-from datetime import datetime, timezone
+import threading
+from concurrent.futures import Executor, Future
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from importlib import resources
 from pathlib import Path
 from string import Template
@@ -13,13 +17,23 @@ from . import worktree as wt
 from .agents import AgentResult, ClaudeAgent, CliAgent, CodexAgent, extract_json
 from .config import Config, load_config
 from .limits import LimitHit, detect, rest_until
-from .models import (MAX_REVIEW_ROUNDS, MAX_TEST_ATTEMPTS, AgentStatus, Request, Stage, Task,
+from .models import (MAX_CONFLICT_ROUNDS, MAX_REVIEW_ROUNDS, MAX_TEST_ATTEMPTS, AgentStatus, Request, Stage, Task,
                      now_iso)
-from .scheduler import Step, next_step
+from .scheduler import Step, next_step, plan_steps
 from .store import Store
 
 # After this many consecutive unexplained failures, an agent is treated as rate limited.
 FAILURES_BEFORE_REST = 2
+
+# Things that look like credentials in added lines (guardrail `block_secrets`).
+SECRET_PATTERNS = [
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),                       # AWS access key id
+    re.compile(r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}"),       # Anthropic / OpenAI style keys
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}\b"),              # GitHub tokens
+    re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),               # Slack tokens
+    re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),                   # Google API key
+]
 
 
 def prompt(name: str, **vars: object) -> str:
@@ -50,6 +64,25 @@ class Office:
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.echo = echo or (lambda msg: print(msg, flush=True))
         self.is_runner = False
+        # Parallel runner: one lock around all state changes; it is released only while an agent
+        # CLI or the test command runs, so other steps can start meanwhile.
+        self.lock = threading.RLock()
+        self.inflight: dict[str, str | None] = {}  # target id -> agent running it
+
+    @contextmanager
+    def _unlocked(self):
+        held = 0
+        while True:
+            try:
+                self.lock.release()
+            except RuntimeError:
+                break
+            held += 1
+        try:
+            yield
+        finally:
+            for _ in range(held):
+                self.lock.acquire()
 
     # ------------------------------------------------------------------ inbox
     def submit(self, cmd: dict) -> list[str]:
@@ -96,12 +129,55 @@ class Office:
 
     # ------------------------------------------------------------------ main step
     def step(self) -> Step | None:
-        self.drain_inbox()
-        self.sync_merged()
-        plan = next_step(self.store, self.clock(), self.cfg.merge_mode == "auto")
-        if plan.step is None:
-            return None
-        s = plan.step
+        """Run the single highest-priority step to completion (sequential mode)."""
+        with self.lock:
+            self.drain_inbox()
+            self.sync_merged()
+            plan = next_step(self.store, self.clock(), self.cfg.merge_mode == "auto")
+            if plan.step is None:
+                return None
+            self._execute(plan.step)
+            return plan.step
+
+    # ------------------------------------------------------------------ parallel
+    def free_slots(self) -> dict[str, int]:
+        used: dict[str, int] = {}
+        for agent in self.inflight.values():
+            if agent:
+                used[agent] = used.get(agent, 0) + 1
+        return {n: self.cfg.parallel.get(n, 1) - used.get(n, 0) for n in self.agents}
+
+    def dispatch(self, pool: Executor) -> list[Future]:
+        """Start every step that fits in the free agent sessions. Returns the new futures."""
+        with self.lock:
+            self.drain_inbox()
+            self.sync_merged()
+            plan = plan_steps(self.store, self.clock(), self.cfg.merge_mode == "auto",
+                              busy=set(self.inflight), slots=self.free_slots())
+            started = []
+            for s in plan.steps:
+                self.inflight[s.target] = s.agent
+                started.append(pool.submit(self._run_inflight, s))
+            if started:
+                self.store.event("dispatch", steps=[f"{s.kind}:{s.target}" for s in plan.steps],
+                                 running=sorted(self.inflight))
+            return started
+
+    def _run_inflight(self, s: Step) -> Step:
+        try:
+            with self.lock:
+                self._execute(s)
+        except Exception as e:  # noqa: BLE001 - one broken step must not stop the office
+            with self.lock:
+                self.store.event("step_crashed", kind=s.kind, target=s.target, error=repr(e)[:500])
+                self.echo(f"  step {s.kind} {s.target} crashed: {e!r}")
+                self.store.save()
+        finally:
+            with self.lock:
+                self.inflight.pop(s.target, None)
+        return s
+
+    def _execute(self, s: Step) -> None:
         if s.kind == "wake":
             self._wake(s.target)
         elif s.kind == "breakdown":
@@ -116,19 +192,39 @@ class Office:
             }[task.stage]
             handler(task)
         self.store.save()
-        return s
 
     # ------------------------------------------------------------------ agent calls
     def _call(self, agent_name: str, text: str, cwd: Path, task_id: str, label: str,
               task: Task | None = None) -> AgentResult | None:
         """Run an agent. Returns None if it hit a limit/failed (agent is then resting)."""
         agent = self.store.agents[agent_name]
+        if agent.status == AgentStatus.RESTING:  # another session of this agent just hit a limit
+            return None
+        now = self.clock()
+        day = now.astimezone().date().isoformat()
+        cap = self.cfg.max_calls_per_day.get(agent_name, 0)
+        if cap and agent.calls_day == day and agent.calls_today >= cap:
+            midnight = (now.astimezone() + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            self.store.event("budget_reached", agent=agent_name, calls=agent.calls_today, cap=cap)
+            self._rest(agent_name, LimitHit(agent_name, f"daily budget of {cap} calls used", midnight), None,
+                       label, None, budget=True)
+            return None
+        agent.count_call(day)
+        agent.active.append(task_id)
         agent.status = AgentStatus.WORKING
         self.store.save()
-        self.store.event("agent_working", agent=agent_name, task_id=task_id, label=label)
+        self.store.event("agent_working", agent=agent_name, task_id=task_id, label=label,
+                         sessions=len(agent.active))
         self.echo(f"  [{agent_name}] {label} ({task_id})...")
-        res = self.agents[agent_name].run(text, cwd, self.store.log_path(task_id, f"{label}-{agent_name}"))
-        agent.status = AgentStatus.IDLE
+        log_path = self.store.log_path(task_id, f"{label}-{agent_name}")
+        try:
+            with self._unlocked():
+                res = self.agents[agent_name].run(text, cwd, log_path)
+        finally:
+            if task_id in agent.active:
+                agent.active.remove(task_id)
+            if agent.status != AgentStatus.RESTING:
+                agent.status = AgentStatus.WORKING if agent.active else AgentStatus.IDLE
 
         if res.limit is not None:
             res.limit = detect(agent_name, res.stdout, res.stderr, res.exit_code, self.clock()) or res.limit
@@ -151,9 +247,19 @@ class Office:
         return res
 
     def _rest(self, agent_name: str, hit: LimitHit, task: Task | None, label: str,
-              res: AgentResult | None) -> None:
+              res: AgentResult | None, budget: bool = False) -> None:
         a = self.store.agents[agent_name]
+        if a.status == AgentStatus.RESTING and a.rest_until and datetime.fromisoformat(a.rest_until) > self.clock():
+            # A parallel session of the same agent already hit the limit: just save this task's progress.
+            if task is not None:
+                self._checkpoint(task, label, f"{agent_name} usage limit: {hit.matched}", res)
+            return
         until, known = rest_until(hit.reset_at, a.backoff_level, self.cfg.backoff_minutes, self.clock())
+        if budget:
+            until, known = hit.reset_at, True
+        a.rests_total += 1
+        if not budget:
+            a.limits_today += 1
         if not known:
             a.backoff_level += 1
         a.status = AgentStatus.RESTING
@@ -161,8 +267,12 @@ class Office:
         a.reset_known = known
         a.failures = 0
         a.last_error = hit.matched
-        self.say(agent_name, "all", f"Mình hết quota rồi, nghỉ tới {until.astimezone().strftime('%H:%M')}. "
-                 "Việc đang dở đã lưu checkpoint.", task.id if task else "", kind="rest")
+        if budget:
+            self.say(agent_name, "all", f"Mình dùng hết ngân sách hôm nay ({hit.matched}), mai làm tiếp.",
+                     kind="rest")
+        else:
+            self.say(agent_name, "all", f"Mình hết quota rồi, nghỉ tới {until.astimezone().strftime('%H:%M')}. "
+                     "Việc đang dở đã lưu checkpoint.", task.id if task else "", kind="rest")
         self.store.event("agent_resting", agent=agent_name, until=a.rest_until, reset_known=known,
                          matched=hit.matched)
         self.echo(f"  [{agent_name}] usage limit ({hit.matched!r}); resting until {a.rest_until}")
@@ -174,8 +284,9 @@ class Office:
         if not a.reset_known:
             # Rest length was a guess: spend one tiny prompt to check before real work.
             self.echo(f"  [{agent_name}] probing after rest...")
-            res = self.agents[agent_name].run(prompt("probe"), self.repo,
-                                              self.store.log_path("_probe", agent_name), probe=True)
+            log_path = self.store.log_path("_probe", agent_name)
+            with self._unlocked():
+                res = self.agents[agent_name].run(prompt("probe"), self.repo, log_path, probe=True)
             if res.limit is not None or res.exit_code != 0:
                 self._rest(agent_name, res.limit or LimitHit(agent_name, "probe failed", None), None,
                            "probe", res)
@@ -200,6 +311,7 @@ class Office:
                 f"# Checkpoint for {task.id}\n\n- stage: {cp['stage']}\n- step: {label}\n"
                 f"- reason: {reason}\n- at: {cp['at']}\n\n## Last output\n\n```\n{cp['log_tail']}\n```\n",
                 encoding="utf-8")
+            wt.abort_merge(w)  # never commit conflict markers; the merge is redone on resume
             if wt.commit_all(w, f"wip(office): checkpoint {task.id} {label}"):
                 cp["wip_commit"] = wt.git(w, "rev-parse", "HEAD")
         self.store.event("task_checkpoint", task_id=task.id, **{k: v for k, v in cp.items() if k != "log_tail"})
@@ -240,6 +352,12 @@ class Office:
     def _add_tasks(self, req: Request, items: list[dict]) -> list[str]:
         key_to_id: dict[str, str] = {}
         created = []
+        room = max(0, self.cfg.max_tasks_per_request - len(req.task_ids))
+        if len(items) > room:
+            self.store.event("guardrail", request_id=req.id, rule="max_tasks_per_request",
+                             asked=len(items), kept=room)
+            self.echo(f"{req.id}: keeping {room} of {len(items)} tasks (max_tasks_per_request)")
+            items = items[:room]
         for i, it in enumerate(items, 1):
             tid = self.store.next_task_id()
             key_to_id[str(it.get("key", i))] = tid
@@ -373,7 +491,23 @@ class Office:
 
     def _dev(self, task: Task) -> None:
         path = self._ensure_worktree(task)
-        if task.checkpoint:
+        conflict_files: list[str] = []
+        if task.merge_conflict:
+            try:
+                conflict_files = wt.start_merge(path, self.cfg.base_branch)
+            except wt.GitError as e:
+                self._block(task, f"could not merge {self.cfg.base_branch}: {e}")
+                return
+            if not conflict_files:  # the base moved again and now merges cleanly
+                task.merge_conflict = False
+                self._move(task, Stage.TEST, f"{self.cfg.base_branch} merged cleanly")
+                return
+        if conflict_files:
+            mode = (f"MERGE CONFLICT: `git merge {self.cfg.base_branch}` is in progress in this worktree and "
+                    f"these files conflict: {', '.join(conflict_files[:20])}. Resolve every conflict so that "
+                    f"both this task and the work already on {self.cfg.base_branch} keep working, remove all "
+                    "conflict markers, `git add` the files, run the tests. Do not commit or abort the merge.")
+        elif task.checkpoint:
             mode = ("RESUMING: a previous run was interrupted. Read `.office/CHECKPOINT.md` and "
                     "`git log` to see what is already done, then continue; do not redo finished work.")
         elif task.review_comments:
@@ -390,15 +524,43 @@ class Office:
             self.say("codex", "claude", f"{task.id} bị chặn: {res.text.strip()[8:400]}", task.id, kind="blocked")
             self._block(task, res.text.strip()[:1000])
             return
-        wt.commit_all(path, f"feat({task.id}): {task.title}")
+        if conflict_files:
+            left = wt.conflict_markers(path)
+            if left:
+                wt.abort_merge(path)
+                self._block(task, f"conflict markers left in {', '.join(left[:5])}")
+                return
+            wt.finish_merge(path, f"merge {self.cfg.base_branch} into {task.branch} (conflicts resolved by codex)")
+            task.merge_conflict = False
+            self.store.event("conflict_resolved", task_id=task.id, files=conflict_files[:50])
+        else:
+            wt.commit_all(path, f"feat({task.id}): {task.title}")
         self._clear_checkpoint(task)
-        touched = self._protected_changes(task, path)
-        if touched:
-            self._block(task, f"changed protected paths: {', '.join(touched[:5])}")
+        problem = self._guardrail_problem(task, path)
+        if problem:
+            self.say("claude", "po", f"{task.id} dừng lại để anh xem: {problem}", task.id, kind="question")
+            self._block(task, problem)
             return
         self._move(task, Stage.TEST)
         self.say("codex", "all", f"{task.id} code xong: {_first(res.text)}. Giờ mình chạy test.", task.id,
                  kind="dev_done")
+
+    def _guardrail_problem(self, task: Task, path: Path) -> str:
+        touched = self._protected_changes(task, path)
+        if touched:
+            return f"changed protected paths: {', '.join(touched[:5])}"
+        if self.cfg.block_secrets:
+            for f, line in wt.added_lines(path, task.base_ref):
+                if any(p.search(line) for p in SECRET_PATTERNS):
+                    self.store.event("guardrail", task_id=task.id, rule="secret", file=f)
+                    return f"diff adds something that looks like a secret in {f}; remove it before review"
+        if self.cfg.max_diff_lines:
+            n = wt.changed_line_count(path, task.base_ref)
+            if n > self.cfg.max_diff_lines:
+                self.store.event("guardrail", task_id=task.id, rule="diff_size", lines=n)
+                return (f"diff changes {n} lines (limit {self.cfg.max_diff_lines}); split the task or raise "
+                        "max_diff_lines")
+        return ""
 
     def _protected_changes(self, task: Task, path: Path) -> list[str]:
         if not self.cfg.protected_paths:
@@ -422,7 +584,8 @@ class Office:
             return
         wt.commit_all(path, f"test({task.id}): tests for {task.title}")
         agent_pass = "RESULT: FAIL" not in res.text
-        cmd_pass, cmd_out = self._run_test_cmd(path)
+        with self._unlocked():
+            cmd_pass, cmd_out = self._run_test_cmd(path)
         self._clear_checkpoint(task)
         if agent_pass and cmd_pass:
             task.test_output = ""
@@ -494,10 +657,31 @@ class Office:
     def _pr(self, task: Task) -> None:
         path = self._ensure_worktree(task)
         auto = self.cfg.merge_mode == "auto"
+        before = wt.git(path, "rev-parse", "HEAD")
         if auto and not wt.update_from_base(path, self.cfg.base_branch):
-            task.test_output = f"Merge conflict with the latest {self.cfg.base_branch}. Merge it and resolve."
-            self._block(task, f"merge conflict with {self.cfg.base_branch}")
+            # Another task merged first and touched the same lines: Codex merges and resolves.
+            task.conflicts += 1
+            self.store.event("merge_conflict", task_id=task.id, round=task.conflicts)
+            if task.conflicts > MAX_CONFLICT_ROUNDS:
+                self._block(task, f"merge conflict with {self.cfg.base_branch} still there after "
+                                  f"{MAX_CONFLICT_ROUNDS} attempts")
+                return
+            task.merge_conflict = True
+            self._move(task, Stage.DEV, f"merge conflict with {self.cfg.base_branch} ({task.conflicts}/"
+                                        f"{MAX_CONFLICT_ROUNDS})")
+            self.say("claude", "codex", f"{task.id} xung đột với {self.cfg.base_branch} (task khác vừa merge). "
+                     "Codex merge lại và gỡ xung đột nhé.", task.id, kind="conflict")
             return
+        if auto and self.cfg.test_cmd and wt.git(path, "rev-parse", "HEAD") != before:
+            # Other tasks merged meanwhile: make sure the combination still passes before merging.
+            with self._unlocked():
+                ok, out = self._run_test_cmd(path)
+            if not ok:
+                task.test_output = out[-6000:]
+                self._move(task, Stage.DEV, f"tests fail after merging the latest {self.cfg.base_branch}")
+                self.say("claude", "codex", f"{task.id}: sau khi gộp {self.cfg.base_branch} mới thì test fail, "
+                         "Codex sửa giúp nhé.", task.id, kind="test_fail")
+                return
         try:
             if not self.cfg.open_pr:
                 task.pr_url = f"local:{task.branch}"
@@ -533,7 +717,7 @@ class Office:
     def sync_merged(self) -> list[str]:
         merged = []
         for t in self.store.tasks.values():
-            if t.stage != Stage.PR or not t.pr_url:
+            if t.stage != Stage.PR or not t.pr_url or t.id in self.inflight:
                 continue
             if t.pr_url.startswith("local:"):
                 out = wt.git(self.repo, "branch", "--merged", self.cfg.base_branch, check=False)

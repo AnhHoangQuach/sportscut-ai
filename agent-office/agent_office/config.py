@@ -46,6 +46,22 @@ extra_args = []
 [limits]
 # Rest ladder used when the CLI does not say when the limit resets.
 backoff_minutes = [15, 30, 60]
+
+[parallel]
+# How many sessions of each agent may run at the same time. Each task has its own worktree,
+# so independent tasks are coded in parallel. More sessions = faster, but quota runs out sooner.
+claude = 1
+codex = 2
+
+[guardrails]
+# Agent calls per agent per day (local time); 0 = no cap. When reached the agent rests until midnight.
+max_calls_per_day = { claude = 0, codex = 0 }
+# Most tasks Claude may create for one request (breakdown + each follow-up round).
+max_tasks_per_request = 12
+# A task whose diff changes more lines than this goes to the PO instead of review (0 = no cap).
+max_diff_lines = 4000
+# Stop a task whose diff adds something that looks like a key, token or private key.
+block_secrets = true
 """
 
 
@@ -73,6 +89,11 @@ class Config:
     claude: AgentConfig = field(default_factory=lambda: AgentConfig(cmd="claude"))
     codex: AgentConfig = field(default_factory=lambda: AgentConfig(cmd="codex", timeout_sec=3600))
     backoff_minutes: list[int] = field(default_factory=lambda: [15, 30, 60])
+    parallel: dict[str, int] = field(default_factory=lambda: {"claude": 1, "codex": 2})
+    max_calls_per_day: dict[str, int] = field(default_factory=lambda: {"claude": 0, "codex": 0})
+    max_tasks_per_request: int = 12
+    max_diff_lines: int = 4000
+    block_secrets: bool = True
 
     def worktrees_path(self, repo: Path) -> Path:
         p = Path(self.worktrees_dir.format(repo=repo.name))
@@ -93,6 +114,9 @@ def load_config(office_dir: Path) -> Config:
     path = office_dir / "config.toml"
     raw = tomllib.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     o = raw.get("office", {})
+    par = raw.get("parallel", {})
+    g = raw.get("guardrails", {})
+    caps = g.get("max_calls_per_day", {}) if isinstance(g.get("max_calls_per_day"), dict) else {}
     return Config(
         base_branch=o.get("base_branch", "main"),
         worktrees_dir=o.get("worktrees_dir", "../{repo}-worktrees"),
@@ -107,6 +131,11 @@ def load_config(office_dir: Path) -> Config:
         claude=_agent(raw.get("claude", {}), "claude", 1800),
         codex=_agent(raw.get("codex", {}), "codex", 3600),
         backoff_minutes=list(raw.get("limits", {}).get("backoff_minutes", [15, 30, 60])) or [15, 30, 60],
+        parallel={n: max(1, int(par.get(n, d))) for n, d in (("claude", 1), ("codex", 2))},
+        max_calls_per_day={n: max(0, int(caps.get(n, 0))) for n in ("claude", "codex")},
+        max_tasks_per_request=int(g.get("max_tasks_per_request", 12)),
+        max_diff_lines=int(g.get("max_diff_lines", 4000)),
+        block_secrets=bool(g.get("block_secrets", True)),
     )
 
 

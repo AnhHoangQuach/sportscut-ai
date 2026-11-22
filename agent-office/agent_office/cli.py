@@ -2,17 +2,19 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
 import sys
 import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .agents.base import API_KEY_VARS, subscription_env
 from .config import load_config, write_default_config
-from .models import Stage
+from .models import AgentStatus, Stage
 from .scheduler import next_step
 from .store import Store
 
@@ -66,10 +68,47 @@ def cmd_run(args) -> int:
         print(f"Another `office run` is already working on this repo (pid {office.store.runner_pid()}).")
         return 1
     office.is_runner = True
-    office.store.event("runner_started", pid=os.getpid(), watch=bool(args.watch))
+    for a in office.store.agents.values():  # sessions left over from a runner that was killed
+        a.active = []
+        if a.status == AgentStatus.WORKING:
+            a.status = AgentStatus.IDLE
+    office.store.save()
+    office.store.event("runner_started", pid=os.getpid(), watch=bool(args.watch),
+                       parallel=office.cfg.parallel)
     steps = 0
+    sequential = args.once or args.max_steps or args.sequential
+    if not sequential:
+        print("Parallel mode: " + ", ".join(f"{n} x{k}" for n, k in office.cfg.parallel.items()) + " sessions.",
+              flush=True)
     try:
-        while True:
+        if not sequential:
+            pool = ThreadPoolExecutor(max_workers=sum(office.cfg.parallel.values()) + 2,
+                                      thread_name_prefix="office")
+            running: set = set()
+            try:
+                while True:
+                    running |= set(office.dispatch(pool))
+                    if running:
+                        done, running = wait(running, timeout=2, return_when=FIRST_COMPLETED)
+                        steps += len(done)
+                        continue
+                    plan = next_step(office.store, office.clock(), office.cfg.merge_mode == "auto")
+                    if plan.wait_until and not args.no_wait:
+                        delay = max(5.0, (plan.wait_until - datetime.now(timezone.utc)).total_seconds())
+                        print(f"Nothing to do while agents rest; sleeping {int(delay // 60)} min until "
+                              f"{plan.wait_until.astimezone().strftime('%H:%M')} (Ctrl+C to stop, state is saved).",
+                              flush=True)
+                        _nap(office, min(delay, args.poll_max))
+                        continue
+                    if args.watch:
+                        _nap(office, 5)
+                        continue
+                    for why in plan.waiting_on or []:
+                        print(f"  waiting: {why}")
+                    break
+            finally:
+                pool.shutdown(wait=True, cancel_futures=True)
+        while sequential:
             s = office.step()
             if s is not None:
                 steps += 1
@@ -240,6 +279,14 @@ def cmd_demo(args) -> int:
     return serve(repo, args.host, args.port, open_browser=not args.no_browser, page="office")
 
 
+def cmd_stats(args) -> int:
+    from . import stats
+    store = Store(_repo(args)).load()
+    st = stats.collect(store, load_config(store.dir))
+    print(json.dumps(st, indent=2, ensure_ascii=False) if args.json else stats.render(st))
+    return 0
+
+
 def cmd_sync(args) -> int:
     merged = _office(args).sync_merged()
     print("merged: " + (", ".join(merged) if merged else "none"))
@@ -294,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
     run = sub.add_parser("run", help="work through the backlog")
     run.add_argument("--once", action="store_true", help="do a single step")
     run.add_argument("--max-steps", type=int, default=0)
+    run.add_argument("--sequential", action="store_true", help="one step at a time (no parallel sessions)")
     run.add_argument("--no-wait", action="store_true", help="exit instead of sleeping while agents rest")
     run.add_argument("--watch", action="store_true",
                      help="keep running and wait for new requests instead of exiting when idle")
@@ -324,6 +372,9 @@ def main(argv: list[str] | None = None) -> int:
     dm.add_argument("--port", type=int, default=8765)
     dm.add_argument("--no-browser", action="store_true")
     dm.set_defaults(fn=cmd_demo)
+    st = sub.add_parser("stats", help="agent usage, quota rests, conflicts and guardrail stops")
+    st.add_argument("--json", action="store_true")
+    st.set_defaults(fn=cmd_stats)
     sub.add_parser("sync", help="mark tasks done whose PRs were merged").set_defaults(fn=cmd_sync)
     d = sub.add_parser("doctor", help="check CLIs, logins and config")
     d.add_argument("--live", action="store_true")

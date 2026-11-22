@@ -50,7 +50,7 @@ def main() -> int:
                             "has_api_key": any(k in os.environ for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"))}) + "\n")
 
     if resp.get("write"):
-        (cwd / resp["write"]).write_text("# partial work\n")
+        (cwd / resp["write"]).write_text(resp.get("text", "# partial work\n"))
     if resp.get("limit"):
         sys.stderr.write(resp["limit"] + "\n")
         if agent == "claude":
