@@ -24,6 +24,8 @@ def kind_of(agent: str, prompt: str) -> str:
             return "spec"
         if "Tech Lead reviewer" in prompt:
             return "review"
+        if "has been built, reviewed and merged" in prompt:
+            return "goal"
     else:
         if "**Tester**" in prompt:
             return "test"
@@ -58,8 +60,14 @@ def main() -> int:
         sys.stderr.write("boom\n")
         return 2
 
+    if agent == "claude" and resp.get("questions"):
+        out = json.dumps({"questions": resp["questions"]})
+        print(json.dumps({"type": "result", "is_error": False, "result": out}))
+        return 0
     if agent == "claude":
-        if kind == "breakdown":
+        if kind == "goal":
+            out = json.dumps(resp.get("goal") or {"done": True, "summary": "Highlights CLI works."})
+        elif kind == "breakdown":
             out = resp.get("result") or json.dumps({"tasks": [
                 {"key": "1", "title": "Scaffold CLI", "brief": "Create the sportscut CLI.", "depends_on": []},
                 {"key": "2", "title": "Audio excitement score", "brief": "Score audio.", "depends_on": ["1"]},

@@ -17,7 +17,7 @@ def sh(cwd, *args):
 
 
 class Env:
-    def __init__(self, tmp: Path, monkeypatch):
+    def __init__(self, tmp: Path, monkeypatch, merge_mode: str = "manual"):
         self.tmp = tmp
         self.repo = tmp / "sportscut"
         self.repo.mkdir()
@@ -43,6 +43,7 @@ class Env:
         text = text.replace('cmd = "claude"', f'cmd = "{bindir / "claude"}"')
         text = text.replace('cmd = "codex"', f'cmd = "{bindir / "codex"}"')
         text = text.replace("open_pr = true", "open_pr = false")
+        text = text.replace('merge_mode = "auto"', f'merge_mode = "{merge_mode}"')
         cfg.write_text(text)
         self.now = datetime(2026, 11, 22, 12, 0, tzinfo=timezone.utc)
         self.lines: list[str] = []
@@ -74,3 +75,8 @@ class Env:
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     return Env(tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def auto_env(tmp_path, monkeypatch):
+    return Env(tmp_path, monkeypatch, merge_mode="auto")

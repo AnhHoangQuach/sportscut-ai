@@ -114,3 +114,42 @@ def pr_state(wt_or_repo: Path, url: str) -> str:
     p = subprocess.run(["gh", "pr", "view", url, "--json", "state", "-q", ".state"],
                        cwd=wt_or_repo, capture_output=True, text=True)
     return p.stdout.strip() if p.returncode == 0 else ""
+
+
+def current_branch(repo: Path) -> str:
+    return git(repo, "rev-parse", "--abbrev-ref", "HEAD", check=False)
+
+
+def update_from_base(wt: Path, base: str) -> bool:
+    """Merge the latest local base branch into the task branch. False on conflict (aborted)."""
+    p = subprocess.run(["git", "-c", "user.name=Agent Office", "-c", "user.email=agent-office@localhost",
+                        "merge", "--no-edit", base], cwd=wt, capture_output=True, text=True)
+    if p.returncode != 0:
+        git(wt, "merge", "--abort", check=False)
+        return False
+    return True
+
+
+def merge_local(repo: Path, branch: str, base: str) -> None:
+    """Fast-forward the local base branch to the (already base-merged) task branch."""
+    if current_branch(repo) == base:
+        if git(repo, "status", "--porcelain", "--untracked-files=no"):
+            raise GitError(f"cannot merge: uncommitted changes on {base} in {repo}")
+        git(repo, "merge", "--ff-only", branch)
+    else:
+        git(repo, "fetch", ".", f"{branch}:{base}")
+
+
+def merge_pr(repo: Path, url: str, remote: str, base: str) -> None:
+    """Squash-merge a GitHub PR, then bring the local base branch up to date."""
+    if not shutil.which("gh"):
+        raise GitError("gh CLI not found; cannot merge the PR")
+    p = subprocess.run(["gh", "pr", "merge", url, "--squash", "--delete-branch"],
+                       cwd=repo, capture_output=True, text=True)
+    if p.returncode != 0 and pr_state(repo, url) != "MERGED":
+        raise GitError(f"gh pr merge failed: {p.stderr.strip() or p.stdout.strip()}")
+    git(repo, "fetch", remote, base)
+    if current_branch(repo) == base:
+        git(repo, "merge", "--ff-only", f"{remote}/{base}")
+    else:
+        git(repo, "fetch", remote, f"{base}:{base}")

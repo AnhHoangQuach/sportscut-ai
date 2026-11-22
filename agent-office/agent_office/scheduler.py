@@ -47,18 +47,18 @@ def deps_done(store: Store, task: Task) -> bool:
     return all(store.tasks[d].stage == Stage.DONE for d in task.depends_on if d in store.tasks)
 
 
-def task_runnable(store: Store, task: Task) -> tuple[bool, str]:
+def task_runnable(store: Store, task: Task, auto_merge: bool = False) -> tuple[bool, str]:
     if task.stage in (Stage.DONE, Stage.BLOCKED):
         return False, ""
     if task.stage == Stage.TODO and not deps_done(store, task):
         pending = [d for d in task.depends_on if store.tasks.get(d) and store.tasks[d].stage != Stage.DONE]
         return False, f"{task.id} waits for {', '.join(pending)} to be merged"
-    if task.stage == Stage.PR and task.pr_url:
+    if task.stage == Stage.PR and task.pr_url and not auto_merge:
         return False, f"{task.id} waits for PO to merge {task.pr_url}"
     return True, ""
 
 
-def next_step(store: Store, now: datetime | None = None) -> Plan:
+def next_step(store: Store, now: datetime | None = None, auto_merge: bool = False) -> Plan:
     now = now or datetime.now(timezone.utc)
     reasons: list[str] = []
     resting_wakes: list[datetime] = []
@@ -77,13 +77,20 @@ def next_step(store: Store, now: datetime | None = None) -> Plan:
             if agent_available(store, "claude", now):
                 return Plan(Step("breakdown", req.id, "claude"))
             reasons.append(f"{req.id} waits for claude")
+        elif req.status == "planned" and req.task_ids and all(
+                store.tasks[t].stage == Stage.DONE for t in req.task_ids if t in store.tasks):
+            if agent_available(store, "claude", now):
+                return Plan(Step("goal", req.id, "claude"))
+            reasons.append(f"{req.id} goal check waits for claude")
+        elif req.status == "blocked":
+            reasons.append(f"{req.id} waits for the PO to answer: {req.note}")
 
     tasks = sorted(store.tasks.values(), key=lambda t: t.id)
     for stage in STAGE_PRIORITY:
         for t in tasks:
             if t.stage != stage:
                 continue
-            ok, why = task_runnable(store, t)
+            ok, why = task_runnable(store, t, auto_merge)
             if not ok:
                 if why:
                     reasons.append(why)
@@ -95,4 +102,7 @@ def next_step(store: Store, now: datetime | None = None) -> Plan:
                 return Plan(Step("task", t.id, agent))
             reasons.append(f"{t.id} ({stage.value}) waits for {agent}")
 
+    for t in tasks:
+        if t.stage == Stage.BLOCKED:
+            reasons.append(f"{t.id} waits for the PO to answer: {t.blocked_reason[:200]}")
     return Plan(None, min(resting_wakes) if resting_wakes else None, reasons)

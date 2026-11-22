@@ -40,6 +40,40 @@ class Office:
         self.agents = agents or {"claude": ClaudeAgent(self.cfg.claude), "codex": CodexAgent(self.cfg.codex)}
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.echo = echo or (lambda msg: print(msg, flush=True))
+        self.is_runner = False
+
+    # ------------------------------------------------------------------ inbox
+    def submit(self, cmd: dict) -> list[str]:
+        """Queue a PO command. Applied now if no runner owns the state, else on its next step."""
+        self.store.append_inbox(cmd)
+        if self.is_runner or self.store.runner_pid() is None:
+            if not self.is_runner:
+                self.store.load()  # the runner may have just exited: start from disk
+            return self.drain_inbox()
+        return [f"queued for the running office: {cmd.get('cmd')}"]
+
+    def drain_inbox(self) -> list[str]:
+        results = []
+        for c in self.store.take_inbox():
+            kind = c.get("cmd")
+            try:
+                if kind == "request":
+                    results.append(f"{self.add_request(str(c['text'])).id} added")
+                elif kind == "retry" or (kind == "answer" and str(c.get("id", "")).startswith("R-")):
+                    r = self.retry_request(str(c["id"]), str(c.get("text", "")))
+                    results.append(f"{r.id} back to {r.status}")
+                elif kind == "answer":
+                    t = self.answer(str(c["id"]), str(c.get("text", "")))
+                    results.append(f"{t.id} back to {t.stage.value}")
+                elif kind == "wake":
+                    self.wake(str(c["agent"]))
+                    results.append(f"{c['agent']} marked available")
+                else:
+                    results.append(f"unknown command {kind!r}")
+            except (KeyError, ValueError) as e:
+                results.append(f"{kind} failed: {e}")
+                self.store.event("command_failed", cmd=kind, error=str(e))
+        return results
 
     # ------------------------------------------------------------------ requests
     def add_request(self, text: str) -> Request:
@@ -51,8 +85,9 @@ class Office:
 
     # ------------------------------------------------------------------ main step
     def step(self) -> Step | None:
+        self.drain_inbox()
         self.sync_merged()
-        plan = next_step(self.store, self.clock())
+        plan = next_step(self.store, self.clock(), self.cfg.merge_mode == "auto")
         if plan.step is None:
             return None
         s = plan.step
@@ -60,6 +95,8 @@ class Office:
             self._wake(s.target)
         elif s.kind == "breakdown":
             self._breakdown(self.store.requests[s.target])
+        elif s.kind == "goal":
+            self._goal_check(self.store.requests[s.target])
         else:
             task = self.store.tasks[s.target]
             handler = {
@@ -171,20 +208,20 @@ class Office:
         self.echo(f"{task.id}: {frm.value} -> blocked: {reason}")
 
     # ------------------------------------------------------------------ stages
-    def _breakdown(self, req: Request) -> None:
-        res = self._call("claude", prompt("pm_breakdown", request=req.text, request_id=req.id),
-                         self.repo, req.id, "breakdown")
-        if res is None:
-            return
-        try:
-            items = extract_json(res.text)["tasks"]
-            assert isinstance(items, list) and items
-        except Exception as e:  # noqa: BLE001
-            req.status, req.note = "blocked", f"could not parse task list: {e}"
-            self.store.event("request_blocked", request_id=req.id, note=req.note)
-            self.echo(f"{req.id}: blocked ({req.note}); see {res.log_path}")
-            return
+    def _request_text(self, req: Request) -> str:
+        if not req.po_answers:
+            return req.text
+        return req.text + "\n\n## Product Owner answers to earlier questions\n\n" + "\n\n".join(req.po_answers)
+
+    def _block_request(self, req: Request, note: str, questions: list[str] | None = None) -> None:
+        req.blocked_stage = req.status if req.status in ("new", "planned") else "new"
+        req.status, req.note, req.questions = "blocked", note, questions or []
+        self.store.event("request_blocked", request_id=req.id, note=note, questions=req.questions)
+        self.echo(f"{req.id}: blocked ({note})")
+
+    def _add_tasks(self, req: Request, items: list[dict]) -> list[str]:
         key_to_id: dict[str, str] = {}
+        created = []
         for i, it in enumerate(items, 1):
             tid = self.store.next_task_id()
             key_to_id[str(it.get("key", i))] = tid
@@ -193,9 +230,62 @@ class Office:
                      request_id=req.id, depends_on=deps)
             self.store.tasks[tid] = t
             req.task_ids.append(tid)
+            created.append(tid)
             self.store.event("task_created", task_id=tid, title=t.title, depends_on=deps, request_id=req.id)
             self.echo(f"{tid}: created '{t.title}'" + (f" (after {', '.join(deps)})" if deps else ""))
+        return created
+
+    def _breakdown(self, req: Request) -> None:
+        res = self._call("claude", prompt("pm_breakdown", request=self._request_text(req), request_id=req.id),
+                         self.repo, req.id, "breakdown")
+        if res is None:
+            return
+        try:
+            d = extract_json(res.text)
+            questions = [str(q) for q in d.get("questions", [])]
+            items = d.get("tasks", [])
+            assert questions or (isinstance(items, list) and items)
+        except Exception as e:  # noqa: BLE001
+            self._block_request(req, f"could not parse task list: {e}")
+            return
+        if questions:
+            self._block_request(req, "PM needs answers before planning", questions)
+            return
+        self._add_tasks(req, items)
         req.status = "planned"
+
+    def _goal_check(self, req: Request) -> None:
+        done = [self.store.tasks[t] for t in req.task_ids if t in self.store.tasks]
+        listing = "\n".join(f"- {t.id} {t.title}: {t.brief}" for t in done) or "- (none)"
+        rnd = req.goal_rounds + 1
+        res = self._call("claude", prompt("pm_goal", request=self._request_text(req), request_id=req.id,
+                                          done_tasks=listing, round=rnd, max_rounds=self.cfg.max_goal_rounds),
+                         self.repo, req.id, f"goal{rnd}")
+        if res is None:
+            return
+        try:
+            d = extract_json(res.text)
+        except Exception as e:  # noqa: BLE001
+            self._block_request(req, f"goal check output not parseable: {e}")
+            return
+        questions = [str(q) for q in d.get("questions", [])]
+        if questions:
+            self._block_request(req, "PM needs answers to finish the request", questions)
+            return
+        req.goal_rounds = rnd
+        req.summary = str(d.get("summary", ""))[:4000]
+        items = d.get("tasks") or []
+        if d.get("done") or not items:
+            req.status = "done"
+            self.store.event("request_done", request_id=req.id, summary=req.summary, rounds=rnd)
+            self.echo(f"{req.id}: delivered. {req.summary[:200]}")
+            return
+        if rnd > self.cfg.max_goal_rounds:
+            self._block_request(req, f"still not done after {self.cfg.max_goal_rounds} follow-up rounds: "
+                                     f"{req.summary[:300]}")
+            return
+        created = self._add_tasks(req, items)
+        self.store.event("request_followup", request_id=req.id, round=rnd, tasks=created, summary=req.summary)
 
     def _todo(self, task: Task) -> None:
         self._move(task, Stage.SPEC, "dependencies done")
@@ -203,13 +293,19 @@ class Office:
     def _spec(self, task: Task) -> None:
         req = self.store.requests.get(task.request_id)
         po = f"## Product Owner answer to an earlier question\n\n{task.po_answer}" if task.po_answer else ""
-        res = self._call("claude", prompt("pm_spec", request=req.text if req else "", task_id=task.id,
+        res = self._call("claude", prompt("pm_spec", request=self._request_text(req) if req else "", task_id=task.id,
                                           title=task.title, brief=task.brief, po_answer=po),
                          self.repo, task.id, "spec", task)
         if res is None:
             return
         try:
             d = extract_json(res.text)
+            questions = [str(q) for q in d.get("questions", [])]
+            if questions:
+                task.questions = questions
+                self._clear_checkpoint(task)
+                self._block(task, "PM needs answers: " + " | ".join(questions)[:800])
+                return
             task.spec = str(d["spec"])
             task.acceptance_criteria = [str(x) for x in d.get("acceptance_criteria", [])]
             task.test_plan = [str(x) for x in d.get("test_plan", [])]
@@ -355,20 +451,39 @@ class Office:
 
     def _pr(self, task: Task) -> None:
         path = self._ensure_worktree(task)
-        if not self.cfg.open_pr:
-            task.pr_url = f"local:{task.branch}"
-            self.store.event("pr_ready", task_id=task.id, url=task.pr_url)
-            self.echo(f"{task.id}: branch {task.branch} ready to merge (open_pr = false)")
+        auto = self.cfg.merge_mode == "auto"
+        if auto and not wt.update_from_base(path, self.cfg.base_branch):
+            task.test_output = f"Merge conflict with the latest {self.cfg.base_branch}. Merge it and resolve."
+            self._block(task, f"merge conflict with {self.cfg.base_branch}")
             return
         try:
-            url = wt.push_and_open_pr(path, self.cfg.remote, task.branch, self.cfg.base_branch,
-                                      f"{task.id}: {task.title}", self._pr_body(task))
+            if not self.cfg.open_pr:
+                task.pr_url = f"local:{task.branch}"
+                if auto:
+                    wt.merge_local(self.repo, task.branch, self.cfg.base_branch)
+                else:
+                    self.store.event("pr_ready", task_id=task.id, url=task.pr_url)
+                    self.echo(f"{task.id}: branch {task.branch} ready to merge (open_pr = false)")
+                    return
+            else:
+                if not task.pr_url:
+                    task.pr_url = wt.push_and_open_pr(path, self.cfg.remote, task.branch, self.cfg.base_branch,
+                                                      f"{task.id}: {task.title}", self._pr_body(task))
+                    self.store.event("pr_opened", task_id=task.id, url=task.pr_url)
+                    self.echo(f"{task.id}: PR opened {task.pr_url}")
+                if not auto:
+                    return
+                wt.merge_pr(self.repo, task.pr_url, self.cfg.remote, self.cfg.base_branch)
         except wt.GitError as e:
-            self._block(task, f"could not open PR: {e}")
+            self._block(task, f"could not merge: {e}")
             return
-        task.pr_url = url
-        self.store.event("pr_opened", task_id=task.id, url=url)
-        self.echo(f"{task.id}: PR opened {url}")
+        self.store.event("pr_merged", task_id=task.id, url=task.pr_url, by="auto")
+        self._finish(task, "auto-merged after approval")
+
+    def _finish(self, task: Task, note: str) -> None:
+        self._move(task, Stage.DONE, note)
+        if task.worktree:
+            wt.remove_worktree(self.repo, Path(task.worktree))
 
     # ------------------------------------------------------------------ merges
     def sync_merged(self) -> list[str]:
@@ -382,18 +497,23 @@ class Office:
             else:
                 is_merged = wt.pr_state(self.repo, t.pr_url) == "MERGED"
             if is_merged:
-                self._move(t, Stage.DONE, "merged by PO")
-                if t.worktree:
-                    wt.remove_worktree(self.repo, Path(t.worktree))
+                self._finish(t, "merged by PO")
                 merged.append(t.id)
         if merged:
             self.store.save()
         return merged
 
     # ------------------------------------------------------------------ PO actions
-    def retry_request(self, request_id: str) -> Request:
+    def retry_request(self, request_id: str, text: str = "") -> Request:
         req = self.store.requests[request_id]
-        req.status, req.note = "new", ""
+        if text.strip():
+            qs = "\n".join(f"Q: {q}" for q in req.questions)
+            req.po_answers.append((qs + "\nA: " if qs else "") + text.strip())
+        back = req.blocked_stage if req.status == "blocked" else req.status
+        req.status, req.note, req.questions = (back if back in ("new", "planned") else "new"), "", []
+        if req.status == "planned" and req.goal_rounds > self.cfg.max_goal_rounds:
+            req.goal_rounds = self.cfg.max_goal_rounds  # one more follow-up round after the PO weighs in
+        self.store.event("request_answered", request_id=req.id)
         self.store.save()
         return req
 
@@ -401,7 +521,9 @@ class Office:
         task = self.store.tasks[task_id]
         if task.stage != Stage.BLOCKED:
             raise ValueError(f"{task_id} is {task.stage.value}, not blocked")
-        task.po_answer = (task.po_answer + "\n\n" + text).strip()
+        qs = "\n".join(f"Q: {q}" for q in task.questions)
+        task.po_answer = (task.po_answer + "\n\n" + (qs + "\nA: " if qs else "") + text).strip()
+        task.questions = []
         back = Stage(task.blocked_from) if task.blocked_from in {"spec", "dev", "test", "review", "pr"} else Stage.DEV
         if back in (Stage.TEST, Stage.REVIEW):
             back = Stage.DEV

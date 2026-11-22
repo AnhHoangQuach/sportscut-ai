@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -44,33 +45,60 @@ def cmd_request(args) -> int:
     if not text.strip():
         print("empty request")
         return 1
-    req = _office(args).add_request(text)
-    print(f"{req.id} added. Run `office run` to let the team plan and build it.")
+    for line in _office(args).submit({"cmd": "request", "text": text}):
+        print(line)
+    print("Run `office run` (or press Start in `office dashboard`) to let the team plan and build it.")
     return 0
+
+
+def _nap(office, seconds: float) -> None:
+    """Sleep, but wake early when a PO command lands in the inbox."""
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if office.store.inbox_path.exists():
+            return
+        time.sleep(min(2.0, max(0.0, end - time.monotonic())))
 
 
 def cmd_run(args) -> int:
     office = _office(args)
+    if not office.store.claim_runner():
+        print(f"Another `office run` is already working on this repo (pid {office.store.runner_pid()}).")
+        return 1
+    office.is_runner = True
+    office.store.event("runner_started", pid=os.getpid(), watch=bool(args.watch))
     steps = 0
-    while True:
-        s = office.step()
-        if s is not None:
-            steps += 1
-            if args.once or (args.max_steps and steps >= args.max_steps):
-                break
-            continue
-        plan = next_step(office.store, office.clock())
-        if plan.wait_until and not args.no_wait:
-            delay = max(5.0, (plan.wait_until - datetime.now(timezone.utc)).total_seconds())
-            print(f"Nothing to do while agents rest; sleeping {int(delay // 60)} min until "
-                  f"{plan.wait_until.astimezone().strftime('%H:%M')} (Ctrl+C to stop, state is saved).")
-            time.sleep(min(delay, args.poll_max))
-            continue
-        for why in plan.waiting_on or []:
-            print(f"  waiting: {why}")
-        break
+    try:
+        while True:
+            s = office.step()
+            if s is not None:
+                steps += 1
+                if args.once or (args.max_steps and steps >= args.max_steps):
+                    break
+                continue
+            plan = next_step(office.store, office.clock(), office.cfg.merge_mode == "auto")
+            if plan.wait_until and not args.no_wait:
+                delay = max(5.0, (plan.wait_until - datetime.now(timezone.utc)).total_seconds())
+                print(f"Nothing to do while agents rest; sleeping {int(delay // 60)} min until "
+                      f"{plan.wait_until.astimezone().strftime('%H:%M')} (Ctrl+C to stop, state is saved).",
+                      flush=True)
+                _nap(office, min(delay, args.poll_max))
+                continue
+            if args.watch:
+                _nap(office, 5)
+                continue
+            for why in plan.waiting_on or []:
+                print(f"  waiting: {why}")
+            break
+    finally:
+        office.store.release_runner()
+        office.store.event("runner_stopped", pid=os.getpid(), steps=steps)
     print(f"{steps} step(s) done.")
     _print_status(office.store)
+    if not office.store.requests:
+        print("\nNo requests yet. Give the team something to build first, for example:\n"
+              "  office request -f agent-office/examples/sportscut/po_request.md\n"
+              "then run `office run` again.")
     return 0
 
 
@@ -145,19 +173,27 @@ def cmd_show(args) -> int:
 
 def cmd_answer(args) -> int:
     office = _office(args)
-    if args.id.startswith("R-"):
-        office.retry_request(args.id)
-        print(f"{args.id} will be planned again on the next run")
-        return 0
-    t = office.answer(args.id, " ".join(args.text))
-    print(f"{t.id} back to {t.stage.value}. Run `office run`.")
+    cmd = {"cmd": "answer", "id": args.id, "text": " ".join(args.text)}
+    for line in office.submit(cmd):
+        print(line)
     return 0
 
 
 def cmd_wake(args) -> int:
-    _office(args).wake(args.agent)
-    print(f"{args.agent} marked available")
+    for line in _office(args).submit({"cmd": "wake", "agent": args.agent}):
+        print(line)
     return 0
+
+
+def cmd_dashboard(args) -> int:
+    try:
+        from .dashboard.server import serve
+    except ImportError as e:
+        print(f"Dashboard dependencies missing ({e.name}). Install them with:\n"
+              "  pip install -e './agent-office[dashboard]'")
+        return 1
+    Store(_repo(args)).load()  # fail early with a clear message if not initialised
+    return serve(_repo(args), args.host, args.port, open_browser=not args.no_browser)
 
 
 def cmd_sync(args) -> int:
@@ -169,7 +205,7 @@ def cmd_sync(args) -> int:
 def cmd_doctor(args) -> int:
     repo = _repo(args)
     ok = True
-    leaked = [v for v in API_KEY_VARS if v in __import__("os").environ]
+    leaked = [v for v in API_KEY_VARS if v in os.environ]
     if leaked:
         print(f"note: {', '.join(leaked)} set in your shell; Agent Office strips them so the CLIs use "
               "your subscription login.")
@@ -215,6 +251,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--once", action="store_true", help="do a single step")
     run.add_argument("--max-steps", type=int, default=0)
     run.add_argument("--no-wait", action="store_true", help="exit instead of sleeping while agents rest")
+    run.add_argument("--watch", action="store_true",
+                     help="keep running and wait for new requests instead of exiting when idle")
     run.add_argument("--poll-max", type=float, default=600, help=argparse.SUPPRESS)
     run.set_defaults(fn=cmd_run)
     sub.add_parser("status", help="agents, requests, tasks").set_defaults(fn=cmd_status)
@@ -229,6 +267,11 @@ def main(argv: list[str] | None = None) -> int:
     w = sub.add_parser("wake", help="mark a resting agent available now")
     w.add_argument("agent", choices=["claude", "codex"])
     w.set_defaults(fn=cmd_wake)
+    db = sub.add_parser("dashboard", help="open the 2D dashboard (needs: pip install './agent-office[dashboard]')")
+    db.add_argument("--host", default="127.0.0.1")
+    db.add_argument("--port", type=int, default=8765)
+    db.add_argument("--no-browser", action="store_true")
+    db.set_defaults(fn=cmd_dashboard)
     sub.add_parser("sync", help="mark tasks done whose PRs were merged").set_defaults(fn=cmd_sync)
     d = sub.add_parser("doctor", help="check CLIs, logins and config")
     d.add_argument("--live", action="store_true")
