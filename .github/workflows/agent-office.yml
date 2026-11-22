@@ -1,0 +1,20 @@
+name: agent-office tests
+on:
+  pull_request:
+    paths: ["agent-office/**", ".github/workflows/agent-office.yml"]
+  push:
+    branches: [main]
+    paths: ["agent-office/**"]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent-office
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e '.[dev]'
+      - run: python -m pytest -q

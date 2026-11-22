@@ -8,3 +8,33 @@ còn Hoang là Product Owner.
 | --- | --- |
 | `agent-office/` | Orchestrator `office`: điều phối Claude + Codex, worktree mỗi task, review, PR |
 | `sportscut/`, `tests/` | Sản phẩm cắt highlight (do văn phòng xây qua các PR sau) |
+
+## Chạy văn phòng trên chính repo này
+
+```bash
+git clone https://github.com/AnhHoangQuach/sportscut-ai && cd sportscut-ai
+pip install -e ./agent-office         # lệnh `office`, cần Python 3.11+
+claude        # /login bằng gói Pro/Max (một lần)
+codex login   # đăng nhập bằng ChatGPT (một lần)
+
+office init                           # tạo .agent-office/ (đã gitignore)
+```
+
+Sửa `.agent-office/config.toml` cho repo này:
+
+```toml
+[office]
+base_branch = "main"
+test_cmd = "python -m pytest -q tests"
+protected_paths = ["agent-office/"]   # agent không được sửa chính orchestrator
+```
+
+Rồi:
+
+```bash
+office doctor --live
+office request -f agent-office/examples/sportscut/po_request.md
+office run
+```
+
+Chi tiết: [agent-office/README.md](agent-office/README.md).

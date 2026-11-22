@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-office"
+version = "0.1.0"
+description = "Multi-agent dev office: Claude Code (PM, tech lead, reviewer) + Codex (developer, tester), subscription logins only"
+requires-python = ">=3.11"
+dependencies = ["tzdata; sys_platform == 'win32'"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+office = "agent_office.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["agent_office*"]
+
+[tool.setuptools.package-data]
+agent_office = ["prompts/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
