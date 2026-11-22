@@ -27,6 +27,11 @@ def prompt(name: str, **vars: object) -> str:
     return Template(text).safe_substitute({k: str(v) for k, v in vars.items()})
 
 
+def _first(text: str, n: int = 240) -> str:
+    line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+    return line[:n] or "xong"
+
+
 def bullets(items: list[str]) -> str:
     return "\n".join(f"- {i}" for i in items) or "- (none)"
 
@@ -37,6 +42,10 @@ class Office:
         self.store = Store(repo).load()
         self.repo = self.store.repo
         self.cfg: Config = load_config(self.store.dir)
+        if agents is None and self.cfg.simulate:
+            from .agents.sim import SimAgent
+            sim_state = self.store.dir / "sim_state.json"
+            agents = {n: SimAgent(n, self.cfg.sim_delay, sim_state) for n in ("claude", "codex")}
         self.agents = agents or {"claude": ClaudeAgent(self.cfg.claude), "codex": CodexAgent(self.cfg.codex)}
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.echo = echo or (lambda msg: print(msg, flush=True))
@@ -81,6 +90,8 @@ class Office:
         self.store.requests[req.id] = req
         self.store.save()
         self.store.event("request_added", request_id=req.id, text=req.text[:500])
+        first = next((ln.strip("# ").strip() for ln in req.text.splitlines() if ln.strip()), req.text)
+        self.say("po", "claude", f"Yêu cầu mới {req.id}: {first[:300]}", kind="request")
         return req
 
     # ------------------------------------------------------------------ main step
@@ -150,6 +161,8 @@ class Office:
         a.reset_known = known
         a.failures = 0
         a.last_error = hit.matched
+        self.say(agent_name, "all", f"Mình hết quota rồi, nghỉ tới {until.astimezone().strftime('%H:%M')}. "
+                 "Việc đang dở đã lưu checkpoint.", task.id if task else "", kind="rest")
         self.store.event("agent_resting", agent=agent_name, until=a.rest_until, reset_known=known,
                          matched=hit.matched)
         self.echo(f"  [{agent_name}] usage limit ({hit.matched!r}); resting until {a.rest_until}")
@@ -172,6 +185,7 @@ class Office:
         a.reset_known = False
         a.backoff_level = 0
         self.store.event("agent_awake", agent=agent_name)
+        self.say(agent_name, "all", "Có quota lại rồi, làm tiếp nhé.", kind="awake")
         self.echo(f"  [{agent_name}] back to work")
 
     # ------------------------------------------------------------------ checkpoint
@@ -194,6 +208,10 @@ class Office:
         task.checkpoint = None
         if task.worktree:
             (Path(task.worktree) / wt.NOTES_DIR / "CHECKPOINT.md").unlink(missing_ok=True)
+
+    def say(self, frm: str, to: str, text: str, task_id: str = "", kind: str = "") -> None:
+        """A line in the office conversation (shown as chat + speech bubbles in the dashboard)."""
+        self.store.event("message", frm=frm, to=to, text=text[:1200], task_id=task_id, topic=kind)
 
     def _move(self, task: Task, to: Stage, note: str = "") -> None:
         frm = task.stage
@@ -249,10 +267,14 @@ class Office:
             self._block_request(req, f"could not parse task list: {e}")
             return
         if questions:
+            self.say("claude", "po", "Trước khi chia việc em cần anh trả lời: " + " | ".join(questions),
+                     kind="question")
             self._block_request(req, "PM needs answers before planning", questions)
             return
-        self._add_tasks(req, items)
+        created = self._add_tasks(req, items)
         req.status = "planned"
+        self.say("claude", "po", f"Em tách {req.id} thành {len(created)} task: "
+                 + "; ".join(f"{t} {self.store.tasks[t].title}" for t in created), kind="plan")
 
     def _goal_check(self, req: Request) -> None:
         done = [self.store.tasks[t] for t in req.task_ids if t in self.store.tasks]
@@ -270,6 +292,7 @@ class Office:
             return
         questions = [str(q) for q in d.get("questions", [])]
         if questions:
+            self.say("claude", "po", "Để hoàn tất em cần anh trả lời: " + " | ".join(questions), kind="question")
             self._block_request(req, "PM needs answers to finish the request", questions)
             return
         req.goal_rounds = rnd
@@ -278,6 +301,7 @@ class Office:
         if d.get("done") or not items:
             req.status = "done"
             self.store.event("request_done", request_id=req.id, summary=req.summary, rounds=rnd)
+            self.say("claude", "po", f"{req.id} đã xong. {req.summary[:600]}", kind="done")
             self.echo(f"{req.id}: delivered. {req.summary[:200]}")
             return
         if rnd > self.cfg.max_goal_rounds:
@@ -286,6 +310,8 @@ class Office:
             return
         created = self._add_tasks(req, items)
         self.store.event("request_followup", request_id=req.id, round=rnd, tasks=created, summary=req.summary)
+        self.say("claude", "po", f"Kiểm tra {req.id}: còn thiếu ({req.summary[:300]}). Em thêm "
+                 + ", ".join(created) + ".", kind="plan")
 
     def _todo(self, task: Task) -> None:
         self._move(task, Stage.SPEC, "dependencies done")
@@ -304,6 +330,8 @@ class Office:
             if questions:
                 task.questions = questions
                 self._clear_checkpoint(task)
+                self.say("claude", "po", f"{task.id}: em cần anh trả lời: " + " | ".join(questions),
+                         task.id, kind="question")
                 self._block(task, "PM needs answers: " + " | ".join(questions)[:800])
                 return
             task.spec = str(d["spec"])
@@ -315,6 +343,9 @@ class Office:
             return
         self._clear_checkpoint(task)
         self._move(task, Stage.DEV, f"{len(task.acceptance_criteria)} acceptance criteria")
+        acs = "; ".join(task.acceptance_criteria[:4])
+        self.say("claude", "codex", f"Giao {task.id} '{task.title}'. Spec ở .office/TASK.md. "
+                 f"Cần đạt: {acs}", task.id, kind="assign")
 
     def _ensure_worktree(self, task: Task) -> Path:
         path, branch, base = wt.ensure_worktree(self.repo, self.cfg.worktrees_path(self.repo), task.id,
@@ -356,6 +387,7 @@ class Office:
             return
         if res.text.lstrip().startswith("BLOCKED:"):
             wt.commit_all(path, f"wip(office): {task.id} blocked")
+            self.say("codex", "claude", f"{task.id} bị chặn: {res.text.strip()[8:400]}", task.id, kind="blocked")
             self._block(task, res.text.strip()[:1000])
             return
         wt.commit_all(path, f"feat({task.id}): {task.title}")
@@ -365,6 +397,8 @@ class Office:
             self._block(task, f"changed protected paths: {', '.join(touched[:5])}")
             return
         self._move(task, Stage.TEST)
+        self.say("codex", "all", f"{task.id} code xong: {_first(res.text)}. Giờ mình chạy test.", task.id,
+                 kind="dev_done")
 
     def _protected_changes(self, task: Task, path: Path) -> list[str]:
         if not self.cfg.protected_paths:
@@ -397,6 +431,7 @@ class Office:
             (wt.notes_dir(path) / "TEST_SUMMARY.md").write_text(f"{agent_summary}\n\n{cmd_out[-2000:]}",
                                                                 encoding="utf-8")
             self._move(task, Stage.REVIEW, "tests pass")
+            self.say("codex", "claude", f"{task.id} test pass, nhờ Claude review.", task.id, kind="handoff")
             return
         task.test_attempts += 1
         task.test_output = (cmd_out if not cmd_pass else res.text)[-6000:]
@@ -404,6 +439,8 @@ class Office:
             self._block(task, f"tests still failing after {task.test_attempts} attempts")
         else:
             self._move(task, Stage.DEV, f"tests failed (attempt {task.test_attempts}/{MAX_TEST_ATTEMPTS})")
+            self.say("codex", "all", f"{task.id} test fail ({task.test_attempts}/{MAX_TEST_ATTEMPTS}), "
+                     "mình sửa lại.", task.id, kind="test_fail")
 
     def _review(self, task: Task) -> None:
         path = self._ensure_worktree(task)
@@ -432,12 +469,17 @@ class Office:
             task.review_comments = [c for c in comments if c.get("severity") == "nit"]
             task.history.append({"at": now_iso(), "review_summary": str(d.get("summary", ""))[:2000]})
             self._move(task, Stage.PR, f"approved in round {rnd}")
+            self.say("claude", "codex", f"Approve {task.id}. {str(d.get('summary', ''))[:400]}", task.id,
+                     kind="approve")
             return
         task.review_comments = comments
         if rnd >= MAX_REVIEW_ROUNDS:
             self._block(task, f"review not approved after {rnd} rounds: {str(d.get('summary', ''))[:500]}")
         else:
             self._move(task, Stage.DEV, f"changes requested in round {rnd} ({len(comments)} comments)")
+            asks = "; ".join(f"{c.get('file', '')}: {c.get('text', '')}" for c in comments[:4])
+            self.say("claude", "codex", f"{task.id} cần sửa (vòng {rnd}/{MAX_REVIEW_ROUNDS}): {asks}", task.id,
+                     kind="changes")
 
     def _pr_body(self, task: Task) -> str:
         review = next((h["review_summary"] for h in reversed(task.history) if "review_summary" in h), "")
@@ -479,6 +521,8 @@ class Office:
             return
         self.store.event("pr_merged", task_id=task.id, url=task.pr_url, by="auto")
         self._finish(task, "auto-merged after approval")
+        self.say("claude", "po", f"Đã merge {task.id} '{task.title}' vào {self.cfg.base_branch}.", task.id,
+                 kind="merged")
 
     def _finish(self, task: Task, note: str) -> None:
         self._move(task, Stage.DONE, note)
@@ -514,6 +558,8 @@ class Office:
         if req.status == "planned" and req.goal_rounds > self.cfg.max_goal_rounds:
             req.goal_rounds = self.cfg.max_goal_rounds  # one more follow-up round after the PO weighs in
         self.store.event("request_answered", request_id=req.id)
+        if text.strip():
+            self.say("po", "claude", f"Trả lời {req.id}: {text.strip()[:400]}", kind="answer")
         self.store.save()
         return req
 
@@ -531,6 +577,7 @@ class Office:
         task.test_attempts = 0
         task.blocked_reason = ""
         self._move(task, back, "PO answered")
+        self.say("po", "claude", f"Trả lời {task.id}: {text.strip()[:400]}", task.id, kind="answer")
         self.store.save()
         return task
 

@@ -86,6 +86,7 @@ button { font: inherit; }
   padding: 6px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap;
 }
 .btn:hover { background: var(--panel-2); }
+a.btn { text-decoration: none; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.primary:hover { filter: brightness(1.08); }
 .btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; }

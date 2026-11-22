@@ -9,9 +9,6 @@ import asyncio
 import json
 import os
 import re
-import signal
-import subprocess
-import sys
 import threading
 import webbrowser
 from datetime import datetime, timezone
@@ -23,6 +20,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .. import runner_proc
 from ..config import load_config
 from ..scheduler import next_step
 from ..store import Store
@@ -98,6 +96,10 @@ def create_app(repo: Path) -> FastAPI:
     def index():
         return FileResponse(STATIC / "index.html")
 
+    @app.get("/office")
+    def office_3d():
+        return FileResponse(STATIC / "office.html")
+
     @app.get("/api/state")
     def get_state():
         return snapshot(repo)
@@ -159,27 +161,12 @@ def create_app(repo: Path) -> FastAPI:
     # ---------- runner control ----------
     @app.post("/api/runner/start")
     def start_runner():
-        s = Store(repo)
-        if s.runner_pid():
-            return {"running": True, "pid": s.runner_pid()}
-        s.logs_dir.mkdir(parents=True, exist_ok=True)
-        log = (s.logs_dir / "runner.log").open("a", encoding="utf-8")
-        kw: dict[str, Any] = {"start_new_session": True} if os.name != "nt" else {
-            "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}  # type: ignore[attr-defined]
-        proc = subprocess.Popen(
-            [sys.executable, "-m", "agent_office", "--repo", str(repo), "run", "--watch"],
-            cwd=repo, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-            env={**os.environ, "PYTHONUNBUFFERED": "1"}, **kw)
-        return {"running": True, "pid": proc.pid}
+        return {"running": True, "pid": runner_proc.start(repo)}
 
     @app.post("/api/runner/stop")
     def stop_runner():
-        pid = Store(repo).runner_pid()
-        if not pid:
-            return {"running": False}
-        sig = signal.SIGINT if os.name != "nt" else signal.CTRL_BREAK_EVENT  # type: ignore[attr-defined]
-        os.kill(pid, sig)
-        return {"running": True, "stopping": pid}
+        pid = runner_proc.stop(repo)
+        return {"running": bool(pid), "stopping": pid}
 
     @app.get("/api/runner/log", response_class=PlainTextResponse)
     def runner_log():
@@ -220,9 +207,10 @@ def _signature(s: Store) -> tuple:
     return m, s.runner_pid(), s.inbox_path.exists()
 
 
-def serve(repo: Path, host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) -> int:
+def serve(repo: Path, host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True,
+          page: str = "") -> int:
     import uvicorn
-    url = f"http://{host}:{port}/"
+    url = f"http://{host}:{port}/{page}"
     print(f"Agent Office dashboard: {url}  (Ctrl+C to stop)")
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
