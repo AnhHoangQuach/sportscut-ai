@@ -46,10 +46,11 @@ form.addEventListener("submit", async (event) => {
     const data = await response.json()
     if (!response.ok) {
       let message = "Không thể xử lý video."
-      if (typeof data.detail === "string") {
-        message = data.detail
-      } else if (Array.isArray(data.detail)) {
-        const messages = data.detail.map((item) => item.msg).filter(Boolean)
+      const detail = data?.detail
+      if (typeof detail === "string") {
+        message = detail
+      } else if (Array.isArray(detail)) {
+        const messages = detail.map((item) => item.msg).filter(Boolean)
         if (messages.length) message = messages.join("; ")
       }
       showError(`Lỗi ${response.status}: ${message}`)

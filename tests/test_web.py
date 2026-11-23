@@ -77,7 +77,7 @@ def test_frontend_submission_contract():
     assert 'form.setAttribute("aria-busy", "true")' in javascript
     assert "busy.hidden = false" in javascript
     assert "response.ok" in javascript
-    assert "data.detail" in javascript
+    assert "data?.detail" in javascript
     assert 'item.msg' in javascript
     assert 'Lỗi ${response.status}: ${message}' in javascript
     assert "window.location.assign(`/jobs/${encodeURIComponent(data.job_id)}`)" in javascript
@@ -86,6 +86,16 @@ def test_frontend_submission_contract():
     assert 'form.removeAttribute("aria-busy")' in javascript
     assert "busy.hidden = true" in javascript
     assert "Không thể kết nối hoặc phản hồi từ máy chủ không hợp lệ." in javascript
+
+
+def test_frontend_non_ok_null_payload_uses_status_fallback():
+    javascript = client.get("/static/app.js").text
+
+    assert "const detail = data?.detail" in javascript
+    assert 'typeof detail === "string"' in javascript
+    assert "Array.isArray(detail)" in javascript
+    assert "Không thể xử lý video." in javascript
+    assert 'showError(`Lỗi ${response.status}: ${message}`)' in javascript
 
 
 def test_wheel_install_contains_web_resources(tmp_path):
