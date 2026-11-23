@@ -264,6 +264,28 @@ def test_put_segments_rejects_non_finite_without_export(monkeypatch, data_dir):
     assert calls == []
 
 
+@pytest.mark.parametrize("body", [
+    '{"segments":{"a":NaN}}',
+    '{"segments":[[Infinity]]}',
+    '{"segments":[],"extra":[-Infinity]}',
+])
+def test_put_segments_rejects_nested_non_finite_without_export(
+    monkeypatch, data_dir, body
+):
+    job_id, _, _ = _persist_test_job(data_dir)
+    calls = []
+    monkeypatch.setattr(export, "export_clips", lambda *_a, **_k: calls.append(1))
+
+    response = client.put(
+        f"/highlights/{job_id}/segments",
+        content=body,
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 422
+    assert calls == []
+
+
 @pytest.mark.parametrize("requested", ["not-a-uuid", str(uuid.uuid4())])
 def test_put_segments_rejects_invalid_or_unknown_job(monkeypatch, requested):
     calls = []

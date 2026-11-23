@@ -10,6 +10,7 @@ from typing import Annotated
 import uuid
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -34,15 +35,21 @@ app = FastAPI(title="SportsCut")
 app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
 
 
+def _replace_non_finite(value: object) -> object:
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, list):
+        return [_replace_non_finite(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _replace_non_finite(item) for key, item in value.items()}
+    return value
+
+
 @app.exception_handler(RequestValidationError)
 def validation_error_response(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    errors = exc.errors()
-    for error in errors:
-        value = error.get("input")
-        if isinstance(value, float) and not math.isfinite(value):
-            error["input"] = None
+    errors = _replace_non_finite(jsonable_encoder(exc.errors()))
     return JSONResponse(status_code=422, content={"detail": errors})
 
 FiniteFloat = Annotated[float, Field(strict=True, allow_inf_nan=False)]
