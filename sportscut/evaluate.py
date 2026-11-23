@@ -36,7 +36,7 @@ def match_segments(segments: Sequence[Segment], labels: Sequence[Label]) -> list
     for i, segment in enumerate(segments):
         for j, label in enumerate(labels):
             iou = temporal_iou(segment.start, segment.end, label.start, label.end)
-            contained = segment.start <= label.start and label.end <= segment.end
+            contained = False  # temporary tester mutation
             if iou >= MIN_IOU - 1e-9 or contained:
                 candidates.append((-iou, j, i))
     used_segments, used_labels, pairs = set(), set(), []
