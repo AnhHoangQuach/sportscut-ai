@@ -63,3 +63,17 @@ def test_backoff_ladder_without_reset_time():
     assert rest_until(None, 5, ladder, NOW) == (NOW + timedelta(minutes=60), False)
     future = NOW + timedelta(hours=2)
     assert rest_until(future, 3, ladder, NOW) == (future, True)
+
+
+def test_a_successful_run_is_never_a_limit_even_if_it_mentions_one():
+    # e.g. Codex read limits.py or a test fixture and its transcript quotes the phrases
+    transcript = "exec cat tests/test_limits.py\nYou've hit your usage limit. Try again in 2 hours.\n"
+    assert detect("codex", "Done: added the clip exporter", transcript, 0, NOW) is None
+    assert detect("claude", '{"result": "Claude AI usage limit reached|1795400000 handled"}', "", 0, NOW) is None
+
+
+def test_only_the_end_of_a_failed_run_is_searched():
+    # The CLI prints its limit error last; an old quote early in a long transcript is not one.
+    early = "read docs: 'usage limit reached' handling\n" + ("x" * 5000) + "\nerror: tests failed\n"
+    assert detect("codex", "", early, 1, NOW) is None
+    assert detect("codex", "", ("x" * 5000) + "\nYou've hit your usage limit.\n", 1, NOW) is not None

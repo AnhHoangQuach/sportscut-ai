@@ -133,7 +133,7 @@ function renderAgents() {
         <div class="agent-role">${ROLES[a.name] || ""}</div>
         <div class="agent-status"><span class="status-dot"></span>${status}</div>
         ${usage(a)}
-        ${a.last_error && a.status === "resting" ? `<div class="hint">${esc(a.last_error).slice(0, 120)}</div>` : ""}
+        ${(a.rest_detail || a.last_error) && a.status === "resting" ? `<div class="hint">${esc(a.rest_detail || a.last_error).slice(0, 120)}</div>` : ""}
       </div>${wake}</div>`;
   }).join("");
   tickCountdowns();

@@ -34,6 +34,17 @@ def _parse(ts: str) -> datetime | None:
     return datetime.fromisoformat(ts) if ts else None
 
 
+def rest_reason(a) -> str:
+    detail = a.rest_detail or a.last_error
+    if a.rest_cause == "budget":
+        text = f"daily call budget used: {detail}"
+    elif a.rest_cause == "failure":
+        text = f"CLI failed repeatedly, not quota: {detail}"
+    else:
+        text = f"quota: {detail}" + ("" if a.reset_known else "; reset time unknown, probing after the rest")
+    return text + (f"; log {a.rest_log}" if a.rest_log else "")
+
+
 def agent_available(store: Store, name: str | None, now: datetime) -> bool:
     if name is None:
         return True
@@ -110,7 +121,8 @@ def task_runnable(store: Store, task: Task, auto_merge: bool = False,
         return False, ""
     until = _parse(task.retry_at)
     if until is not None and now is not None and now < until:
-        return False, f"{task.id} waits until {task.retry_at} (Tech Lead decision)"
+        why = f"GitHub network retry {task.net_retries}/4" if task.net_retries else "Tech Lead decision"
+        return False, f"{task.id} waits until {task.retry_at} ({why})"
     if task.stage == Stage.TODO and not deps_done(store, task):
         pending = [d for d in task.depends_on if store.tasks.get(d) and store.tasks[d].stage != Stage.DONE]
         return False, f"{task.id} waits for {', '.join(pending)} to be merged"
@@ -164,7 +176,7 @@ def plan_steps(store: Store, now: datetime | None = None, auto_merge: bool = Fal
                 steps.append(Step("wake", a.name, a.name))
             continue
         resting_wakes.append(until)
-        reasons.append(f"{a.name} resting until {a.rest_until}")
+        reasons.append(f"{a.name} resting until {a.rest_until} ({rest_reason(a)})")
 
     for req in store.requests.values():
         if full():
@@ -216,7 +228,11 @@ def plan_steps(store: Store, now: datetime | None = None, auto_merge: bool = Fal
 
     for t in tasks:
         if t.stage == Stage.BLOCKED:
-            reasons.append(f"{t.id} waits for the PO to answer a business question: {t.blocked_reason[:200]}")
+            if t.blocked_reason.startswith("environment problem for the user"):
+                reasons.append(f"{t.id} waits for you to fix GitHub on this machine (`office doctor`): "
+                               f"{t.blocked_reason[:200]}")
+            else:
+                reasons.append(f"{t.id} waits for the PO to answer a business question: {t.blocked_reason[:200]}")
     return Plan(steps[0] if steps else None, min(resting_wakes) if resting_wakes else None, reasons, steps)
 
 

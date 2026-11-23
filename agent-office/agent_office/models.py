@@ -147,6 +147,8 @@ class Agent:
     failures: int = 0  # consecutive non-limit failures
     last_error: str = ""
     rest_cause: str = ""  # quota | budget | failure; only quota/budget permit role failover
+    rest_detail: str = ""  # the CLI's own error line that caused the rest
+    rest_log: str = ""     # log file of the call that caused the rest
     active: list[str] = field(default_factory=list)  # task/request ids this agent works on right now
     calls_day: str = ""     # local date (YYYY-MM-DD) that calls_today counts
     calls_today: int = 0
