@@ -46,3 +46,7 @@ Add `sportscut/pipeline.py` with `run(video, out_dir, top, min_len, max_len) -> 
 ## Existing specs this task changes
 
 - `docs/superpowers/specs/2026-11-23-t-036-add-ffmpeg-media-helpers-and-synthetic-design.md`
+
+## Updated by T-039
+
+AC3 and AC7 (PipelineError and CLI messages for missing, non-video and silent inputs) hold when ffmpeg and ffprobe are on PATH. Without them, AC4 applies first: `run` calls `require_ffmpeg()` before any input check and raises MediaError. The tests for AC3 and AC7 therefore request the conftest `require_ffmpeg` fixture and skip with `ffmpeg and ffprobe are required on PATH`, while the AC4 tests keep running.

@@ -24,10 +24,15 @@ is the same discipline):
 Split the request into the smallest sensible set of tasks. Each task must:
 - be finishable in ONE small pull request (roughly < 400 changed lines),
 - be independently testable,
-- list the keys of earlier tasks it depends on (keys are "1", "2", ... in your list order).
-- not block other tasks: if two tasks would change the same file (a shared registry, the CLI
-  entry point, `pyproject.toml`), make the later one depend on the earlier one so they run
-  one after the other instead of conflicting.
+- list the keys of earlier tasks it depends on (keys are "1", "2", ... in your list order),
+  only when it needs code from that task (it imports, calls or extends what that task adds).
+  A task with a dependency waits until the other one is merged, so every extra dependency
+  leaves a Developer idle.
+- not block other tasks: several Developers work in parallel, one worktree per task. Two
+  tasks that only touch the same file (a shared registry, the CLI entry point,
+  `pyproject.toml`) do NOT need a dependency: the office never lets them code at the same
+  time and the Developer resolves any merge conflict. Prefer independent tasks so the
+  Developers can work in parallel.
 
 Prefer 2-8 tasks. Put foundations (project setup, shared modules) first.
 

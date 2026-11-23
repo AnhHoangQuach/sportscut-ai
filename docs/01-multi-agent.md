@@ -220,10 +220,12 @@ vẫn chờ PO; yêu cầu bị chặn vì hết `max_goal_rounds` được đó
 `req.decisions`), được ghi vào `docs/superpowers/DECISIONS.md` ở lần commit kế tiếp (ghi thêm dòng còn
 thiếu, không ghi đè).
 
-**Không để task song song chặn nhau.** PM liệt kê `files` trong spec; prompt chia việc bảo task sửa
-cùng file phải phụ thuộc nhau. Scheduler (`file_conflict`) giữ một task chưa bắt đầu code ở `dev` nếu
-một task đang hoạt động khác sửa cùng file (task đang code, hoặc id nhỏ hơn, đi trước), nên hai phiên
-Codex không tạo ra xung đột merge. `INDEX.md`/`DECISIONS.md` (merge=union) không tính.
+**Không để task song song chặn nhau.** PM liệt kê `files` trong spec; prompt chia việc chỉ cho
+`depends_on` khi task cần code của task trước (không đặt chỉ vì sửa chung file, để nhiều Developer
+làm song song). Scheduler (`file_conflict`) giữ một task chưa bắt đầu code ở `dev` nếu một task khác
+**đang code** (stage `dev`) sửa cùng file (task đang code, hoặc id nhỏ hơn, đi trước), nên hai phiên
+Codex không code cùng file một lúc; task kia sang test/review/PR thì task này được bắt đầu, xung đột
+merge nếu có thì Developer gỡ (2.3). `INDEX.md`/`DECISIONS.md` (merge=union) không tính.
 
 ## 1.9 Trạng thái bền vững và lệnh từ bên ngoài
 
