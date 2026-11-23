@@ -31,23 +31,33 @@ flowchart TD
   H --> J[Task tiếp tục từ checkpoint:<br/>'RESUMING, đọc CHECKPOINT.md và git log']
 ```
 
-- Hai agent nghỉ **độc lập**. Nếu chỉ một agent hết quota/ngân sách ngày, agent còn lại tiếp quản
-  vai của agent đó: Codex làm PM/review bằng sandbox chỉ đọc; Claude làm dev/test bằng quyền ghi
-  trong worktree. Nếu cả hai cùng nghỉ thì office chờ mốc thức sớm nhất.
+- Quota là của **gói thuê bao (CLI)**, không phải của vai. Bốn vai là bốn agent riêng, nhưng `pm` và
+  `lead` cùng dùng Claude, `dev` và `tester` cùng dùng Codex: một vai chạm giới hạn thì **mọi vai trên
+  CLI đó nghỉ cùng giờ** (sự kiện `agent_resting` có `provider` và `roles`), một probe đánh thức tất cả.
+  Hai CLI nghỉ **độc lập**. Nếu chỉ một CLI hết quota/ngân sách ngày, vai trên CLI kia tiếp quản theo
+  cặp `pm` ↔ `dev`, `lead` ↔ `tester`: Codex làm PM/review bằng sandbox chỉ đọc; Claude làm dev/test
+  bằng quyền ghi trong worktree. Nếu cả hai cùng nghỉ thì office chờ mốc thức sớm nhất.
 - Khi cả hai còn quota, phân vai cũ không đổi. Agent đang bận/hết session hoặc lỗi CLI lặp lại
   không kích hoạt tiếp quản. Mỗi lần đổi vai ghi event `agent_failover` và được đếm trong stats.
 - Khi không còn gì để làm, `office run` ngủ tới lúc agent sớm nhất thức dậy, và tỉnh sớm nếu có
   lệnh mới trong inbox.
-- Hai lần thất bại không rõ lý do liên tiếp cũng được coi như hết quota (nghỉ theo thang).
-- Giao diện hiện "Zzz" và giờ thức dậy; PO có thể bấm "Làm lại ngay" (`office wake codex`).
+- Hai lần thất bại không rõ lý do liên tiếp của cùng một CLI (dù từ hai vai khác nhau) thì CLI nghỉ
+  với lý do `failure` (thang 15 → 30 → 60 phút), không gọi là hết quota.
+- `max_calls_per_day` tính theo CLI: cộng lượt của mọi vai trên CLI đó.
+- Giao diện hiện "Zzz" và giờ thức dậy trên bàn của từng vai; PO có thể bấm "Làm lại ngay"
+  (`office wake codex` hoặc `office wake tester`: cả hai đánh thức mọi vai trên Codex).
 
 ## 2.2 Chạy song song
 
 ```toml
-[parallel]
-claude = 1
-codex = 2
+[parallel]   # số phiên cùng lúc của từng vai
+pm = 1
+lead = 1
+dev = 2
+tester = 1
 ```
+
+Config cũ `claude = 1` / `codex = 2` vẫn đọc được: số đó áp cho từng vai trên CLI tương ứng.
 
 **Mô hình:** một tiến trình runner, một `ThreadPoolExecutor`, một khóa (`RLock`) bọc toàn bộ thay
 đổi trạng thái.
@@ -113,9 +123,14 @@ commit marker xung đột.
 `office stats` (hoặc `--json`, `GET /api/stats`):
 
 ```text
-Agents:
-  claude idle     sessions 0/1 | calls today 14/∞, total 14 | limits today 0, rests total 0
-  codex  idle     sessions 0/2 | calls today 15/∞, total 15 | limits today 1, rests total 1
+Subscriptions (quota shared by their roles):
+  claude idle     roles pm, lead | calls today 14/∞, total 14 | limits today 0, rests total 0
+  codex  idle     roles dev, tester | calls today 15/∞, total 15 | limits today 1, rests total 1
+Agents (one per role):
+  pm     @claude idle     sessions 0/1 | calls today 7, total 7
+  lead   @claude idle     sessions 0/1 | calls today 7, total 7
+  dev    @codex  idle     sessions 0/2 | calls today 8, total 8
+  tester @codex  idle     sessions 0/1 | calls today 7, total 7
 Tasks: done 5
 Merged 5 | avg review rounds 1.4 | conflicts 1 (resolved 1) | guardrail stops 0 | agent failures 0
 Quality (f1): 0.612 → 0.684 → 0.741

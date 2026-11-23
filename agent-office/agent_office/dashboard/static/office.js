@@ -1,4 +1,5 @@
-// Agent Office, phase 3: a 3D office where you can watch Claude and Codex hand work to each other.
+// Agent Office: a 3D office where you can watch the PM, Tech Lead, Developer and Tester (four separate
+// agents on two subscription CLIs) hand work to each other.
 // Same data as the Kanban dashboard: /ws streams state + events, PO actions POST to the inbox.
 import * as THREE from "three";
 import { OrbitControls } from "/static/vendor/OrbitControls.js";
@@ -6,8 +7,13 @@ import { OrbitControls } from "/static/vendor/OrbitControls.js";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const hhmm = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); };
-const NAMES = { claude: "Claude", codex: "Codex", po: "Bạn (PO)", all: "mọi người", main: "main" };
-const COLORS = { claude: 0xc8693d, codex: 0x1f8a70, po: 0x3b6fd6 };
+const NAMES = { pm: "PM", lead: "Tech Lead", dev: "Developer", tester: "Tester", po: "Bạn (PO)", all: "mọi người", main: "main" };
+const COLORS = { pm: 0xc8693d, lead: 0x9a4626, dev: 0x1f8a70, tester: 0x4f9a3a, po: 0x3b6fd6 };
+const AV = { pm: "P", lead: "L", dev: "D", tester: "T", po: "PO" };
+const DEFAULT_PROVIDER = { pm: "claude", lead: "claude", dev: "codex", tester: "codex" };
+// Events written before the split name a CLI ("claude"/"codex"): show them at its first role.
+const norm = (a) => (state && state.legacy_agents && state.legacy_agents[a]) || ({ claude: "pm", codex: "dev" })[a] || a;
+const providerOf = (a) => { const r = (state?.roles || []).find((x) => x.name === norm(a)); return r ? r.provider : (DEFAULT_PROVIDER[norm(a)] || "po"); };
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const dark = matchMedia("(prefers-color-scheme: dark)").matches;
 
@@ -42,13 +48,13 @@ renderer.shadowMap.enabled = true;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(dark ? 0x15181d : 0xe9ecf0);
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-camera.position.set(0, 9.5, 13.5);
+camera.position.set(0, 10.5, 15.5);
 const controls = new OrbitControls(camera, canvas);
 controls.target.set(0, 1.2, -0.8);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.47;
 controls.minDistance = 7;
-controls.maxDistance = 24;
+controls.maxDistance = 28;
 
 scene.add(new THREE.HemisphereLight(0xffffff, dark ? 0x222833 : 0xb9c2cf, dark ? 0.9 : 1.1));
 const sun = new THREE.DirectionalLight(0xffffff, dark ? 0.9 : 1.4);
@@ -145,16 +151,19 @@ function makeStation(key, x, z, label) {
   return { key, label, group: g, person, head, body, arms, screen, scr, lamp, status: "idle", screenKey: "" };
 }
 
+// One desk per role: Claude's PM + Tech Lead on the left, Codex's Developer + Tester on the right.
 const stations = {
-  claude: makeStation("claude", -4.6, -1.4, "Claude"),
-  codex: makeStation("codex", 4.6, -1.4, "Codex"),
+  pm: makeStation("pm", -6.9, -1.4, "PM"),
+  lead: makeStation("lead", -2.3, -1.4, "Tech Lead"),
+  dev: makeStation("dev", 2.3, -1.4, "Developer"),
+  tester: makeStation("tester", 6.9, -1.4, "Tester"),
   po: makeStation("po", 0, 3.6, "Bạn (PO)"),
 };
 stations.po.group.rotation.y = 0; // PO faces the team too
 
 // "main" branch: a small server tower where merged work lands
 const server = new THREE.Group();
-server.position.set(8.6, 0, -4.6);
+server.position.set(10, 0, -5.2);
 scene.add(server);
 box(1.1, 2.4, 0.9, 0x2a2e35, 0, 1.2, 0, server);
 const leds = [];
@@ -235,11 +244,12 @@ function drawScreen(st) {
   if (st.key === "po") {
     const asks = pendingQuestions().length;
     key = `po:${asks}`; bg = asks ? "#4a3510" : "#18202e";
-    lines = asks ? ["Claude hỏi", `${asks} câu`] : ["Product", "Owner"];
+    lines = asks ? ["Team hỏi", `${asks} câu`] : ["Product", "Owner"];
   } else if (a && a.status === "resting") {
-    key = `rest:${a.rest_until}`; bg = "#2b2410"; lines = ["Hết quota", `nghỉ đến ${hhmm(a.rest_until)}`];
+    key = `rest:${a.rest_until}`; bg = "#2b2410";
+    lines = [a.rest_cause === "failure" ? `${a.provider} lỗi` : `Hết quota ${a.provider}`, `nghỉ đến ${hhmm(a.rest_until)}`];
   } else if (w) {
-    key = `work:${w.label}:${w.task}`; bg = st.key === "claude" ? "#3b2216" : "#10302a"; lines = [w.label, w.task];
+    key = `work:${w.label}:${w.task}`; bg = providerOf(st.key) === "claude" ? "#3b2216" : "#10302a"; lines = [w.label, w.task];
   } else {
     key = "idle"; bg = "#1b1f25"; lines = ["rảnh", ""];
   }
@@ -266,7 +276,7 @@ function toScreen(v) {
 function el(cls, html) { const d = document.createElement("div"); d.className = cls; d.innerHTML = html; overlay.appendChild(d); return d; }
 
 for (const st of Object.values(stations)) {
-  st.tag = el(`tag ${st.key}`, "");
+  st.tag = el(`tag ${st.key === "po" ? "po" : DEFAULT_PROVIDER[st.key]}`, "");
   st.anchor = new THREE.Vector3();
   st.zzz = el("zzz", "Z z z"); st.zzz.style.display = "none";
 }
@@ -274,22 +284,24 @@ const serverTag = el("tag mainbr", "main");
 
 const bubbles = []; // {el, who, until}
 function say(who, html, ms = 7000) {
+  who = norm(who);
   const st = stations[who];
   if (!st) return;
   for (const b of bubbles.filter((b) => b.who === who)) b.el.remove();
   bubbles.splice(0, bubbles.length, ...bubbles.filter((b) => b.who !== who));
-  const b = el(`bubble ${who}`, html);
+  const b = el(`bubble ${who === "po" ? "po" : providerOf(who)}`, html);
   bubbles.push({ el: b, who, until: performance.now() + ms });
 }
 
 const flyers = []; // paper flying between desks
 const paperGeo = new THREE.PlaneGeometry(0.5, 0.66);
 function anchorOf(who) {
-  if (who === "main") return new THREE.Vector3(8.6, 2.6, -4.6);
+  if (who === "main") return new THREE.Vector3(10, 2.6, -5.2);
   const st = stations[who];
   return st.group.localToWorld(new THREE.Vector3(0, 1.5, 0.4));
 }
 function fly(from, to, label, color) {
+  from = norm(from); to = norm(to);
   if (!stations[from] && from !== "main") return;
   if (!stations[to] && to !== "main") return;
   const paper = new THREE.Mesh(paperGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: color, emissiveIntensity: 0.25, side: THREE.DoubleSide }));
@@ -312,7 +324,11 @@ function applyState(s) {
   state = s;
   for (const a of s.agents || []) {
     syncFromState(a);
-    if (stations[a.name]) stations[a.name].status = a.status === "resting" ? "resting" : working[a.name] ? "working" : "idle";
+    const st = stations[a.name];
+    if (!st) continue;
+    st.status = a.status === "resting" ? "resting" : working[a.name] ? "working" : "idle";
+    st.label = `${NAMES[a.name] || a.name} · ${a.provider}`;
+    st.tag.className = `tag ${a.provider}`;
   }
   stations.po.status = pendingQuestions().length ? "asking" : "idle";
   $("repo").textContent = s.repo ? s.repo.path : "";
@@ -328,9 +344,12 @@ function applyState(s) {
 }
 
 function onEvent(e, live) {
-  if (e.event === "agent_working") { startWork(e.agent, e.task_id, e.label); if (stations[e.agent]) stations[e.agent].status = "working"; }
-  if (["agent_done", "agent_failed"].includes(e.event)) { endWork(e.agent, e.task_id); if (stations[e.agent]) stations[e.agent].status = working[e.agent] ? "working" : "idle"; }
-  if (e.event === "agent_resting") { clearWork(e.agent); if (stations[e.agent]) stations[e.agent].status = "resting"; }
+  const ag = norm(e.agent);
+  if (e.event === "agent_working") { startWork(ag, e.task_id, e.label); if (stations[ag]) stations[ag].status = "working"; }
+  if (["agent_done", "agent_failed"].includes(e.event)) { endWork(ag, e.task_id); if (stations[ag]) stations[ag].status = working[ag] ? "working" : "idle"; }
+  if (e.event === "agent_resting") {
+    for (const r of (e.roles || [e.agent]).map(norm)) { clearWork(r); if (stations[r]) stations[r].status = "resting"; }
+  }
   if (e.event === "message") {
     const id = `${e.at}|${e.frm}|${e.text}`;
     if (seenMessages.has(id)) return;
@@ -338,10 +357,10 @@ function onEvent(e, live) {
     messages.push(e);
     appendMsg(e);
     if (!live) return;
-    say(e.frm, `<b>${esc(NAMES[e.frm] || e.frm)} → ${esc(NAMES[e.to] || e.to)}</b>${esc(e.text.length > 160 ? e.text.slice(0, 160) + "…" : e.text)}`);
+    say(e.frm, `<b>${esc(NAMES[norm(e.frm)] || e.frm)} → ${esc(NAMES[norm(e.to)] || e.to)}</b>${esc(e.text.length > 160 ? e.text.slice(0, 160) + "…" : e.text)}`);
     const label = e.task_id || (e.text.match(/R-\d+/) || [""])[0] || "✉";
-    const color = COLORS[e.frm] || 0x888888;
-    if (e.topic === "merged") { fly("claude", "main", label, 0x2c8a4b); mergeFlash = 1; }
+    const color = COLORS[norm(e.frm)] || 0x888888;
+    if (e.topic === "merged") { fly("lead", "main", label, 0x2c8a4b); mergeFlash = 1; }
     else if (e.frm !== e.to && e.to !== "all") fly(e.frm, e.to, label, color);
   }
   if (live && e.event === "pr_merged") mergeFlash = 1;
@@ -351,11 +370,11 @@ function onEvent(e, live) {
 function appendMsg(e) {
   const list = $("msgs");
   list.querySelector(".empty")?.remove();
-  const who = e.frm in NAMES ? e.frm : "claude";
+  const who = norm(e.frm) in NAMES ? norm(e.frm) : "pm";
   const li = document.createElement("li");
   li.className = `msg k-${e.topic || ""}`;
-  li.innerHTML = `<div class="av ${who}">${who === "claude" ? "C" : who === "codex" ? "X" : "PO"}</div>
-    <div><div class="msg-head"><b>${esc(NAMES[e.frm] || e.frm)}</b> → ${esc(NAMES[e.to] || e.to)} · ${hhmm(e.at)}${e.task_id ? ` · ${esc(e.task_id)}` : ""}</div>
+  li.innerHTML = `<div class="av ${who === "po" ? "po" : providerOf(who)}">${AV[who] || "?"}</div>
+    <div><div class="msg-head"><b>${esc(NAMES[who] || e.frm)}</b> → ${esc(NAMES[norm(e.to)] || e.to)} · ${hhmm(e.at)}${e.task_id ? ` · ${esc(e.task_id)}` : ""}</div>
     <div class="msg-body">${esc(e.text)}</div></div>`;
   const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
   list.appendChild(li);
@@ -419,7 +438,7 @@ function connect() {
       applyState(msg.state);
       if (!messages.length) $("msgs").innerHTML = `<li class="empty">Chưa có hội thoại. Gửi yêu cầu bên dưới rồi bấm Bắt đầu.</li>`;
       const last = messages.slice(-1)[0];
-      if (last) say(last.frm, `<b>${esc(NAMES[last.frm] || last.frm)} → ${esc(NAMES[last.to] || last.to)}</b>${esc(last.text.slice(0, 160))}`, 5000);
+      if (last) say(last.frm, `<b>${esc(NAMES[norm(last.frm)] || last.frm)} → ${esc(NAMES[norm(last.to)] || last.to)}</b>${esc(last.text.slice(0, 160))}`, 5000);
       $("msgs").scrollTop = $("msgs").scrollHeight;
     } else if (msg.type === "event") {
       onEvent(msg.event, true);
@@ -465,7 +484,7 @@ function frame() {
     st.zzz.style.display = s === "resting" ? "block" : "none";
     if (s === "resting") { place(st.zzz, tmp.copy(st.anchor).add(new THREE.Vector3(0.5, 0.35 + Math.sin(t * 2) * 0.1, 0))); }
   }
-  place(serverTag, new THREE.Vector3(8.6, 2.75, -4.6));
+  place(serverTag, new THREE.Vector3(10, 2.75, -5.2));
   mergeFlash = Math.max(0, mergeFlash - 0.012);
   leds.forEach((led, i) => led.material.emissive.setHex(mergeFlash > 0 ? (Math.floor(t * 12 + i) % 2 ? 0x37e27f : 0x0a2a18) : (Math.floor(t * 1.5 + i) % 3 ? 0x0f4527 : 0x1f8a4c)));
 

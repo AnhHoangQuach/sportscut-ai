@@ -33,11 +33,11 @@ def test_messages_show_handoffs_between_agents(auto_env):
     env.run_all(office)
     msgs = messages(env.repo)
     pairs = {(m["frm"], m["to"], m["topic"]) for m in msgs}
-    assert ("po", "claude", "request") in pairs
-    assert ("claude", "codex", "assign") in pairs
-    assert ("codex", "claude", "handoff") in pairs
-    assert ("claude", "codex", "approve") in pairs
-    assert ("claude", "po", "merged") in pairs and ("claude", "po", "done") in pairs
+    assert ("po", "pm", "request") in pairs
+    assert ("pm", "dev", "assign") in pairs
+    assert ("dev", "tester", "handoff") in pairs and ("tester", "lead", "handoff") in pairs
+    assert ("lead", "dev", "approve") in pairs
+    assert ("lead", "po", "merged") in pairs and ("pm", "po", "done") in pairs
     assert all(m["frm"] != m["to"] for m in msgs)
     assert all(m["text"] for m in msgs)
 
@@ -55,7 +55,11 @@ def test_simulated_office_delivers_sportscut_request(auto_env):
     assert (env.repo / "sportscut/t_005.py").exists()
     topics = [m["topic"] for m in messages(env.repo)]
     assert "rest" in topics and "awake" in topics  # Codex ran out of quota once and came back
+    speakers = {m["frm"] for m in messages(env.repo)}
+    assert {"pm", "lead", "dev", "tester", "po"} <= speakers
     assert "changes" in topics  # T-003 went through a review round
+    assert "test_fail" in topics  # the Tester sent T-002 back to the Developer once
+    assert (env.repo / "tests/test_t_002_acceptance.py").exists()
     assert env.calls() == []  # no real CLI was called
 
 

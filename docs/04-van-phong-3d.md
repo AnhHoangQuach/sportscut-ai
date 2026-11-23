@@ -43,11 +43,16 @@ flowchart LR
 Mỗi bước giao việc phát một sự kiện `message`:
 
 ```json
-{"event": "message", "frm": "claude", "to": "codex", "task_id": "T-002", "topic": "assign",
+{"event": "message", "frm": "pm", "to": "dev", "task_id": "T-002", "topic": "assign",
  "text": "Giao T-002 'Tách audio bằng ffmpeg'. Spec ở .office/TASK.md. Cần đạt: ..."}
 ```
 
-`topic` gồm: `request`, `plan`, `question`, `assign`, `dev_done`, `handoff`, `test_fail`, `approve`,
+`frm`/`to` là tên vai (`pm`, `lead`, `dev`, `tester`, `po`, `all`); sự kiện cũ mang `claude`/`codex` được
+hiện ở bàn `pm`/`dev`. Luồng chính: PM → Developer (`assign`), Developer → Tester (`handoff`), Tester →
+Developer (`test_fail`) hoặc Tester → Tech Lead (`handoff`), Tech Lead → Developer (`approve`/`changes`),
+Tech Lead → PO (`merged`), PM → PO (`done`).
+
+`topic` gồm: `request`, `plan`, `question`, `assign`, `handoff`, `test_fail`, `approve`,
 `changes`, `conflict`, `merged`, `done`, `rest`, `awake`, `answer`. Giao diện dùng `topic` để tô màu
 (vàng = cần chú ý, xanh = thành công) và chọn hiệu ứng.
 
@@ -58,7 +63,7 @@ Mỗi bước giao việc phát một sự kiện `message`:
 | Nạp thư viện | `three.module.min.js` + `OrbitControls.js` vendored trong `static/vendor/`, nạp bằng **import map**, không cần build, không cần mạng |
 | Camera | `PerspectiveCamera` 42°, `OrbitControls` để xoay/zoom, có giới hạn góc |
 | Ánh sáng | `HemisphereLight` + `DirectionalLight` có bóng (`shadowMap`, 1024²); bảng màu riêng cho dark mode |
-| Nhân vật | Ghép khối đơn giản (capsule thân, cầu đầu, tay), màu theo agent: Claude cam, Codex xanh lục, PO xanh dương |
+| Nhân vật | Bốn bàn, mỗi vai một bàn: PM và Tech Lead (tông cam của Claude) bên trái, Developer và Tester (tông xanh lục của Codex) bên phải, PO (xanh dương) phía trước. Nhãn bàn ghi "Tester · codex"; khi một CLI nghỉ, cả hai bàn của nó hiện "Zzz". Ghép khối đơn giản (capsule thân, cầu đầu, tay) |
 | Màn hình máy tính | `CanvasTexture`: vẽ chữ "review1 T-002" hoặc "2 việc T-002, T-004" lên canvas 2D rồi dán lên mặt màn hình; chỉ vẽ lại khi nội dung đổi |
 | Kanban trên tường | Một `CanvasTexture` lớn, vẽ cột theo stage, thẻ task có viền khi đang chạy |
 | Đèn bàn | Vật liệu `emissive`: xanh = đang làm, vàng = nghỉ, xanh dương = PO cần trả lời, xám = rảnh |
@@ -79,17 +84,19 @@ bộ hội thoại.
 
 ## 4.4 Nhiều phiên cùng lúc
 
-`agent.active` trong state là danh sách task một agent đang làm. Giao diện giữ
+`agent.active` trong state là danh sách task một vai đang làm. Giao diện giữ
 `sessions[agent] = {task: nhãn}` cập nhật từ `agent_working` / `agent_done` / `agent_failed` /
 `agent_resting` và đồng bộ lại từ mỗi snapshot. Nhãn bàn và màn hình hiện
-"Codex · 2 việc T-002, T-004"; thẻ agent trên Kanban 2D hiện "Hôm nay 5 lượt · 2/2 phiên".
+"Developer · codex · 2 việc T-002, T-004"; thẻ vai trên Kanban 2D hiện "Hôm nay 5 lượt (codex: 9) · 2/2
+phiên" (lượt của vai, tổng lượt của CLI so với ngân sách ngày).
 
 ## 4.5 Chế độ demo (không tốn quota)
 
 `office demo` tạo một repo git mẫu, bật `simulate = true` và mở văn phòng 3D. `SimAgent`
 (`agents/sim.py`) thay cho CLI thật: nhận diện loại prompt, ngủ `sim_delay` giây, trả lời đúng định
 dạng như agent thật, ghi file thật vào worktree. Kịch bản có sẵn: chia 5 task SportsCut có phụ
-thuộc, một vòng review yêu cầu sửa, Codex hết quota một lần, hai task song song sửa cùng file
+thuộc, Tester trả T-002 về Developer một lần, một vòng review yêu cầu sửa, Codex (cả Developer và
+Tester) hết quota một lần, hai task song song sửa cùng file
 `sportscut/commands.py` để sinh xung đột thật và tự gỡ. Demo đi qua đúng code pipeline thật, nên cũng
 là cách kiểm thử end-to-end.
 

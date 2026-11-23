@@ -5,6 +5,10 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .models import DEFAULT_PROVIDER, PROVIDERS, ROLES
+
+DEFAULT_PARALLEL = {"pm": 1, "lead": 1, "dev": 2, "tester": 1}
+
 DEFAULT_CONFIG = """\
 # Agent Office config. No API keys: both CLIs must be logged in with your subscription
 # (`claude` -> /login with Pro/Max, `codex` -> `codex login` with ChatGPT).
@@ -18,10 +22,10 @@ test_cmd = ""
 # Open a GitHub PR with `gh pr create` when a task is approved.
 open_pr = true
 remote = "origin"
-# "auto": merge as soon as Claude approves and tests pass, then continue with the next task.
+# "auto": merge as soon as the Tech Lead approves and tests pass, then continue with the next task.
 # "manual": stop at the PR and wait for the PO to merge.
 merge_mode = "auto"
-# After all tasks of a request are merged, Claude checks the result against the request and
+# After all tasks of a request are merged, the PM checks the result against the request and
 # may plan follow-up tasks. This caps those extra rounds per request.
 max_goal_rounds = 3
 # true = use built-in simulated agents (no CLI calls, no quota). `office demo` sets this.
@@ -43,6 +47,15 @@ dep_retries = 2
 # asked only about unclear business requirements. Tech Lead decisions allowed per task; after that
 # the task is dropped (reported to the PO) and the goal check re-plans what is still missing.
 tech_lead_rounds = 3
+
+[roles]
+# Four separate agents. Each role has its own state, prompt, log, session slots and desk, and runs
+# on one subscription CLI. Roles on the same CLI share that CLI's quota: when one of them hits the
+# usage limit, all of them rest together (and one probe wakes them all).
+pm = "claude"       # Product Manager: breakdown, specs, goal check
+lead = "claude"     # Tech Lead / Reviewer: reviews, technical blockers, business-question screening
+dev = "codex"       # Developer: code + unit tests (TDD)
+tester = "codex"    # Tester: its own acceptance tests from the spec, runs everything, reports to dev
 
 [claude]
 cmd = "claude"
@@ -68,10 +81,13 @@ network = true
 backoff_minutes = [15, 30, 60]
 
 [parallel]
-# How many sessions of each agent may run at the same time. Each task has its own worktree,
+# How many sessions of each role may run at the same time. Each task has its own worktree,
 # so independent tasks are coded in parallel. More sessions = faster, but quota runs out sooner.
-claude = 1
-codex = 2
+# (Old configs with `claude = 1` / `codex = 2` still work: the number applies to every role on that CLI.)
+pm = 1
+lead = 1
+dev = 2
+tester = 1
 
 [quality]
 # Command that measures product quality in a worktree and prints JSON with the metric, e.g.
@@ -83,9 +99,10 @@ higher_is_better = true
 max_drop = 0.0
 
 [guardrails]
-# Agent calls per agent per day (local time); 0 = no cap. When reached the agent rests until midnight.
+# Agent calls per subscription CLI per day (local time, all its roles together); 0 = no cap.
+# When reached, every role on that CLI rests until midnight.
 max_calls_per_day = { claude = 0, codex = 0 }
-# Most tasks Claude may create for one request (breakdown + each follow-up round).
+# Most tasks the PM may create for one request (breakdown + each follow-up round).
 max_tasks_per_request = 12
 # A task whose diff changes more lines than this goes back to the Tech Lead to split (0 = no cap).
 max_diff_lines = 4000
@@ -123,7 +140,8 @@ class Config:
     claude: AgentConfig = field(default_factory=lambda: AgentConfig(cmd="claude"))
     codex: AgentConfig = field(default_factory=lambda: AgentConfig(cmd="codex", timeout_sec=3600))
     backoff_minutes: list[int] = field(default_factory=lambda: [15, 30, 60])
-    parallel: dict[str, int] = field(default_factory=lambda: {"claude": 1, "codex": 2})
+    roles: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_PROVIDER))
+    parallel: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_PARALLEL))
     max_calls_per_day: dict[str, int] = field(default_factory=lambda: {"claude": 0, "codex": 0})
     max_tasks_per_request: int = 12
     max_diff_lines: int = 4000
@@ -150,6 +168,19 @@ def _agent(d: dict, default_cmd: str, default_timeout: int) -> AgentConfig:
     )
 
 
+def _roles(d: dict) -> dict[str, str]:
+    out = {}
+    for r in ROLES:
+        p = str(d.get(r, DEFAULT_PROVIDER[r])).strip().lower()
+        out[r] = p if p in PROVIDERS else DEFAULT_PROVIDER[r]
+    return out
+
+
+def _parallel(par: dict, roles: dict[str, str]) -> dict[str, int]:
+    """Sessions per role: the role's own key, else an old per-CLI key (`codex = 2`), else the default."""
+    return {r: max(1, int(par.get(r, par.get(roles[r], DEFAULT_PARALLEL[r])))) for r in ROLES}
+
+
 def load_config(office_dir: Path) -> Config:
     path = office_dir / "config.toml"
     raw = tomllib.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
@@ -158,6 +189,7 @@ def load_config(office_dir: Path) -> Config:
     g = raw.get("guardrails", {})
     q = raw.get("quality", {})
     caps = g.get("max_calls_per_day", {}) if isinstance(g.get("max_calls_per_day"), dict) else {}
+    roles = _roles(raw.get("roles", {}))
     return Config(
         base_branch=o.get("base_branch", "main"),
         worktrees_dir=o.get("worktrees_dir", "../{repo}-worktrees"),
@@ -175,8 +207,9 @@ def load_config(office_dir: Path) -> Config:
         claude=_agent(raw.get("claude", {}), "claude", 1800),
         codex=_agent(raw.get("codex", {}), "codex", 3600),
         backoff_minutes=list(raw.get("limits", {}).get("backoff_minutes", [15, 30, 60])) or [15, 30, 60],
-        parallel={n: max(1, int(par.get(n, d))) for n, d in (("claude", 1), ("codex", 2))},
-        max_calls_per_day={n: max(0, int(caps.get(n, 0))) for n in ("claude", "codex")},
+        roles=roles,
+        parallel=_parallel(par, roles),
+        max_calls_per_day={n: max(0, int(caps.get(n, 0))) for n in PROVIDERS},
         max_tasks_per_request=int(g.get("max_tasks_per_request", 12)),
         max_diff_lines=int(g.get("max_diff_lines", 4000)),
         block_secrets=bool(g.get("block_secrets", True)),

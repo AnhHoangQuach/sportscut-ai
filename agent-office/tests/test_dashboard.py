@@ -18,7 +18,13 @@ def test_index_and_state(client):
     assert "Agent Office" in c.get("/").text
     s = c.get("/api/state").json()
     assert s["config"]["merge_mode"] == "auto" and s["runner"]["running"] is False
-    assert {a["name"] for a in s["agents"]} == {"claude", "codex"}
+    assert {a["name"]: a["provider"] for a in s["agents"]} == {
+        "pm": "claude", "lead": "claude", "dev": "codex", "tester": "codex"}
+    assert [r["name"] for r in s["roles"]] == ["pm", "lead", "dev", "tester"]
+    assert s["roles"][3]["title"] == "Tester" and s["legacy_agents"] == {"claude": "pm", "codex": "dev"}
+    assert c.post("/api/agents/tester/wake").status_code == 200
+    assert c.post("/api/agents/codex/wake").status_code == 200
+    assert c.post("/api/agents/gpt/wake").status_code == 404
 
 
 def test_post_request_goes_through_inbox(client):

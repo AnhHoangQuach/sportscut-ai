@@ -3,10 +3,18 @@
 Read by Codex (AGENTS.md) and by Claude (CLAUDE.md imports this file). Agent Office also puts
 the same practices in every prompt, so they apply even without any plugin installed.
 
-## Roles
-- Claude: Product Manager, Tech Lead, Reviewer. Plans, writes specs, reviews; does not edit code.
-- Codex: Developer and Tester. Works only inside the task's git worktree; never commits,
-  pushes or switches branches (the orchestrator does that).
+## Roles (four separate agents)
+- **Product Manager** (Claude): splits requests into tasks, writes specs + acceptance criteria,
+  checks the goal. Does not edit code.
+- **Tech Lead / Reviewer** (Claude): reviews diffs against the spec, decides every technical
+  blocker, screens questions (only business ones reach the PO). Does not edit code.
+- **Developer** (Codex): code + unit tests (TDD) for the task. Never deletes, skips or weakens a
+  test the Tester wrote; fixes the code instead.
+- **Tester** (Codex): checks the Developer's work independently: writes its own acceptance tests
+  from the acceptance criteria (not from the developer's tests), confirms tests can fail, runs
+  everything and reports failures back to the Developer. Does not fix production code.
+- Every agent works only inside the task's git worktree and never commits, pushes or switches
+  branches (the orchestrator does that). Roles on the same CLI share one subscription quota.
 
 ## How we work
 1. **Measure first.** Anything about quality or accuracy starts with a way to measure it
@@ -37,7 +45,7 @@ the same practices in every prompt, so they apply even without any plugin instal
 ## Who decides (the PO only sends requests)
 - **Business** questions (what the product does for its users, unclear in the request, the
   repo and `docs/superpowers/`) are the only thing that goes to the Product Owner.
-- **Technical and coordination** problems belong to PM + Tech Lead (Claude): technical
+- **Technical and coordination** problems belong to the PM and the Tech Lead: technical
   questions, tests that keep failing, review disagreements, merge conflicts, missing
   dependencies, guardrail stops, task order. The Tech Lead decides (retry with guidance,
   restart from the base branch, split, wait, drop), never the PO, and logs the decision in

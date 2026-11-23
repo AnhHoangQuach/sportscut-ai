@@ -1,16 +1,21 @@
 # Agent Office
 
-Văn phòng phần mềm gồm hai agent AI, chạy bằng CLI trên máy bạn, **không dùng API key**:
+Văn phòng phần mềm gồm bốn agent AI riêng (mỗi vai một agent), chạy bằng hai CLI trên máy bạn,
+**không dùng API key**:
 
-| Vai | Agent | Gọi qua |
+| Vai (agent) | Chạy trên | Gọi qua |
 | --- | --- | --- |
 | Product Owner | Bạn | `office request`, merge PR |
-| Product Manager, Tech Lead, Reviewer | Claude Code | `claude -p` (đăng nhập gói Pro/Max) |
-| Developer, Tester | Codex | `codex exec` (đăng nhập gói ChatGPT) |
+| Product Manager (`pm`) | Claude Code | `claude -p` (đăng nhập gói Pro/Max) |
+| Tech Lead / Reviewer (`lead`) | Claude Code | `claude -p` (cùng gói, cùng quota với `pm`) |
+| Developer (`dev`) | Codex | `codex exec` (đăng nhập gói ChatGPT) |
+| Tester (`tester`) | Codex | `codex exec` (cùng gói, cùng quota với `dev`) |
 
-Luồng: yêu cầu của PO → Claude tách task + viết spec/acceptance criteria → Codex code + test
-trong **git worktree riêng của task** → orchestrator chạy lại test → Claude review diff (tối đa 3
-vòng) → mở PR → bạn merge.
+Luồng: yêu cầu của PO → PM tách task + viết spec/acceptance criteria → Developer code + unit test
+trong **git worktree riêng của task** → Tester tự viết test chấp nhận từ AC, chạy tất cả, lỗi thì trả
+về Developer → orchestrator chạy lại test → Tech Lead review diff (tối đa 3 vòng) → mở PR → merge.
+Vai nào chạy trên CLI nào chỉnh ở `[roles]` trong `config.toml`; các vai cùng CLI nghỉ cùng nhau khi
+hết quota.
 
 Giai đoạn 1 là CLI, giai đoạn 2 thêm **dashboard 2D realtime** và **chế độ tự động hoàn toàn**:
 các agent tự làm tới khi yêu cầu được giao xong, tự merge khi review đạt và test pass, chỉ hỏi
@@ -49,7 +54,7 @@ office show T-001                   # spec, AC, lịch sử, đường dẫn log
 office answer T-002 "Dùng ffmpeg, bỏ qua GPU"   # trả lời task (hoặc yêu cầu R-xxx) bị blocked
 office triage                                  # việc chờ PO mà là kỹ thuật -> giao Tech Lead
 office sync                         # đánh dấu done các task đã merge (run cũng tự gọi)
-office wake codex                   # bắt agent làm việc lại ngay
+office wake codex                   # bắt CLI làm việc lại ngay (hoặc tên vai: office wake tester)
 ```
 
 `office run --once` chạy đúng một bước; `--no-wait` thoát thay vì ngủ khi agent đang nghỉ.
@@ -103,13 +108,15 @@ Với agent thật: `office dashboard` rồi bấm **Văn phòng 3D** (hoặc `o
 
 ```toml
 [parallel]
-claude = 1   # spec, review, kiểm tra mục tiêu
-codex = 2    # code + test hai task độc lập cùng lúc, mỗi task một worktree
+pm = 1       # chia việc, spec, kiểm tra mục tiêu
+lead = 1     # review, gỡ blocker kỹ thuật
+dev = 2      # code hai task độc lập cùng lúc, mỗi task một worktree
+tester = 1   # kiểm tra độc lập
 ```
 
-Trong lúc Codex code T-002 và T-004, Claude vẫn viết spec hay review task khác. Thêm phiên
-thì nhanh hơn nhưng hết quota sớm hơn; khi một phiên chạm giới hạn, cả agent đó nghỉ, mọi task
-dở dang được lưu checkpoint. `office run --sequential` chạy từng bước một như trước.
+Trong lúc Developer code T-002 và T-004, Tester kiểm tra T-001, PM viết spec và Tech Lead review
+task khác. Thêm phiên thì nhanh hơn nhưng hết quota sớm hơn; khi một phiên chạm giới hạn, mọi vai
+trên CLI đó nghỉ, mọi task dở dang được lưu checkpoint. `office run --sequential` chạy từng bước một như trước.
 
 **Xung đột merge:** khi task khác vừa merge và đụng cùng dòng, task quay về Codex với
 `git merge main` đang dở; Codex gỡ xung đột, orchestrator kiểm tra không còn marker, rồi task

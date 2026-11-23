@@ -5,7 +5,7 @@ giao việc cho nhau, văn phòng 3D để quan sát, và công nghệ cắt hig
 
 | # | Tài liệu | Đọc khi |
 |---|---|---|
-| 1 | [Kiến trúc multi-agent và cách giao việc](01-multi-agent.md) | Hiểu Claude và Codex phối hợp thế nào từ yêu cầu tới merge |
+| 1 | [Kiến trúc multi-agent và cách giao việc](01-multi-agent.md) | Hiểu bốn vai (PM, Tech Lead, Developer, Tester) trên Claude và Codex phối hợp thế nào từ yêu cầu tới merge |
 | 2 | [Quota, chạy song song, rào chắn](02-quota-song-song-rao-chan.md) | Chạy bằng gói thuê bao, tăng tốc, giữ an toàn |
 | 3 | [Kỷ luật kỹ thuật và cổng chất lượng](03-ky-luat-ky-thuat.md) | Superpowers, TDD, bằng chứng, eval, spec lưu trong repo |
 | 4 | [Văn phòng 3D và dashboard](04-van-phong-3d.md) | Kiến trúc realtime, rendering, demo |
@@ -23,8 +23,8 @@ flowchart LR
   subgraph Office[Agent Office - orchestrator Python]
     direction LR
     S[(state.json<br/>events.jsonl)]
-    C[Claude<br/>PM - Tech Lead - Reviewer]
-    X[Codex<br/>Developer - Tester]
+    C[Claude<br/>PM + Tech Lead/Reviewer<br/>2 agent riêng]
+    X[Codex<br/>Developer + Tester<br/>2 agent riêng]
     C -- spec + giao việc --> X
     X -- code + test xong --> C
     C -- review: approve / sửa --> X

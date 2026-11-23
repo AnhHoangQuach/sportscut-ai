@@ -67,11 +67,13 @@ def test_usage_limit_checkpoint_and_resume(env):
     env.run_all(office)
 
     t1 = office.store.tasks["T-001"]
-    codex = office.store.agents["codex"]
+    codex = office.store.agents["dev"]
     assert t1.stage == Stage.PR and t1.checkpoint is None
     assert codex.status.value == "resting" and codex.reset_known
     assert datetime.fromisoformat(codex.rest_until) == datetime.fromisoformat("2026-11-22T14:01:00+00:00")
-    assert office.store.agents["claude"].status.value == "idle"  # agents rest independently
+    assert office.store.agents["tester"].rest_until == codex.rest_until  # same CLI, same quota
+    assert office.store.agents["pm"].status.value == "idle"  # the other CLI's roles keep working
+    assert office.store.agents["lead"].status.value == "idle"
 
     wt = env.tmp / "sportscut-worktrees" / "T-001"
     assert not (wt / ".office" / "CHECKPOINT.md").exists()
@@ -91,10 +93,11 @@ def test_usage_limit_checkpoint_and_resume(env):
 def test_codex_runs_claude_step_read_only_while_claude_is_quota_resting(env):
     office = env.office()
     office.add_request("Cut highlights")
-    claude = office.store.agents["claude"]
-    claude.status = AgentStatus.RESTING
-    claude.rest_until = "2026-11-22T14:00:00+00:00"
-    claude.rest_cause = "quota"
+    for role in ("pm", "lead"):
+        claude = office.store.agents[role]
+        claude.status = AgentStatus.RESTING
+        claude.rest_until = "2026-11-22T14:00:00+00:00"
+        claude.rest_cause = "quota"
 
     office.step()
 
@@ -102,8 +105,8 @@ def test_codex_runs_claude_step_read_only_while_claude_is_quota_resting(env):
     call = next(c for c in env.calls() if c["agent"] == "codex" and c["kind"] == "breakdown")
     assert call["args"][call["args"].index("--sandbox") + 1] == "read-only"
     event_rows = [json.loads(line) for line in (env.repo / ".agent-office/events.jsonl").read_text().splitlines()]
-    assert any(e["event"] == "agent_failover" and e["preferred"] == "claude" and e["agent"] == "codex"
-               for e in event_rows)
+    assert any(e["event"] == "agent_failover" and e["preferred"] == "pm" and e["agent"] == "dev"
+               and e["preferred_provider"] == "claude" and e["provider"] == "codex" for e in event_rows)
 
 
 def test_unknown_reset_uses_backoff_and_probe(env):
@@ -112,7 +115,7 @@ def test_unknown_reset_uses_backoff_and_probe(env):
     office = env.office()
     office.add_request("Cut highlights")
     env.run_all(office)
-    codex = office.store.agents["codex"]
+    codex = office.store.agents["dev"]
     assert codex.status.value == "resting" and not codex.reset_known
     assert codex.rest_until == "2026-11-22T12:15:00+00:00"  # 15 min rung
 
