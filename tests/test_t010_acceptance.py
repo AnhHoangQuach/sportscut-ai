@@ -1,5 +1,6 @@
 import json
 import math
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -299,6 +300,8 @@ def test_t010_ac12_protected_files_untouched_and_specs_updated() -> None:
     import subprocess
 
     root = Path(__file__).resolve().parents[1]
+    if shutil.which("git") is None:
+        pytest.skip("git is required for the protected-file diff assertion")
     base = subprocess.run(["git", "merge-base", "HEAD", "main"], cwd=root,
                           capture_output=True, text=True)
     if base.returncode != 0:
