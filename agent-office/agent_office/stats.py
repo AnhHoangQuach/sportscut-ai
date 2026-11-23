@@ -11,7 +11,7 @@ from .store import Store
 
 def collect(store: Store, cfg: Config) -> dict[str, Any]:
     counts = {"merge_conflict": 0, "conflict_resolved": 0, "guardrail": 0, "agent_resting": 0,
-              "agent_failed": 0, "pr_merged": 0}
+              "agent_failed": 0, "agent_failover": 0, "pr_merged": 0}
     if store.events_path.exists():
         with store.events_path.open(encoding="utf-8") as f:
             for line in f:
@@ -57,7 +57,7 @@ def render(st: dict[str, Any]) -> str:
     e = st["events"]
     lines.append(f"Merged {e['pr_merged']} | avg review rounds {st['avg_review_rounds']} | conflicts "
                  f"{e['merge_conflict']} (resolved {e['conflict_resolved']}) | guardrail stops {e['guardrail']} | "
-                 f"agent failures {e['agent_failed']}")
+                 f"agent failures {e['agent_failed']} | failovers {e['agent_failover']}")
     ev = st["eval"]
     if ev["enabled"]:
         hist = " → ".join(f"{h['score']:.3f}" for h in ev["history"][-8:]) or "no merges measured yet"

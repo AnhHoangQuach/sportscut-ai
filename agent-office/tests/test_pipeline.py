@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 
 from agent_office.agents import extract_json
-from agent_office.models import InvalidTransition, Stage, Task
+from agent_office.models import Agent, AgentStatus, InvalidTransition, Stage, Task
 
 
 def test_transitions_are_enforced():
@@ -13,6 +13,12 @@ def test_transitions_are_enforced():
     t.move(Stage.SPEC)
     with pytest.raises(InvalidTransition):
         t.move(Stage.PR)
+
+
+def test_old_resting_state_is_migrated_to_quota_failover():
+    agent = Agent.from_dict({"name": "claude", "status": "resting",
+                             "last_error": "usage_limit_reached", "rest_until": "2026-11-22T14:00:00+00:00"})
+    assert agent.rest_cause == "quota"
 
 
 def test_extract_json_handles_prose_and_fences():
@@ -62,24 +68,42 @@ def test_usage_limit_checkpoint_and_resume(env):
 
     t1 = office.store.tasks["T-001"]
     codex = office.store.agents["codex"]
-    assert t1.stage == Stage.DEV and t1.checkpoint and "usage limit" in t1.checkpoint["reason"]
+    assert t1.stage == Stage.PR and t1.checkpoint is None
     assert codex.status.value == "resting" and codex.reset_known
     assert datetime.fromisoformat(codex.rest_until) == datetime.fromisoformat("2026-11-22T14:01:00+00:00")
     assert office.store.agents["claude"].status.value == "idle"  # agents rest independently
 
     wt = env.tmp / "sportscut-worktrees" / "T-001"
-    assert (wt / ".office" / "CHECKPOINT.md").exists()
+    assert not (wt / ".office" / "CHECKPOINT.md").exists()
+    assert (wt / "half.py").exists()  # the replacement agent continued from the saved work
     log = __import__("subprocess").run(["git", "log", "--format=%s"], cwd=wt, capture_output=True,
                                        text=True).stdout
     assert "wip(office): checkpoint T-001 dev" in log  # partial work saved
 
-    env.advance(hours=1)
-    assert office.step() is None  # still resting
-    env.advance(hours=1, minutes=2)
-    env.run_all(office)
-    assert t1.stage == Stage.PR and t1.checkpoint is None
-    dev_prompts = [c["prompt"] for c in env.calls() if c["kind"] == "dev"]
+    dev_calls = [c for c in env.calls() if c["kind"] == "dev"]
+    assert [c["agent"] for c in dev_calls[:2]] == ["codex", "claude"]
+    dev_prompts = [c["prompt"] for c in dev_calls]
     assert "RESUMING" in dev_prompts[-1]
+    assert any(json.loads(line)["event"] == "agent_failover" for line in
+               (env.repo / ".agent-office/events.jsonl").read_text().splitlines())
+
+
+def test_codex_runs_claude_step_read_only_while_claude_is_quota_resting(env):
+    office = env.office()
+    office.add_request("Cut highlights")
+    claude = office.store.agents["claude"]
+    claude.status = AgentStatus.RESTING
+    claude.rest_until = "2026-11-22T14:00:00+00:00"
+    claude.rest_cause = "quota"
+
+    office.step()
+
+    assert office.store.requests["R-001"].status == "planned"
+    call = next(c for c in env.calls() if c["agent"] == "codex" and c["kind"] == "breakdown")
+    assert call["args"][call["args"].index("--sandbox") + 1] == "read-only"
+    event_rows = [json.loads(line) for line in (env.repo / ".agent-office/events.jsonl").read_text().splitlines()]
+    assert any(e["event"] == "agent_failover" and e["preferred"] == "claude" and e["agent"] == "codex"
+               for e in event_rows)
 
 
 def test_unknown_reset_uses_backoff_and_probe(env):

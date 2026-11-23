@@ -44,6 +44,19 @@ def agent_available(store: Store, name: str | None, now: datetime) -> bool:
     return until is None or now >= until
 
 
+def assigned_agent(store: Store, preferred: str, now: datetime) -> str:
+    """Use the other subscription only while the preferred one is quota-resting.
+
+    Busy/session limits are handled separately by ``take`` and never cause failover.
+    An expired rest is also not bypassed: the preferred agent must pass its wake probe first.
+    """
+    agent = store.agents[preferred]
+    if agent.status != AgentStatus.RESTING or agent.rest_cause not in ("quota", "budget"):
+        return preferred
+    other = "codex" if preferred == "claude" else "claude"
+    return other if store.agents[other].status != AgentStatus.RESTING else preferred
+
+
 def deps_done(store: Store, task: Task) -> bool:
     return all(store.tasks[d].stage == Stage.DONE for d in task.depends_on if d in store.tasks)
 
@@ -164,15 +177,15 @@ def plan_steps(store: Store, now: datetime | None = None, auto_merge: bool = Fal
             reasons.append(f"{req.id} waits until {req.retry_at} (Tech Lead decision)")
             continue
         if req.tl_issue and req.status in ("new", "planned"):
-            if not take(Step("techlead", req.id, "claude")):
+            if not take(Step("techlead", req.id, assigned_agent(store, "claude", now))):
                 reasons.append(f"{req.id} waits for the Tech Lead (claude)")
             continue
         if req.status == "new":
-            if not take(Step("breakdown", req.id, "claude")):
+            if not take(Step("breakdown", req.id, assigned_agent(store, "claude", now))):
                 reasons.append(f"{req.id} waits for claude")
         elif req.status == "planned" and req.task_ids and all(
                 store.tasks[t].stage == Stage.DONE for t in req.task_ids if t in store.tasks):
-            if not take(Step("goal", req.id, "claude")):
+            if not take(Step("goal", req.id, assigned_agent(store, "claude", now))):
                 reasons.append(f"{req.id} goal check waits for claude")
         elif req.status == "blocked":
             reasons.append(f"{req.id} waits for the PO to answer a business question: {req.note}")
@@ -181,7 +194,7 @@ def plan_steps(store: Store, now: datetime | None = None, auto_merge: bool = Fal
     # Technical blockers first: the Tech Lead unblocks a task before new work starts.
     for t in tasks:
         if t.tl_issue and t.stage not in (Stage.DONE, Stage.BLOCKED) and t.id not in busy and not full():
-            if not take(Step("techlead", t.id, "claude")):
+            if not take(Step("techlead", t.id, assigned_agent(store, "claude", now))):
                 reasons.append(f"{t.id} waits for the Tech Lead (claude): {t.tl_kind}")
     for t in tasks:
         until = _parse(t.retry_at)
@@ -196,7 +209,8 @@ def plan_steps(store: Store, now: datetime | None = None, auto_merge: bool = Fal
                 if why:
                     reasons.append(why)
                 continue
-            agent = None if stage == Stage.TODO else STAGE_AGENT[stage]  # todo -> spec is bookkeeping
+            preferred = None if stage == Stage.TODO else STAGE_AGENT[stage]  # todo -> spec is bookkeeping
+            agent = assigned_agent(store, preferred, now) if preferred else None
             if not take(Step("task", t.id, agent)):
                 reasons.append(f"{t.id} ({stage.value}) waits for {agent}")
 

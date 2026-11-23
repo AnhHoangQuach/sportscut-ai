@@ -14,3 +14,5 @@ Newest last. Format: date, task (request): decision.
 - 2026-11-23 Tech Lead: `tech_lead_rounds = 3` per task, then the task is dropped with a report to the PO and the goal check re-plans; requests pause 60 min instead; the goal-check cap closes the request with a report
 - 2026-11-23 Tech Lead: specs list `files`; tasks that change the same files never code at the same time (already-coding or lower id first)
 - 2026-11-23 Tech Lead: on every office start (and `office triage`) tasks/requests blocked for the PO without the Tech Lead's business mark are handed back to the Tech Lead; an old goal-round-cap block closes the request with a report
+- 2026-11-23 PO (R-007): if exactly one agent is quota-limited, the other agent may take over its work; if both are limited the office rests; if both are available the original role assignment remains unchanged
+- 2026-11-23 R-007: failover is triggered only by quota or daily-budget rest, not by busy sessions or repeated CLI failures; the replacement receives permissions for the role being covered

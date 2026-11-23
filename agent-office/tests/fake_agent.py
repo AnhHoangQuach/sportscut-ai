@@ -18,22 +18,20 @@ from pathlib import Path
 def kind_of(agent: str, prompt: str) -> str:
     if "Reply with exactly: OK" in prompt:
         return "probe"
-    if agent == "claude":
-        if "**Tech Lead on call**" in prompt:
-            return "techlead"
-        if "Split the request" in prompt:
-            return "breakdown"
-        if "implementation spec" in prompt:
-            return "spec"
-        if "Tech Lead reviewer" in prompt:
-            return "review"
-        if "has been built, reviewed and merged" in prompt:
-            return "goal"
-    else:
-        if "**Tester**" in prompt:
-            return "test"
-        if "**Developer**" in prompt:
-            return "dev"
+    if "**Tech Lead on call**" in prompt:
+        return "techlead"
+    if "Split the request" in prompt:
+        return "breakdown"
+    if "implementation spec" in prompt:
+        return "spec"
+    if "Tech Lead reviewer" in prompt:
+        return "review"
+    if "has been built, reviewed and merged" in prompt:
+        return "goal"
+    if "**Tester**" in prompt:
+        return "test"
+    if "**Developer**" in prompt:
+        return "dev"
     return "unknown"
 
 
@@ -63,6 +61,43 @@ def main() -> int:
     if resp.get("fail"):
         sys.stderr.write("boom\n")
         return 2
+
+    # A fallback agent follows the role encoded by the prompt, while retaining its own CLI
+    # output envelope and filesystem permissions.
+    if agent == "codex" and kind in ("techlead", "breakdown", "spec", "review", "goal"):
+        if kind == "techlead":
+            out = resp.get("result") or json.dumps(resp.get("tl") or {
+                "action": "retry", "decision": "Use the standard library", "guidance": "Keep it simple."})
+        elif resp.get("questions"):
+            out = json.dumps({"questions": resp["questions"]})
+        elif kind == "goal":
+            out = json.dumps(resp.get("goal") or {"done": True, "summary": "Highlights CLI works."})
+        elif kind == "breakdown":
+            out = resp.get("result") or json.dumps({"tasks": [
+                {"key": "1", "title": "Scaffold CLI", "brief": "Create the sportscut CLI.",
+                 "depends_on": []}]})
+        elif kind == "spec":
+            out = json.dumps(resp.get("spec") or {"spec": "Add module.", "acceptance_criteria": ["AC1 works"],
+                                                   "test_plan": ["test_ac1"], "out_of_scope": []})
+        else:
+            verdict = resp.get("verdict", "approve")
+            out = json.dumps({"verdict": verdict, "summary": f"{verdict} summary", "comments": []})
+        last = Path(args[args.index("--output-last-message") + 1])
+        print(json.dumps({"type": "thread.started", "thread_id": "th-failover"}))
+        last.write_text(out)
+        return 0
+
+    if agent == "claude" and kind in ("dev", "test"):
+        if kind == "dev":
+            n = len(list(cwd.glob("feature_*.py"))) + 1
+            (cwd / f"feature_{n}.py").write_text(f"VALUE = {n}\n")
+            msg = resp.get("message", "Implemented.")
+        else:
+            (cwd / ".office").mkdir(exist_ok=True)
+            (cwd / ".office" / "TEST_REPORT.md").write_text("AC1 -> test_ac1 -> pass\n")
+            msg = resp.get("message", "All good.\nRESULT: PASS")
+        print(json.dumps({"type": "result", "is_error": False, "result": msg, "session_id": "sess-failover"}))
+        return 0
 
     if agent == "claude" and kind == "techlead":
         out = resp.get("result") or json.dumps(resp.get("tl") or {

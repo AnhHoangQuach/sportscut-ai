@@ -25,6 +25,12 @@ def test_codex_gets_network_in_its_sandbox_unless_turned_off(tmp_path):
     assert not any("network_access" in a for a in off)
 
 
+def test_codex_is_read_only_when_covering_a_claude_role(tmp_path):
+    cmd = CodexAgent(AgentConfig(cmd="codex")).build_cmd(tmp_path, {"role": "read"})
+    assert cmd[cmd.index("--sandbox") + 1] == "read-only"
+    assert not any("network_access" in a for a in cmd)
+
+
 def test_claude_may_run_only_the_allowed_commands(tmp_path):
     cmd = ClaudeAgent(AgentConfig(cmd="claude", allowed_commands=["python -m pytest", "ffprobe"])).build_cmd(
         tmp_path, {})
@@ -32,6 +38,13 @@ def test_claude_may_run_only_the_allowed_commands(tmp_path):
     assert "Bash(python -m pytest:*)" in tools and "Bash(ffprobe:*)" in tools and "Read" in tools
     assert not any(t in ("Bash", "Bash(*)", "Write", "Edit") for t in tools)
     assert "--dangerously-skip-permissions" not in cmd
+
+
+def test_claude_gets_write_tools_only_when_covering_a_codex_role(tmp_path):
+    normal = ClaudeAgent(AgentConfig(cmd="claude")).build_cmd(tmp_path, {})
+    covering = ClaudeAgent(AgentConfig(cmd="claude")).build_cmd(tmp_path, {"role": "write"})
+    assert "Edit" not in normal and "Write" not in normal
+    assert "Edit" in covering and "Write" in covering and "Bash" in covering
 
 
 def test_default_config_turns_self_repair_on(env):
