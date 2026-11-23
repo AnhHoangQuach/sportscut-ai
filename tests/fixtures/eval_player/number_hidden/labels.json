@@ -1,0 +1,58 @@
+{
+ "players": [
+  {
+   "team": "blue",
+   "number": 3
+  },
+  {
+   "team": "blue",
+   "number": 8
+  },
+  {
+   "team": "red",
+   "number": 5
+  }
+ ],
+ "touches": [
+  {
+   "t": 2.0,
+   "team": "red",
+   "number": 5
+  },
+  {
+   "t": 4.0,
+   "team": "blue",
+   "number": 8
+  },
+  {
+   "t": 5.2,
+   "team": "blue",
+   "number": 8
+  },
+  {
+   "t": 7.0,
+   "team": "blue",
+   "number": 3
+  },
+  {
+   "t": 9.0,
+   "team": "blue",
+   "number": 8
+  },
+  {
+   "t": 11.0,
+   "team": "red",
+   "number": 5
+  },
+  {
+   "t": 14.0,
+   "team": "blue",
+   "number": 8
+  },
+  {
+   "t": 16.0,
+   "team": "blue",
+   "number": 3
+  }
+ ]
+}

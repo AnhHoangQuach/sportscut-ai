@@ -49,3 +49,27 @@ chung của các agent (TDD, đo trước tối ưu sau, có bằng chứng mớ
 Tài liệu đầy đủ (kiến trúc multi-agent, code, văn phòng 3D, công nghệ SportsCut, áp dụng cho dự án khác): [docs/](docs/README.md).
 
 Chi tiết: [agent-office/README.md](agent-office/README.md).
+
+## Theo dõi cầu thủ: đo độ chính xác (eval-player)
+
+Tạo bộ video tổng hợp và chạy phép đo:
+
+```bash
+python tests/fixtures/eval_player/build.py
+python -m sportscut eval-player tests/fixtures/eval_player --json
+```
+
+Mỗi ca có dạng `<thư-mục>/<tên-ca>/{clip.mp4,labels.json}`. Nhãn chứa `players`
+(tùy chọn) và `touches`, ví dụ `{"players":[{"team":"red","number":10}],
+"touches":[{"t":3.0,"team":"red","number":10}]}`. Video thật dùng cùng định dạng
+tại `data/eval_player/<name>/{clip.mp4,labels.json}`. Một dự đoán khớp khi cách nhãn
+không quá ±0.5 giây; phép khớp là một-một.
+
+Baseline đo trong T-029:
+
+```json
+{"f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 0.0, "team_accuracy": null, "id_accuracy": null, "seconds_per_min": 0.0, "per_clip": [{"clip": "dribble", "duration": 20.0, "touches": 13, "queries": 4, "f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 0.0, "team_accuracy": null, "id_accuracy": null, "seconds_per_min": 0.0}, {"clip": "near_miss", "duration": 20.0, "touches": 6, "queries": 5, "f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 0.0, "team_accuracy": null, "id_accuracy": null, "seconds_per_min": 0.0}, {"clip": "number_hidden", "duration": 20.0, "touches": 8, "queries": 3, "f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 0.0, "team_accuracy": null, "id_accuracy": null, "seconds_per_min": 0.0}, {"clip": "short_passes", "duration": 24.0, "touches": 12, "queries": 6, "f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 0.0, "team_accuracy": null, "id_accuracy": null, "seconds_per_min": 0.0}]}
+```
+
+Mục tiêu tiếp theo: `touch_f1_any ≥ 0.9` (T-031), `team_accuracy ≥ 0.95`
+(T-032), và `F1 ≥ 0.85` (T-033).

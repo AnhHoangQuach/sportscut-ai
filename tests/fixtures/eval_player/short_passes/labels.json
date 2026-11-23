@@ -1,0 +1,90 @@
+{
+ "players": [
+  {
+   "team": "blue",
+   "number": 4
+  },
+  {
+   "team": "blue",
+   "number": 5
+  },
+  {
+   "team": "blue",
+   "number": 10
+  },
+  {
+   "team": "red",
+   "number": 7
+  },
+  {
+   "team": "red",
+   "number": 9
+  },
+  {
+   "team": "red",
+   "number": 10
+  }
+ ],
+ "touches": [
+  {
+   "t": 2.0,
+   "team": "red",
+   "number": 7
+  },
+  {
+   "t": 4.0,
+   "team": "red",
+   "number": 10
+  },
+  {
+   "t": 5.2,
+   "team": "red",
+   "number": 10
+  },
+  {
+   "t": 7.0,
+   "team": "red",
+   "number": 9
+  },
+  {
+   "t": 8.2,
+   "team": "red",
+   "number": 9
+  },
+  {
+   "t": 10.0,
+   "team": "blue",
+   "number": 4
+  },
+  {
+   "t": 11.2,
+   "team": "blue",
+   "number": 4
+  },
+  {
+   "t": 13.0,
+   "team": "blue",
+   "number": 5
+  },
+  {
+   "t": 14.2,
+   "team": "blue",
+   "number": 5
+  },
+  {
+   "t": 16.4,
+   "team": "red",
+   "number": 7
+  },
+  {
+   "t": 17.6,
+   "team": "red",
+   "number": 7
+  },
+  {
+   "t": 19.0,
+   "team": "red",
+   "number": 10
+  }
+ ]
+}

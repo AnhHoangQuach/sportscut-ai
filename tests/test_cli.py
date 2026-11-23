@@ -82,3 +82,20 @@ def test_detect_invalid_options(tmp_path: Path, capsys: pytest.CaptureFixture[st
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "min_len must be <= max_len" in captured.err
+
+
+@pytest.mark.parametrize("kind", ["missing", "empty", "no_clip"])
+def test_eval_player_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str], kind: str) -> None:
+    path = tmp_path / kind
+    if kind != "missing":
+        path.mkdir()
+    if kind == "no_clip":
+        case = path / "case"
+        case.mkdir()
+        (case / "labels.json").write_text('{"touches": []}')
+    assert main(["eval-player", str(path), "--json"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "sportscut eval-player: error:" in captured.err
+    if kind == "no_clip":
+        assert "build.py" in captured.err
