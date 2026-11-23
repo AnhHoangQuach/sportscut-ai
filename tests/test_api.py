@@ -120,6 +120,16 @@ def test_media_error_returns_500(monkeypatch, data_dir):
     assert _jobs(data_dir) == before
 
 
+def test_unexpected_processing_error_removes_job(monkeypatch, data_dir):
+    before = _jobs(data_dir)
+    monkeypatch.setattr(pipeline, "run", lambda *a, **k: (_ for _ in ()).throw(
+        RuntimeError("unexpected failure")
+    ))
+    with pytest.raises(RuntimeError, match="unexpected failure"):
+        client.post("/highlights", files={"file": ("x", b"x")})
+    assert _jobs(data_dir) == before
+
+
 @pytest.mark.parametrize("data,with_file", [
     ({}, False), ({"top": "0"}, True), ({"top": "abc"}, True),
     ({"min_len": "0"}, True), ({"max_len": "-1"}, True),

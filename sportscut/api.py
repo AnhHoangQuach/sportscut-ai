@@ -61,6 +61,9 @@ def create_highlights(
     except HTTPException:
         shutil.rmtree(job_dir, ignore_errors=True)
         raise
+    except Exception:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise
     return {
         "job_id": job_id,
         "highlights": [
