@@ -34,14 +34,18 @@ def test_synthetic_video_is_temporary_and_six_seconds(synthetic_video):
 def test_synthetic_video_streams(synthetic_video):
     args = [
         "ffprobe", "-v", "error", "-show_entries",
-        "stream=codec_type,width,height,channels,sample_rate", "-of", "json",
+        "stream=codec_type,codec_name,width,height,avg_frame_rate,channels,sample_rate",
+        "-of", "json",
         "-i", str(synthetic_video),
     ]
     data = json.loads(subprocess.run(args, check=True, capture_output=True, text=True).stdout)
     video = [stream for stream in data["streams"] if stream["codec_type"] == "video"]
     audio = [stream for stream in data["streams"] if stream["codec_type"] == "audio"]
     assert len(video) == len(audio) == 1
+    assert video[0]["codec_name"] == "mpeg4"
     assert (video[0]["width"], video[0]["height"]) == (160, 120)
+    assert video[0]["avg_frame_rate"] == "10/1"
+    assert audio[0]["codec_name"] == "aac"
     assert audio[0]["channels"] == 2
     assert audio[0]["sample_rate"] == "44100"
 
