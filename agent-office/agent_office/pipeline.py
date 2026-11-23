@@ -185,6 +185,8 @@ class Office:
                     results.append(f"{t.id} back to {t.stage.value}")
                 elif kind == "triage":
                     results += self.triage() or ["nothing waits for the PO except business questions"]
+                elif kind == "retry_github":
+                    results += self.retry_github()
                 elif kind == "wake":
                     self.wake(str(c["agent"]))
                     results.append(f"{c['agent']} marked available")
@@ -1057,6 +1059,23 @@ class Office:
                 self.say("claude", "po", f"GitHub đã ổn, office tạo PR / merge tiếp: {', '.join(moved)}.", kind="env")
                 self.store.save()
             return moved
+
+    def retry_github(self) -> list[str]:
+        """PO command after fixing gh on the machine: check GitHub now and, if it passes, run every
+        task waiting on GitHub (environment block, network backoff, old Tech Lead `wait`) right away."""
+        checks = self.github_preflight(self.repo, self.cfg.remote)
+        bad = github.problems(checks)
+        if bad:
+            return [f"GitHub chưa ổn: [{c.name}] {c.detail} -> {c.hint}" for c in bad]
+        out = [f"{t} back to pr" for t in self.recheck_environment(force=True)]
+        with self.lock:
+            for t in self.store.tasks.values():
+                if t.stage == Stage.PR and t.retry_at:
+                    t.retry_at, t.net_retries = "", 0
+                    self.store.event("github_retry_now", task_id=t.id)
+                    out.append(f"{t.id}: PR / merge retried now")
+            self.store.save()
+        return out or ["GitHub ổn; không có task nào đang chờ GitHub"]
 
     def _finish(self, task: Task, note: str) -> None:
         self._move(task, Stage.DONE, note)

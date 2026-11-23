@@ -188,3 +188,23 @@ def test_doctor_fails_with_a_vietnamese_fix_when_github_is_not_usable(env, gh, m
     office_main(["--repo", str(env.repo), "doctor"])  # the fake codex has no --version: only GitHub matters
     out = capsys.readouterr().out
     assert "ok      repo permission" in out and "-> " not in out
+
+
+def test_retry_github_runs_waiting_prs_now_once_github_is_fixed(env, gh):
+    gh(pr_create={"rc": 1, "err": "GraphQL: must be a collaborator (createPullRequest)"})
+    state = {"checks": DENIED}
+    office, calls = office_with(env, lambda: state["checks"])
+    office.add_request("Cut highlights")
+    env.run_all(office)
+    t1 = office.store.tasks["T-001"]
+    assert t1.stage == Stage.BLOCKED
+    assert office.retry_github()[0].startswith("GitHub chưa ổn: [repo permission]")
+    assert t1.stage == Stage.BLOCKED
+    state["checks"] = OK
+    gh()
+    assert "T-001 back to pr" in office.retry_github()  # no 5-minute wait: checked right now
+    assert t1.stage == Stage.PR
+    t1.retry_at = "2026-11-22T13:00:00+00:00"  # e.g. an old Tech Lead "wait 60 min" or a network backoff
+    assert office.retry_github() == ["T-001: PR / merge retried now"] and t1.retry_at == ""
+    env.run_all(office)
+    assert t1.pr_url

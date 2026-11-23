@@ -24,6 +24,9 @@ Request: PO (Hoang) 2026-11-23: "Nothing to do while agents rest; sleeping 14 mi
 - `cli.sleep_message(plan)`: "Nothing can run now; sleeping N min until HH:MM ... Waiting on:" plus
   one line per reason. The dashboard shows `rest_detail`.
 
+- `office retry-github` (inbox command, works with a running office): runs the GitHub preflight
+  now; when it passes, env-blocked tasks go back to `pr` and PR-stage `retry_at` waits are cleared.
+
 ## Files
 
 - `agent-office/agent_office/{limits.py,models.py,pipeline.py,scheduler.py,cli.py,dashboard/static/app.js}`

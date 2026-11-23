@@ -248,6 +248,12 @@ def cmd_triage(args) -> int:
     return 0
 
 
+def cmd_retry_github(args) -> int:
+    for line in _office(args).submit({"cmd": "retry_github"}):
+        print(line)
+    return 0
+
+
 def cmd_wake(args) -> int:
     for line in _office(args).submit({"cmd": "wake", "agent": args.agent}):
         print(line)
@@ -412,6 +418,8 @@ def main(argv: list[str] | None = None) -> int:
     a.set_defaults(fn=cmd_answer)
     tr = sub.add_parser("triage", help="hand blocks that wait for the PO but are technical to the Tech Lead")
     tr.set_defaults(fn=cmd_triage)
+    sub.add_parser("retry-github", help="after fixing gh: check GitHub now and retry waiting PRs/merges"
+                   ).set_defaults(fn=cmd_retry_github)
     w = sub.add_parser("wake", help="mark a resting agent available now")
     w.add_argument("agent", choices=["claude", "codex"])
     w.set_defaults(fn=cmd_wake)
