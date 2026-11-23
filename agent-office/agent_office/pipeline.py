@@ -44,6 +44,34 @@ MISSING_DEP = re.compile(
     r"network is (?:disabled|unreachable)|Permission denied.*site-packages", re.IGNORECASE)
 
 
+# What a technical blocker is, in the words the office uses when it hands one to the Tech Lead.
+TL_KINDS = {
+    "questions": "the planner asked questions",
+    "parse_error": "an agent answer could not be read",
+    "dev_blocked": "the developer stopped with BLOCKED",
+    "missing_dependency": "a dependency still fails to install after the automatic retries",
+    "git_error": "a git operation failed",
+    "merge_conflict": "the branch keeps conflicting with the base branch",
+    "merge_failed": "merging the approved change failed",
+    "tests_failing": "tests or the eval keep failing",
+    "review_rejected": "the review is still not approved after the last round",
+    "secret": "guardrail: the diff adds something that looks like a secret",
+    "protected_paths": "guardrail: the diff changes protected paths",
+    "diff_size": "guardrail: the diff is larger than max_diff_lines",
+}
+TL_ACTIONS = ("retry", "restart", "split", "wait", "drop")
+REQUEST_PAUSE_MIN = 60  # request-level Tech Lead out of rounds: pause, then try again
+
+
+def _minutes(value: object) -> int:
+    """Tech Lead `wait` length, clamped to 5 min .. 1 day (30 when missing or unreadable)."""
+    try:
+        m = int(float(str(value).strip().rstrip("m") or 30))
+    except ValueError:
+        m = 30
+    return min(24 * 60, max(5, m or 30))
+
+
 def prompt(name: str, **vars: object) -> str:
     text = resources.files("agent_office.prompts").joinpath(f"{name}.md").read_text(encoding="utf-8")
     return Template(text).safe_substitute({k: str(v) for k, v in vars.items()})
@@ -192,6 +220,11 @@ class Office:
             self._breakdown(self.store.requests[s.target])
         elif s.kind == "goal":
             self._goal_check(self.store.requests[s.target])
+        elif s.kind == "techlead":
+            if s.target in self.store.requests:
+                self._tech_lead_request(self.store.requests[s.target])
+            else:
+                self._tech_lead(self.store.tasks[s.target])
         else:
             task = self.store.tasks[s.target]
             handler = {
@@ -347,9 +380,13 @@ class Office:
 
     # ------------------------------------------------------------------ stages
     def _request_text(self, req: Request) -> str:
-        if not req.po_answers:
-            return req.text
-        return req.text + "\n\n## Product Owner answers to earlier questions\n\n" + "\n\n".join(req.po_answers)
+        text = req.text
+        if req.po_answers:
+            text += "\n\n## Product Owner answers to earlier questions\n\n" + "\n\n".join(req.po_answers)
+        if req.tl_notes:
+            text += ("\n\n## Tech Lead decisions (technical questions are decided by the team, not the PO)\n\n"
+                     + "\n\n".join(req.tl_notes))
+        return text
 
     def _block_request(self, req: Request, note: str, questions: list[str] | None = None) -> None:
         req.blocked_stage = req.status if req.status in ("new", "planned") else "new"
@@ -391,13 +428,12 @@ class Office:
             items = d.get("tasks", [])
             assert questions or (isinstance(items, list) and items)
         except Exception as e:  # noqa: BLE001
-            self._block_request(req, f"could not parse task list: {e}")
+            self._escalate_request(req, "parse_error", f"breakdown output not parseable: {e}\n{res.text[-1500:]}")
             return
         if questions:
-            self.say("claude", "po", "Trước khi chia việc em cần anh trả lời: " + " | ".join(questions),
-                     kind="question")
-            self._block_request(req, "PM needs answers before planning", questions)
+            self._escalate_request(req, "questions", "PM has questions before planning", questions)
             return
+        req.tl_rounds = 0
         req.design = str(d.get("design", "")).strip() or req.design
         created = self._add_tasks(req, items)
         req.status = "planned"
@@ -406,7 +442,9 @@ class Office:
 
     def _goal_check(self, req: Request) -> None:
         done = [self.store.tasks[t] for t in req.task_ids if t in self.store.tasks]
-        listing = "\n".join(f"- {t.id} {t.title}: {t.brief}" for t in done) or "- (none)"
+        listing = "\n".join(f"- {t.id} {t.title}: {t.brief}"
+                            + (f" (DROPPED, not merged: {t.dropped[:300]})" if t.dropped else "")
+                            for t in done) or "- (none)"
         rnd = req.goal_rounds + 1
         res = self._call("claude", prompt("pm_goal", request=self._request_text(req), request_id=req.id,
                                           done_tasks=listing, round=rnd, max_rounds=self.cfg.max_goal_rounds,
@@ -417,13 +455,13 @@ class Office:
         try:
             d = extract_json(res.text)
         except Exception as e:  # noqa: BLE001
-            self._block_request(req, f"goal check output not parseable: {e}")
+            self._escalate_request(req, "parse_error", f"goal check output not parseable: {e}\n{res.text[-1500:]}")
             return
         questions = [str(q) for q in d.get("questions", [])]
         if questions:
-            self.say("claude", "po", "Để hoàn tất em cần anh trả lời: " + " | ".join(questions), kind="question")
-            self._block_request(req, "PM needs answers to finish the request", questions)
+            self._escalate_request(req, "questions", "PM has questions before finishing the request", questions)
             return
+        req.tl_rounds = 0
         req.goal_rounds = rnd
         req.summary = str(d.get("summary", ""))[:4000]
         items = d.get("tasks") or []
@@ -434,8 +472,16 @@ class Office:
             self.echo(f"{req.id}: delivered. {req.summary[:200]}")
             return
         if rnd > self.cfg.max_goal_rounds:
-            self._block_request(req, f"still not done after {self.cfg.max_goal_rounds} follow-up rounds: "
-                                     f"{req.summary[:300]}")
+            # A hard cap, not a question: deliver what is merged and report what is left.
+            req.status = "done"
+            req.note = f"stopped after {self.cfg.max_goal_rounds} follow-up rounds; still missing: {req.summary[:300]}"
+            req.decisions.append(f"Tech Lead: closed after {self.cfg.max_goal_rounds} follow-up rounds; "
+                                 f"left for a new request: {req.summary[:300]}")
+            self.store.event("request_done", request_id=req.id, summary=req.summary, rounds=rnd, partial=True)
+            self.say("claude", "po", f"Báo cáo {req.id}: đã làm {self.cfg.max_goal_rounds} vòng bổ sung, phần đã "
+                     f"merge dùng được. Còn thiếu: {req.summary[:500]}. Gửi yêu cầu mới nếu anh muốn làm tiếp.",
+                     kind="report")
+            self.echo(f"{req.id}: closed after {self.cfg.max_goal_rounds} follow-up rounds (partial)")
             return
         created = self._add_tasks(req, items)
         self.store.event("request_followup", request_id=req.id, round=rnd, tasks=created, summary=req.summary)
@@ -448,6 +494,8 @@ class Office:
     def _spec(self, task: Task) -> None:
         req = self.store.requests.get(task.request_id)
         po = f"## Product Owner answer to an earlier question\n\n{task.po_answer}" if task.po_answer else ""
+        if task.tl_notes:
+            po += "\n\n## Tech Lead decisions (follow them; do not ask these again)\n\n" + "\n\n".join(task.tl_notes)
         res = self._call("claude", prompt("pm_spec", request=self._request_text(req) if req else "", task_id=task.id,
                                           title=task.title, brief=task.brief, po_answer=po,
                                           specs=specdocs.context(self.repo)),
@@ -458,20 +506,19 @@ class Office:
             d = extract_json(res.text)
             questions = [str(q) for q in d.get("questions", [])]
             if questions:
-                task.questions = questions
                 self._clear_checkpoint(task)
-                self.say("claude", "po", f"{task.id}: em cần anh trả lời: " + " | ".join(questions),
-                         task.id, kind="question")
-                self._block(task, "PM needs answers: " + " | ".join(questions)[:800])
+                self._escalate(task, "questions", "PM has questions: " + " | ".join(questions)[:800], questions)
                 return
             task.spec = str(d["spec"])
             task.acceptance_criteria = [str(x) for x in d.get("acceptance_criteria", [])]
             task.test_plan = [str(x) for x in d.get("test_plan", [])]
             task.out_of_scope = [str(x) for x in d.get("out_of_scope", [])]
-            task.decisions = [str(x) for x in d.get("decisions", [])]
+            kept = [x for x in task.decisions if x.startswith("Tech Lead")]  # decided before this spec
+            task.decisions = list(dict.fromkeys([str(x) for x in d.get("decisions", [])] + kept))
             task.related_specs = [str(x) for x in d.get("related_specs", [])]
+            task.files = [str(x) for x in d.get("files", [])] or task.files
         except Exception as e:  # noqa: BLE001
-            self._block(task, f"spec output not parseable: {e}")
+            self._escalate(task, "parse_error", f"spec output not parseable: {e}\n{res.text[-1500:]}")
             return
         self._clear_checkpoint(task)
         self._move(task, Stage.DEV, f"{len(task.acceptance_criteria)} acceptance criteria")
@@ -481,7 +528,7 @@ class Office:
 
     def _ensure_worktree(self, task: Task) -> Path:
         path, branch, base = wt.ensure_worktree(self.repo, self.cfg.worktrees_path(self.repo), task.id,
-                                                self.cfg.base_branch)
+                                                self.cfg.base_branch, task.attempt)
         if not task.worktree:
             task.worktree, task.branch, task.base_ref = str(path), branch, base
             self.store.event("worktree_ready", task_id=task.id, path=str(path), branch=branch)
@@ -517,6 +564,8 @@ class Office:
                  f"{bullets(task.related_specs)}\n"]
         if task.po_answer:
             parts.append(f"## Product Owner answer\n\n{task.po_answer}\n")
+        if task.tl_notes:
+            parts.append("## Tech Lead decisions (follow them)\n\n" + "\n".join(f"- {n}" for n in task.tl_notes) + "\n")
         if task.review_comments:
             parts.append(f"## Review feedback to address (round {task.review_round})\n\n" + "\n".join(
                 f"- [{c.get('severity', '')}] {c.get('file', '')}:{c.get('line', '')} {c.get('text', '')}"
@@ -532,7 +581,7 @@ class Office:
             try:
                 conflict_files = wt.start_merge(path, self.cfg.base_branch)
             except wt.GitError as e:
-                self._block(task, f"could not merge {self.cfg.base_branch}: {e}")
+                self._escalate(task, "git_error", f"could not merge {self.cfg.base_branch}: {e}")
                 return
             if not conflict_files:  # the base moved again and now merges cleanly
                 task.merge_conflict = False
@@ -543,6 +592,10 @@ class Office:
                     f"these files conflict: {', '.join(conflict_files[:20])}. Resolve every conflict so that "
                     f"both this task and the work already on {self.cfg.base_branch} keep working, remove all "
                     "conflict markers, `git add` the files, run the tests. Do not commit or abort the merge.")
+        elif task.tl_guidance:
+            mode = ("TECH LEAD DECISION: the Tech Lead looked at why this task was stuck and decided how to "
+                    f"continue. Follow it exactly (it is also under 'Tech Lead decisions' in TASK.md).\n\n"
+                    f"{task.tl_guidance}")
         elif task.env_note:
             mode = ("ENVIRONMENT: last time you stopped on a missing dependency. The office re-ran the setup "
                     f"command; result below. Install whatever is still missing yourself (see Rules), then "
@@ -572,13 +625,14 @@ class Office:
                          f"({task.env_fixes}/{self.cfg.dep_retries}).", task.id, kind="env_retry")
                 return  # still in DEV: the next step runs the developer again
             self.say("codex", "claude", f"{task.id} bị chặn: {res.text.strip()[8:400]}", task.id, kind="blocked")
-            self._block(task, res.text.strip()[:1000])
+            kind = "missing_dependency" if MISSING_DEP.search(reason) else "dev_blocked"
+            self._escalate(task, kind, reason[:3000])
             return
         if conflict_files:
             left = wt.conflict_markers(path)
             if left:
                 wt.abort_merge(path)
-                self._block(task, f"conflict markers left in {', '.join(left[:5])}")
+                self._escalate(task, "merge_conflict", f"conflict markers left in {', '.join(left[:5])}")
                 return
             wt.finish_merge(path, f"merge {self.cfg.base_branch} into {task.branch} (conflicts resolved by codex)")
             task.merge_conflict = False
@@ -586,32 +640,36 @@ class Office:
         else:
             wt.commit_all(path, f"feat({task.id}): {task.title}")
         task.env_note = ""
+        task.tl_guidance = ""
         self._clear_checkpoint(task)
-        problem = self._guardrail_problem(task, path)
+        rule, problem = self._guardrail_problem(task, path)
         if problem:
-            self.say("claude", "po", f"{task.id} dừng lại để anh xem: {problem}", task.id, kind="question")
-            self._block(task, problem)
+            # The guardrail stays a hard stop for the change; the Tech Lead decides how to fix it.
+            self._escalate(task, rule, problem)
             return
         self._move(task, Stage.TEST)
         self.say("codex", "all", f"{task.id} code xong: {_first(res.text)}. Giờ mình chạy test.", task.id,
                  kind="dev_done")
 
-    def _guardrail_problem(self, task: Task, path: Path) -> str:
+    def _guardrail_problem(self, task: Task, path: Path) -> tuple[str, str]:
+        """(rule, problem) for the first guardrail the branch breaks, ("", "") if none."""
         touched = self._protected_changes(task, path)
         if touched:
-            return f"changed protected paths: {', '.join(touched[:5])}"
+            self.store.event("guardrail", task_id=task.id, rule="protected_paths", files=touched[:20])
+            return "protected_paths", (f"changed protected paths: {', '.join(touched[:5])}; these must not be "
+                                       "changed by this team")
         if self.cfg.block_secrets:
             for f, line in wt.added_lines(path, task.base_ref):
                 if any(p.search(line) for p in SECRET_PATTERNS):
                     self.store.event("guardrail", task_id=task.id, rule="secret", file=f)
-                    return f"diff adds something that looks like a secret in {f}; remove it before review"
+                    return "secret", f"diff adds something that looks like a secret in {f}; remove it before review"
         if self.cfg.max_diff_lines:
             n = wt.changed_line_count(path, task.base_ref)
             if n > self.cfg.max_diff_lines:
                 self.store.event("guardrail", task_id=task.id, rule="diff_size", lines=n)
-                return (f"diff changes {n} lines (limit {self.cfg.max_diff_lines}); split the task or raise "
-                        "max_diff_lines")
-        return ""
+                return "diff_size", (f"diff changes {n} lines (limit {self.cfg.max_diff_lines}); split the task "
+                                     "into smaller ones")
+        return "", ""
 
     def _protected_changes(self, task: Task, path: Path) -> list[str]:
         if not self.cfg.protected_paths:
@@ -699,7 +757,8 @@ class Office:
         task.test_attempts += 1
         task.test_output = (cmd_out if not cmd_pass else res.text)[-6000:]
         if task.test_attempts >= MAX_TEST_ATTEMPTS:
-            self._block(task, f"tests still failing after {task.test_attempts} attempts")
+            self._escalate(task, "tests_failing", f"tests still failing after {task.test_attempts} attempts:\n"
+                                                  f"{task.test_output[-3000:]}")
         else:
             self._move(task, Stage.DEV, f"tests failed (attempt {task.test_attempts}/{MAX_TEST_ATTEMPTS})")
             self.say("codex", "all", f"{task.id} test fail ({task.test_attempts}/{MAX_TEST_ATTEMPTS}), "
@@ -725,7 +784,7 @@ class Office:
             verdict = str(d.get("verdict", "")).lower()
             comments = [c for c in d.get("comments", []) if isinstance(c, dict)]
         except Exception as e:  # noqa: BLE001
-            self._block(task, f"review output not parseable: {e}")
+            self._escalate(task, "parse_error", f"review output not parseable: {e}\n{res.text[-1500:]}")
             return
         task.review_round = rnd
         self._clear_checkpoint(task)
@@ -741,7 +800,8 @@ class Office:
             return
         task.review_comments = comments
         if rnd >= MAX_REVIEW_ROUNDS:
-            self._block(task, f"review not approved after {rnd} rounds: {str(d.get('summary', ''))[:500]}")
+            self._escalate(task, "review_rejected", f"review not approved after {rnd} rounds: "
+                                                    f"{str(d.get('summary', ''))[:1500]}")
         else:
             self._move(task, Stage.DEV, f"changes requested in round {rnd} ({len(comments)} comments)")
             asks = "; ".join(f"{c.get('file', '')}: {c.get('text', '')}" for c in comments[:4])
@@ -767,8 +827,8 @@ class Office:
             task.conflicts += 1
             self.store.event("merge_conflict", task_id=task.id, round=task.conflicts)
             if task.conflicts > MAX_CONFLICT_ROUNDS:
-                self._block(task, f"merge conflict with {self.cfg.base_branch} still there after "
-                                  f"{MAX_CONFLICT_ROUNDS} attempts")
+                self._escalate(task, "merge_conflict", f"merge conflict with {self.cfg.base_branch} still there "
+                                                       f"after {MAX_CONFLICT_ROUNDS} attempts")
                 return
             task.merge_conflict = True
             self._move(task, Stage.DEV, f"merge conflict with {self.cfg.base_branch} ({task.conflicts}/"
@@ -810,7 +870,7 @@ class Office:
                     return
                 wt.merge_pr(self.repo, task.pr_url, self.cfg.remote, self.cfg.base_branch)
         except wt.GitError as e:
-            self._block(task, f"could not merge: {e}")
+            self._escalate(task, "merge_failed", f"could not merge: {e}")
             return
         self.store.event("pr_merged", task_id=task.id, url=task.pr_url, by="auto")
         if task.eval_score is not None:
@@ -825,6 +885,218 @@ class Office:
         self._move(task, Stage.DONE, note)
         if task.worktree:
             wt.remove_worktree(self.repo, Path(task.worktree))
+
+    # ------------------------------------------------------------------ Tech Lead
+    # Technical blockers never go to the PO. The office hands them to Claude as Tech Lead, who
+    # either decides (retry with guidance, restart from the base, split, wait, drop) or, only for
+    # a genuinely unclear business requirement, asks the PO.
+    def _escalate(self, task: Task, kind: str, reason: str, questions: list[str] | None = None) -> None:
+        if task.tl_rounds >= self.cfg.tech_lead_rounds:
+            self._retire(task, f"Tech Lead out of rounds ({task.tl_rounds}) on {kind}: {reason[:300]}", report=True)
+            return
+        task.tl_issue, task.tl_kind, task.questions = reason[:6000], kind, list(questions or [])
+        self.store.event("techlead_needed", task_id=task.id, issue=kind, reason=reason[:500],
+                         round=task.tl_rounds + 1, of=self.cfg.tech_lead_rounds)
+        frm = "codex" if task.stage in (Stage.DEV, Stage.TEST) else "claude"
+        self.say(frm, "claude", f"{task.id}: {TL_KINDS.get(kind, kind)}. Tech Lead xử lý, không hỏi PO.",
+                 task.id, kind="escalate")
+        self.echo(f"{task.id}: technical blocker ({kind}) -> Tech Lead")
+
+    def _escalate_request(self, req: Request, kind: str, reason: str, questions: list[str] | None = None) -> None:
+        if req.tl_rounds >= self.cfg.tech_lead_rounds:
+            # A request cannot be dropped: pause, then plan again with fresh rounds.
+            until = self.clock() + timedelta(minutes=REQUEST_PAUSE_MIN)
+            req.retry_at, req.tl_rounds, req.tl_issue = until.isoformat(timespec="seconds"), 0, ""
+            self.store.event("techlead_paused", request_id=req.id, issue=kind, until=req.retry_at)
+            self.echo(f"{req.id}: Tech Lead out of rounds on {kind}; trying again at {req.retry_at}")
+            return
+        req.tl_issue, req.tl_kind, req.tl_questions = reason[:6000], kind, list(questions or [])
+        self.store.event("techlead_needed", request_id=req.id, issue=kind, reason=reason[:500],
+                         round=req.tl_rounds + 1, of=self.cfg.tech_lead_rounds)
+        self.say("claude", "claude", f"{req.id}: {TL_KINDS.get(kind, kind)}. Tech Lead xử lý, không hỏi PO.",
+                 kind="escalate")
+        self.echo(f"{req.id}: technical blocker ({kind}) -> Tech Lead")
+
+    def _others(self, task: Task | None) -> str:
+        rows = []
+        for u in sorted(self.store.tasks.values(), key=lambda t: t.id):
+            if task is not None and u.id == task.id:
+                continue
+            state = u.stage.value + (f", dropped: {u.dropped[:80]}" if u.dropped else "")
+            rows.append(f"- {u.id} [{state}] {u.title}" + (f"; files: {', '.join(u.files[:8])}" if u.files else "")
+                        + (f"; after {', '.join(u.depends_on)}" if u.depends_on else ""))
+        return "\n".join(rows) or "- (none)"
+
+    def _tl_prompt(self, target: str, kind: str, issue: str, questions: list[str], rnd: int, context: str) -> str:
+        return prompt("tech_lead", target=target, kind=kind, kind_text=TL_KINDS.get(kind, kind),
+                      issue=issue, questions=bullets(questions), round=rnd, max_rounds=self.cfg.tech_lead_rounds,
+                      context=context, specs=specdocs.context(self.repo))
+
+    def _tech_lead(self, task: Task) -> None:
+        rnd = task.tl_rounds + 1
+        req = self.store.requests.get(task.request_id)
+        context = (f"## Product Owner request\n\n{self._request_text(req) if req else ''}\n\n"
+                   f"## Task {task.id}: {task.title} (stage {task.stage.value}, branch {task.branch or '-'})\n\n"
+                   f"{task.brief}\n\n### Spec\n\n{task.spec or '(not written yet)'}\n\n### Acceptance criteria\n\n"
+                   f"{bullets(task.acceptance_criteria)}\n\n### Files it changes\n\n{bullets(task.files)}\n\n"
+                   f"### Counters\n\ntest attempts {task.test_attempts}, review rounds {task.review_round}, merge "
+                   f"conflicts {task.conflicts}, dependency fixes {task.env_fixes}, restarts {task.attempt}\n\n"
+                   f"### Earlier Tech Lead decisions\n\n{bullets(task.tl_notes)}\n\n### Review comments\n\n"
+                   + bullets([f"[{c.get('severity', '')}] {c.get('file', '')}: {c.get('text', '')}"
+                              for c in task.review_comments])
+                   + f"\n\n### Last failing test output\n\n```\n{task.test_output[-2500:]}\n```\n\n"
+                   f"## Other tasks (ordering and file overlap)\n\n{self._others(task)}")
+        cwd = Path(task.worktree) if task.worktree and Path(task.worktree).exists() else self.repo
+        res = self._call("claude", self._tl_prompt(f"task {task.id}", task.tl_kind, task.tl_issue, task.questions,
+                                                   rnd, context), cwd, task.id, f"techlead{rnd}", task)
+        if res is None:
+            return  # resting: the issue stays and is picked up again
+        task.tl_rounds = rnd
+        try:
+            d = extract_json(res.text)
+            business = [str(q) for q in d.get("business_questions", []) if str(q).strip()]
+            action = str(d.get("action", "")).lower()
+            assert business or action in TL_ACTIONS, f"unknown action {action!r}"
+        except Exception as e:  # noqa: BLE001
+            self.store.event("techlead_unparseable", task_id=task.id, round=rnd, error=str(e)[:300])
+            if rnd >= self.cfg.tech_lead_rounds:
+                self._retire(task, f"Tech Lead answer not readable after {rnd} rounds ({task.tl_kind})", report=True)
+            return
+        kind = task.tl_kind
+        task.tl_issue, task.tl_kind = "", ""
+        if business:
+            task.questions = business
+            self.store.event("techlead_decision", task_id=task.id, issue=kind, action="ask_po", round=rnd)
+            self.say("claude", "po", f"{task.id}: câu hỏi nghiệp vụ, cần anh quyết: " + " | ".join(business),
+                     task.id, kind="question")
+            self._block(task, "business question for the PO: " + " | ".join(business)[:800])
+            return
+        decision = str(d.get("decision", "")).strip() or f"{action} after {kind}"
+        guidance = str(d.get("guidance", "")).strip()
+        task.decisions.append(f"Tech Lead ({kind}): {decision}")
+        task.tl_notes.append(f"[{kind}] {decision}" + (f" | {guidance}" if guidance else ""))
+        task.questions = []
+        self.store.event("techlead_decision", task_id=task.id, issue=kind, action=action, round=rnd,
+                         decision=decision[:500])
+        self.say("claude", "codex" if action in ("retry", "restart") else "all",
+                 f"Tech Lead quyết {task.id} ({action}): {decision[:400]}", task.id, kind="decision")
+        self.echo(f"{task.id}: Tech Lead -> {action}: {decision[:160]}")
+        if action == "drop":
+            self._retire(task, f"dropped by the Tech Lead: {decision}", report=True)
+            return
+        if action == "split":
+            items = [it for it in d.get("tasks", []) if isinstance(it, dict)]
+            req = self.store.requests.get(task.request_id)
+            created = self._add_tasks(req, items) if req and items else []
+            if not created:
+                task.tl_notes.append("split was not possible (no room for new tasks); retrying instead")
+                action = "retry"
+            else:
+                for tid in created:
+                    nt = self.store.tasks[tid]
+                    nt.depends_on = list(dict.fromkeys(task.depends_on + nt.depends_on))
+                for u in self.store.tasks.values():
+                    if task.id in u.depends_on and u.id not in created:
+                        u.depends_on = [x for x in u.depends_on if x != task.id] + created
+                self._retire(task, f"split into {', '.join(created)}: {decision}")
+                return
+        for key in ("spec",):
+            if str(d.get(key, "")).strip():
+                task.spec = str(d[key])
+        for key in ("acceptance_criteria", "test_plan", "files"):
+            if isinstance(d.get(key), list) and d[key]:
+                setattr(task, key, [str(x) for x in d[key]])
+        task.tl_guidance = guidance or decision
+        task.test_attempts = task.review_round = task.env_fixes = 0
+        if action == "wait":
+            minutes = _minutes(d.get("minutes"))
+            task.retry_at = (self.clock() + timedelta(minutes=minutes)).isoformat(timespec="seconds")
+            if kind in ("merge_conflict",):
+                task.conflicts = 0
+            return
+        task.retry_at = ""
+        if action == "restart" or kind == "secret":
+            # Fresh branch from the latest base. A branch that held a secret is deleted, never merged.
+            if task.worktree:
+                wt.discard_branch(self.repo, Path(task.worktree), task.branch, delete=kind == "secret")
+            task.attempt += 1
+            task.worktree = task.branch = task.base_ref = task.pr_url = ""
+            task.merge_conflict, task.conflicts, task.test_output = False, 0, ""
+            task.review_comments, task.checkpoint = [], None
+            after = [str(x) for x in d.get("after", []) if str(x) in self.store.tasks and str(x) != task.id]
+            task.depends_on = list(dict.fromkeys(task.depends_on + after))
+            to = Stage.TODO if after else (Stage.SPEC if not task.spec else Stage.DEV)
+            self._reroute(task, to, f"Tech Lead restart ({kind})" + (f" after {', '.join(after)}" if after else ""))
+            return
+        # retry: run the stuck step again with the Tech Lead's guidance
+        if kind == "merge_conflict":
+            task.conflicts, task.merge_conflict = 0, bool(task.worktree)
+        if task.stage == Stage.SPEC or (kind in ("parse_error", "merge_failed") and task.stage != Stage.TEST):
+            return  # same step again (spec / review / merge)
+        if task.stage != Stage.DEV:
+            self._reroute(task, Stage.DEV, f"Tech Lead retry ({kind})")
+
+    def _reroute(self, task: Task, to: Stage, note: str) -> None:
+        frm = task.stage
+        task.reroute(to, note)
+        self.store.event("stage_changed", task_id=task.id, frm=frm.value, to=to.value, note=note)
+        self.echo(f"{task.id}: {frm.value} -> {to.value} ({note})")
+
+    def _retire(self, task: Task, why: str, report: bool = False) -> None:
+        """Take a task off the board without merging it; the goal check re-plans what is missing."""
+        task.dropped = why[:1000]
+        task.tl_issue = task.tl_kind = ""
+        req = self.store.requests.get(task.request_id)
+        if req is not None:
+            req.decisions.append(f"Tech Lead: {task.id} '{task.title}' not merged: {why[:300]}")
+        if task.worktree:
+            wt.discard_branch(self.repo, Path(task.worktree), task.branch, delete=True)
+        self._reroute(task, Stage.DONE, why[:200])
+        self.store.event("task_dropped", task_id=task.id, why=why[:500])
+        if report:
+            self.say("claude", "po", f"Báo cáo (không cần anh làm gì): {task.id} '{task.title}' được gác lại, "
+                     f"không merge. Lý do: {why[:400]}. Khi kiểm tra mục tiêu em sẽ lên kế hoạch lại phần còn thiếu.",
+                     task.id, kind="report")
+
+    def _tech_lead_request(self, req: Request) -> None:
+        rnd = req.tl_rounds + 1
+        context = (f"## Product Owner request {req.id} (status {req.status})\n\n{self._request_text(req)}\n\n"
+                   f"## Tasks so far\n\n{self._others(None)}")
+        res = self._call("claude", self._tl_prompt(f"request {req.id}", req.tl_kind, req.tl_issue, req.tl_questions,
+                                                   rnd, context), self.repo, req.id, f"techlead{rnd}")
+        if res is None:
+            return
+        req.tl_rounds = rnd
+        try:
+            d = extract_json(res.text)
+            business = [str(q) for q in d.get("business_questions", []) if str(q).strip()]
+            action = str(d.get("action", "retry")).lower()
+        except Exception as e:  # noqa: BLE001
+            self.store.event("techlead_unparseable", request_id=req.id, round=rnd, error=str(e)[:300])
+            if rnd >= self.cfg.tech_lead_rounds:
+                self._escalate_request(req, req.tl_kind, req.tl_issue, req.tl_questions)
+            return
+        kind = req.tl_kind
+        req.tl_issue, req.tl_kind = "", ""
+        if business:
+            req.tl_questions = []
+            self.store.event("techlead_decision", request_id=req.id, issue=kind, action="ask_po", round=rnd)
+            self.say("claude", "po", f"{req.id}: câu hỏi nghiệp vụ, cần anh quyết: " + " | ".join(business),
+                     kind="question")
+            self._block_request(req, "business question for the PO", business)
+            return
+        decision = str(d.get("decision", "")).strip() or f"{action} after {kind}"
+        guidance = str(d.get("guidance", "")).strip()
+        qs = "\n".join(f"Q: {q}" for q in req.tl_questions)
+        req.tl_notes.append((qs + "\nA: " if qs else f"[{kind}] ") + (guidance or decision))
+        req.decisions.append(f"Tech Lead ({kind}): {decision}")
+        req.tl_questions = []
+        self.store.event("techlead_decision", request_id=req.id, issue=kind, action=action, round=rnd,
+                         decision=decision[:500])
+        self.say("claude", "all", f"Tech Lead quyết {req.id}: {decision[:400]}", kind="decision")
+        if action == "wait":
+            minutes = _minutes(d.get("minutes"))
+            req.retry_at = (self.clock() + timedelta(minutes=minutes)).isoformat(timespec="seconds")
 
     # ------------------------------------------------------------------ merges
     def sync_merged(self) -> list[str]:
@@ -876,6 +1148,7 @@ class Office:
         task.test_attempts = 0
         task.env_fixes = 0
         task.blocked_reason = ""
+        task.tl_issue = task.tl_kind = ""
         self._move(task, back, "PO answered")
         self.say("po", "claude", f"Trả lời {task.id}: {text.strip()[:400]}", task.id, kind="answer")
         self.store.save()

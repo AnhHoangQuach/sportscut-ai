@@ -3,13 +3,13 @@ Product Owner (a human) sent the request below for the repository in your curren
 directory. Read the repo (README, code, tests) to understand where things stand. Do NOT
 modify any file.
 
-The PO wants the team to work on its own and only be asked when something is genuinely
-unclear. So:
-- If a decision is reasonable to make yourself (tech choice, file layout, defaults), make
-  it and note it in the task brief as an assumption.
-- Ask questions ONLY when the answer would change what gets built in a way the PO would
-  care about and you cannot infer it from the request or repo. Then return questions
-  instead of tasks.
+The PO only sends requests; you and the Tech Lead own everything else. So:
+- Technical and coordination decisions (tech choice, libraries, file layout, data formats,
+  defaults, task order, how to avoid conflicts) are never questions: make them and note
+  them in the task brief as assumptions.
+- Ask questions ONLY about an unclear business requirement: the answer changes what the
+  product does for its users and cannot be inferred from the request, the repo or the
+  specs. Then return questions instead of tasks. The Tech Lead screens them first.
 
 Think before you split (if the Superpowers skill `brainstorming` is available, follow it; it
 is the same discipline):
@@ -25,6 +25,9 @@ Split the request into the smallest sensible set of tasks. Each task must:
 - be finishable in ONE small pull request (roughly < 400 changed lines),
 - be independently testable,
 - list the keys of earlier tasks it depends on (keys are "1", "2", ... in your list order).
+- not block other tasks: if two tasks would change the same file (a shared registry, the CLI
+  entry point, `pyproject.toml`), make the later one depend on the earlier one so they run
+  one after the other instead of conflicting.
 
 Prefer 2-8 tasks. Put foundations (project setup, shared modules) first.
 

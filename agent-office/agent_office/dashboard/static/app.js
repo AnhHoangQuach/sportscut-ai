@@ -4,7 +4,7 @@
 
 const STAGES = [
   ["todo", "Claude PM"], ["spec", "Claude PM"], ["dev", "Codex"], ["test", "Codex"],
-  ["review", "Claude TL"], ["pr", "merge"], ["done", ""], ["blocked", "chờ PO"],
+  ["review", "Claude TL"], ["pr", "merge"], ["done", ""], ["blocked", "chờ PO (nghiệp vụ)"],
 ];
 const STAGE_AGENT = { spec: "claude", review: "claude", dev: "codex", test: "codex" };
 const ROLES = { claude: "PM · Tech Lead · Reviewer", codex: "Developer · Tester" };
@@ -204,6 +204,9 @@ function renderBoard() {
       if (t.review_round) meta.push(`<span class="badge">review ${t.review_round}/3</span>`);
       if (t.test_attempts) meta.push(`<span class="badge">test fail ${t.test_attempts}</span>`);
       if (t.checkpoint) meta.push(`<span class="badge blocked">checkpoint</span>`);
+      if (t.tl_issue) meta.push(`<span class="badge planned">Tech Lead xử lý</span>`);
+      if (t.dropped) meta.push(`<span class="badge">gác lại</span>`);
+      if (t.retry_at) meta.push(`<span class="badge">chờ đến ${hhmm(t.retry_at)}</span>`);
       if (t.depends_on && t.depends_on.length && t.stage === "todo") meta.push(`<span class="badge">sau ${esc(t.depends_on.join(", "))}</span>`);
       return `<button class="tcard ${agent} ${active.has(t.id) ? "active" : ""}" data-task="${esc(t.id)}">
         <div class="tid">${esc(t.id)} · ${esc(t.request_id)}</div>
@@ -257,6 +260,10 @@ function describe(e) {
     case "conflict_resolved": return `<span class="ev-good">Đã gỡ xung đột</span> <b>${esc(e.task_id)}</b>`;
     case "guardrail": return `<span class="ev-bad">Rào chắn</span> dừng <b>${esc(e.task_id || e.request_id)}</b> (${esc(e.rule)})`;
     case "budget_reached": return `${who(e.agent)} <span class="ev-warn">hết ngân sách hôm nay</span> (${esc(e.calls)}/${esc(e.cap)})`;
+    case "techlead_needed": return `<b>${esc(e.task_id || e.request_id)}</b> vướng kỹ thuật (${esc(e.issue)}), <span class="who claude">Claude</span> Tech Lead xử lý`;
+    case "techlead_decision": return `Tech Lead quyết <b>${esc(e.task_id || e.request_id)}</b>: ${esc(e.action)}${e.decision ? ` · ${esc(e.decision)}` : ""}`;
+    case "techlead_paused": return `<b>${esc(e.request_id)}</b> tạm dừng, thử lại lúc ${hhmm(e.until)}`;
+    case "task_dropped": return `<b>${esc(e.task_id)}</b> <span class="ev-warn">gác lại</span>: ${esc(e.why)}`;
     case "step_crashed": return `<span class="ev-bad">Lỗi bước</span> ${esc(e.kind)} ${esc(e.target)}: ${esc(e.error)}`;
     default: return esc(e.event);
   }

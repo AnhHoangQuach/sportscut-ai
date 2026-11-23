@@ -22,7 +22,8 @@ $specs
   `docs/superpowers/` describes what was built (no spec contradicts the code).
 - If something is missing or broken, plan the smallest follow-up tasks to finish it
   (same rules as normal tasks: one small PR each, testable, keys "1", "2", ...).
-- Ask the PO only if what is missing depends on a decision you cannot reasonably make.
+- Technical gaps are never questions: plan the tasks. Ask only when what is missing depends
+  on an unclear business requirement (the Tech Lead screens questions first).
 
 ## Output
 

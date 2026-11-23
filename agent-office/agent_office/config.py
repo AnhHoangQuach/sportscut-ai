@@ -36,8 +36,13 @@ protected_paths = []
 # e.g. "python -m venv .venv && .venv/bin/python -m pip install -e '.[dev]'"
 setup_cmd = ""
 # A `BLOCKED:` answer caused by a missing package/tool triggers setup_cmd and a retry, this many
-# times per task, before the PO is asked.
+# times per task, before the Tech Lead takes over.
 dep_retries = 2
+# Technical blockers (tests keep failing, review not approved, merge conflicts, guardrails, a
+# developer `BLOCKED:`, technical questions) go to Claude as Tech Lead, never to the PO. The PO is
+# asked only about unclear business requirements. Tech Lead decisions allowed per task; after that
+# the task is dropped (reported to the PO) and the goal check re-plans what is still missing.
+tech_lead_rounds = 3
 
 [claude]
 cmd = "claude"
@@ -82,7 +87,7 @@ max_drop = 0.0
 max_calls_per_day = { claude = 0, codex = 0 }
 # Most tasks Claude may create for one request (breakdown + each follow-up round).
 max_tasks_per_request = 12
-# A task whose diff changes more lines than this goes to the PO instead of review (0 = no cap).
+# A task whose diff changes more lines than this goes back to the Tech Lead to split (0 = no cap).
 max_diff_lines = 4000
 # Stop a task whose diff adds something that looks like a key, token or private key.
 block_secrets = true
@@ -110,6 +115,7 @@ class Config:
     protected_paths: list[str] = field(default_factory=list)
     setup_cmd: str = ""
     dep_retries: int = 2
+    tech_lead_rounds: int = 3
     merge_mode: str = "auto"
     max_goal_rounds: int = 3
     simulate: bool = False
@@ -161,6 +167,7 @@ def load_config(office_dir: Path) -> Config:
         protected_paths=[str(x) for x in o.get("protected_paths", [])],
         setup_cmd=str(o.get("setup_cmd", "")),
         dep_retries=max(0, int(o.get("dep_retries", 2))),
+        tech_lead_rounds=max(1, int(o.get("tech_lead_rounds", 3))),
         merge_mode=str(o.get("merge_mode", "auto")).lower(),
         max_goal_rounds=int(o.get("max_goal_rounds", 3)),
         simulate=bool(o.get("simulate", False)),

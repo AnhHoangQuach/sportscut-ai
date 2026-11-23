@@ -35,8 +35,11 @@ reverses one, say so explicitly and list the spec files under `related_specs`
 - The test plan names the tests to write (unit/integration) and any fixture needed.
 - Keep scope tight; list anything tempting but excluded under out_of_scope.
 - Decide reasonable details yourself and list them under "Assumptions" in the spec.
-- Return questions instead of a spec ONLY if the task cannot be built correctly without
-  the PO's answer (conflicting or missing requirement that changes behaviour).
+- Technical questions are never asked: decide them (and list them under `decisions`).
+- Return questions instead of a spec ONLY for an unclear business requirement that changes
+  what the user gets (the Tech Lead screens them; only business ones reach the PO).
+- List every file the task will create or change under `files`; the office uses it to run
+  tasks that touch the same files one after the other.
 
 ## Output
 
@@ -50,6 +53,7 @@ Reply with ONLY one JSON object, no prose. The orchestrator commits it with the 
  "test_plan": ["test ...", "test ..."],
  "out_of_scope": ["..."],
  "decisions": ["each design decision or assumption a later change must respect"],
+ "files": ["sportscut/cli.py", "tests/test_cli.py"],
  "related_specs": ["docs/superpowers/specs/... existing spec this task changes"]}
 ```
 

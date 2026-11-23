@@ -52,9 +52,10 @@ Kỹ thuật dùng:
 
 - **Structured output bằng JSON** + bộ đọc chịu lỗi (`extract_json`): lấy khối JSON trong
   ```` ```json ```` hoặc object `{...}` đầu tiên, nên mô hình lỡ viết thêm chữ vẫn đọc được.
-  Không đọc được thì task chuyển `blocked` thay vì đoán.
+  Không đọc được thì Tech Lead xử lý (xem 1.10) thay vì đoán.
 - **"Ask only if truly unclear"**: prompt PM liệt kê rõ khi nào được tự quyết (công nghệ, cấu
-  trúc file, giá trị mặc định, ghi lại thành "Assumptions") và khi nào mới hỏi PO.
+  trúc file, giá trị mặc định, thứ tự task, ghi lại thành "Assumptions") và chỉ hỏi khi
+  **nghiệp vụ** chưa rõ. Câu hỏi còn phải qua Tech Lead phân loại (1.10).
 - **Ngữ cảnh qua file, không qua hội thoại**: spec, AC, phản hồi review, log test lỗi được ghi vào
   `.office/TASK.md` trong worktree. Agent luôn đọc trạng thái mới nhất, không cần nhớ phiên trước.
 
@@ -65,9 +66,8 @@ stateDiagram-v2
   [*] --> todo: Claude tách yêu cầu
   todo --> spec: các task phụ thuộc đã merge
   spec --> dev: Claude viết spec + AC
-  spec --> blocked: cần PO trả lời
+  spec --> blocked: câu hỏi nghiệp vụ (Tech Lead đã lọc)
   dev --> test: Codex code xong
-  dev --> blocked: BLOCKED / rào chắn
   test --> review: test pass (+ eval không tụt)
   test --> dev: test fail (tối đa 3 lần)
   review --> pr: Claude approve
@@ -76,13 +76,15 @@ stateDiagram-v2
   pr --> dev: xung đột merge (Codex gỡ, tối đa 2 lần)
   blocked --> spec: PO trả lời
   blocked --> dev: PO trả lời
+  dev --> dev: vướng kỹ thuật → Tech Lead quyết (retry/restart/split/wait/drop)
   done --> [*]
 ```
 
 - Chuyển trạng thái chỉ hợp lệ theo bảng `TRANSITIONS` trong `models.py`; sai là lỗi ngay.
 - Mỗi lần chuyển ghi vào `task.history` và sự kiện `stage_changed` trong `events.jsonl`.
 - Giới hạn vòng lặp (`MAX_TEST_ATTEMPTS`, `MAX_REVIEW_ROUNDS`, `MAX_CONFLICT_ROUNDS`) chặn agent
-  lặp vô hạn; hết lượt thì `blocked` và báo PO.
+  lặp vô hạn; hết lượt thì task sang **Tech Lead** (1.10), không hỏi PO. `blocked` giờ chỉ còn nghĩa
+  "chờ PO trả lời câu hỏi nghiệp vụ".
 
 ## 1.5 Giao việc (handoff) diễn ra thế nào
 
@@ -145,11 +147,59 @@ Hàm trả kèm danh sách lý do đang chờ ("T-005 waits for T-003, T-004 to 
 
 - `merge_mode = "auto"`: review đạt + test pass là tự merge (local fast-forward hoặc
   `gh pr merge --squash`), rồi làm tiếp task sau.
-- Câu hỏi của Claude (ở bước chia việc, viết spec hoặc kiểm tra mục tiêu) chuyển yêu cầu/task
-  sang `blocked`; **các task khác vẫn chạy**. PO trả lời trên dashboard/văn phòng 3D hoặc
-  `office answer T-003 "..."`, câu trả lời được ghép vào prompt lần sau.
+- Câu hỏi của Claude (ở bước chia việc, viết spec hoặc kiểm tra mục tiêu) đi qua Tech Lead trước.
+  Chỉ câu hỏi **nghiệp vụ** mới chuyển yêu cầu/task sang `blocked`; **các task khác vẫn chạy**. PO trả
+  lời trên dashboard/văn phòng 3D hoặc `office answer T-003 "..."`, câu trả lời được ghép vào prompt
+  lần sau.
 - **Kiểm tra mục tiêu (goal check)**: khi mọi task của một yêu cầu đã merge, Claude đọc lại repo
   so với yêu cầu gốc; thiếu thì tự lên task bổ sung (tối đa `max_goal_rounds`), đủ thì báo xong.
+  Hết số vòng thì yêu cầu được đóng với phần đã merge và một **báo cáo** phần còn thiếu (không hỏi).
+
+## 1.10 Ai quyết gì: PO chỉ gửi yêu cầu, PM + Tech Lead gỡ mọi blocker kỹ thuật
+
+PO chỉ gửi yêu cầu. Mọi chuyện kỹ thuật và điều phối để các task không chặn nhau là việc của PM và
+Tech Lead (Claude). PO chỉ được hỏi khi **nghiệp vụ** chưa rõ.
+
+**Phân loại.** Mọi chỗ trước đây hỏi PO giờ gọi `_escalate` (task) hoặc `_escalate_request` (yêu
+cầu): ghi `tl_issue`, `tl_kind` và bước kế tiếp của task là bước `techlead` của Claude (ưu tiên trước
+việc mới). Prompt `prompts/tech_lead.md` bắt Claude phân loại trước:
+
+- **Nghiệp vụ**: chỉ PO biết, đổi điều sản phẩm làm cho người dùng, không suy ra được từ yêu cầu,
+  repo hay `docs/superpowers/` (giải đấu nào, ai là người dùng, quy tắc sản phẩm có nhiều đáp án).
+  Trả `{"business_questions": [...]}` → task/yêu cầu `blocked`, PO trả lời như cũ.
+- **Kỹ thuật**: mọi thứ còn lại. Claude tự quyết và trả một hành động:
+
+| Hành động | Khi nào | Office làm gì |
+|---|---|---|
+| `retry` | Trả lời câu hỏi kỹ thuật, đổi cách làm, phân xử review, cách sửa test | Chạy lại bước bị kẹt với `guidance` (prompt dev mục `TECH LEAD DECISION`, `TASK.md` mục "Tech Lead decisions"); có thể thay spec/AC/files; reset bộ đếm test/review/xung đột |
+| `restart` | Nhánh xung đột mãi hoặc đi sai hướng | Bỏ worktree, cắt nhánh mới `office/T-xxx-r2` từ `main` mới nhất; `after: ["T-002"]` để chờ task kia merge trước |
+| `split` | Diff quá lớn, task ôm nhiều việc | Tạo task nhỏ hơn; task phụ thuộc task cũ giờ chờ các task mới; task cũ đóng (không merge) |
+| `wait` | Nguyên nhân bên ngoài (GitHub/mạng) | Không chạy task tới `retry_at`, rồi thử lại |
+| `drop` | Task không cần / không làm được | Đóng task (không merge), báo cáo PO; goal check lên kế hoạch lại phần thiếu |
+
+**Các chỗ đã chuyển từ PO sang Tech Lead** (`tl_kind`): câu hỏi của PM (`questions`), output không
+đọc được (`parse_error`), Codex trả `BLOCKED:` (`dev_blocked`), thiếu dependency sau `dep_retries`
+(`missing_dependency`), lỗi git (`git_error`), xung đột merge sau `MAX_CONFLICT_ROUNDS` hoặc còn marker
+(`merge_conflict`), merge PR lỗi (`merge_failed`), test fail 3 lần (`tests_failing`), review 3 vòng chưa
+đạt (`review_rejected`), rào chắn `secret` / `protected_paths` / `diff_size`.
+
+**Rào chắn không bao giờ được bỏ qua**, chỉ được sửa: prompt cấm xin nâng giới hạn, bỏ test hay
+"merge luôn". Với `secret`, mọi `retry` đều thành `restart` và nhánh cũ bị **xóa**, nên secret không
+bao giờ vào lịch sử git. Rào chắn được kiểm tra lại sau mỗi lần dev.
+
+**Giới hạn để không lặp vô hạn.** `[office] tech_lead_rounds = 3` quyết định mỗi task. Hết lượt thì
+task được gác lại (`dropped`, không merge) và PO nhận một **báo cáo** (không phải câu hỏi); goal check
+sẽ lên task mới cho phần còn thiếu. Ở cấp yêu cầu (không thể gác lại), hết lượt thì **tạm dừng 60
+phút** rồi thử lại. Giới hạn hệ thống (quota, `max_calls_per_day`) vẫn là nghỉ và tự làm lại.
+
+**Ghi quyết định.** Mỗi quyết định thêm một dòng `Tech Lead (<kind>): ...` vào `task.decisions` (hoặc
+`req.decisions`), được ghi vào `docs/superpowers/DECISIONS.md` ở lần commit kế tiếp (ghi thêm dòng còn
+thiếu, không ghi đè).
+
+**Không để task song song chặn nhau.** PM liệt kê `files` trong spec; prompt chia việc bảo task sửa
+cùng file phải phụ thuộc nhau. Scheduler (`file_conflict`) giữ một task chưa bắt đầu code ở `dev` nếu
+một task đang hoạt động khác sửa cùng file (task đang code, hoặc id nhỏ hơn, đi trước), nên hai phiên
+Codex không tạo ra xung đột merge. `INDEX.md`/`DECISIONS.md` (merge=union) không tính.
 
 ## 1.9 Trạng thái bền vững và lệnh từ bên ngoài
 

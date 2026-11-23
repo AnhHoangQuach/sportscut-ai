@@ -13,7 +13,8 @@ Rules:
   install outside this directory. Only after 2 attempts at installing it still fail, answer
   `BLOCKED:` with the exact command and the error line.
 - Stay within scope. If something blocks you (missing decision, impossible requirement),
-  stop and explain it in your final message starting with the word `BLOCKED:`.
+  stop and explain it in your final message starting with the word `BLOCKED:`. The Tech Lead
+  (not the PO) reads it and decides; say what you tried and the options you see.
 
 ## How you work (follow these Superpowers skills if they are available to you:
 `test-driven-development`, `systematic-debugging`, `verification-before-completion`)

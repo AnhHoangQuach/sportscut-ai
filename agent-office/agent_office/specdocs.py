@@ -126,9 +126,23 @@ def write_task_docs(wt: Path, task: Task, req: Request | None) -> list[str]:
     _append_once(root / "INDEX.md", INDEX_HEAD, f"| {task.id} |", [
         f"| {day} | {task.id} | {_cell(task.title)} | {task.request_id} | [design]({rel(dp)}) | "
         f"[plan]({rel(pp)}) | {_cell(', '.join(task.related_specs)) or '-'} |"])
-    _append_once(root / "DECISIONS.md", DECISIONS_HEAD, f" {task.id} (",
-                 [f"- {day} {task.id} ({task.request_id}): {_cell(d)}" for d in task.decisions])
+    lines = [f"- {day} {task.id} ({task.request_id}): {_cell(d)}" for d in task.decisions]
+    if req is not None:
+        lines += [f"- {day} {req.id}: {_cell(d)}" for d in req.decisions]
+    _append_missing(root / "DECISIONS.md", DECISIONS_HEAD, lines)
     return paths
+
+
+def _append_missing(path: Path, head: str, lines: list[str]) -> None:
+    """Append each line not in the file yet (decisions added later, e.g. by the Tech Lead, land too)."""
+    text = path.read_text(encoding="utf-8") if path.exists() else head
+    have = set(text.splitlines())
+    new = [ln for ln in dict.fromkeys(lines) if ln not in have]
+    if not new and path.exists():
+        return
+    if new and not text.endswith("\n"):
+        text += "\n"
+    path.write_text(text + "".join(ln + "\n" for ln in new), encoding="utf-8")
 
 
 def context(repo: Path, max_chars: int = 6000) -> str:

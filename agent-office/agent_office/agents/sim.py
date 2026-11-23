@@ -89,7 +89,7 @@ class SimAgent(CliAgent):
     def _kind(self, prompt: str) -> str:
         if "Reply with exactly: OK" in prompt:
             return "probe"
-        for marker, kind in (("Split the request", "breakdown"), ("implementation spec", "spec"),
+        for marker, kind in (("**Tech Lead on call**", "techlead"), ("Split the request", "breakdown"), ("implementation spec", "spec"),
                              ("Tech Lead reviewer", "review"), ("has been built, reviewed and merged", "goal"),
                              ("**Tester**", "test"), ("**Developer**", "dev")):
             if marker in prompt:
@@ -124,6 +124,10 @@ class SimAgent(CliAgent):
                                   ensure_ascii=False), "", 0
             return json.dumps({"verdict": "approve", "summary": f"{tid} đạt đủ acceptance criteria, test rõ ràng.",
                                "comments": []}, ensure_ascii=False), "", 0
+        if kind == "techlead":
+            return json.dumps({"action": "retry", "decision": "Giữ cách đơn giản nhất, sửa đúng nguyên nhân rồi chạy lại.",
+                               "guidance": "Đọc lỗi gần nhất, sửa nguyên nhân gốc, chạy lại toàn bộ test."},
+                              ensure_ascii=False), "", 0
         if kind == "goal":
             return json.dumps({"done": True, "summary": "`sportscut cut match.mp4` tìm khoảnh khắc hay theo audio "
                                                         "và chuyển cảnh, xuất clip + highlights.json."},
