@@ -31,7 +31,7 @@ def create_highlights(
     top: int = Form(10, ge=1),
     min_len: float = Form(10, gt=0, allow_inf_nan=False),
     max_len: float = Form(30, gt=0, allow_inf_nan=False),
-) -> dict:
+) -> dict[str, object]:
     if min_len > max_len:
         raise HTTPException(422, "min_len must be <= max_len")
 
