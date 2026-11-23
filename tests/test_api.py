@@ -53,7 +53,7 @@ def test_post_returns_highlights_covering_bursts(job):
     job_dir = data_dir / "jobs" / job_id
     manifest = json.loads((job_dir / "clips" / "highlights.json").read_text())
     assert [{k: v for k, v in item.items() if k != "clip_url"} for item in highlights] == [
-        {k: v for k, v in entry.items() if k != "file"} for entry in manifest
+        {k: v for k, v in entry.items() if k not in {"file", "event"}} for entry in manifest
     ]
     assert (job_dir / "input").read_bytes() == source.read_bytes()
 

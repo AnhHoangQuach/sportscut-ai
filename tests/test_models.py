@@ -4,7 +4,7 @@ import json
 import numpy as np
 import pytest
 
-from sportscut.models import Segment
+from sportscut.models import EVENT_TYPES, Segment
 
 
 def test_to_dict_shape_order_and_values() -> None:
@@ -20,9 +20,10 @@ def test_to_dict_shape_order_and_values() -> None:
         "end": 3.5,
         "score": 0.8,
         "reason": "crowd noise",
+        "event": "other",
     }
-    assert list(result) == ["start", "end", "score", "reason"]
-    assert [type(value) for value in result.values()] == [float, float, float, str]
+    assert list(result) == ["start", "end", "score", "reason", "event"]
+    assert [type(value) for value in result.values()] == [float, float, float, str, str]
 
 
 def test_to_dict_is_json_safe_for_numpy_scalars() -> None:
@@ -36,6 +37,22 @@ def test_to_dict_is_json_safe_for_numpy_scalars() -> None:
     json.dumps(result)
     assert all(type(result[key]) is float for key in ("start", "end", "score"))
     assert type(result["reason"]) is str
+
+
+def test_event_roundtrip() -> None:
+    assert Segment(1, 2, 0.5, "goal", event="goal").to_dict()["event"] == "goal"
+    result = Segment(1, 2, 0.5, "save", event=np.str_("save")).to_dict()
+    assert type(result["event"]) is str
+
+
+@pytest.mark.parametrize("event", ["penalty", "Goal", ""])
+def test_invalid_event_raises(event: str) -> None:
+    with pytest.raises(ValueError):
+        Segment(1, 2, 0.5, "invalid", event=event)
+
+
+def test_event_types_constant() -> None:
+    assert EVENT_TYPES == ("goal", "save", "red_card", "controversy", "other")
 
 
 def test_segment_is_frozen() -> None:

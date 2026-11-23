@@ -12,7 +12,7 @@ Add `sportscut/pipeline.py` with `run(video, out_dir, top, min_len, max_len) -> 
 
 ## Acceptance criteria
 
-- AC1: `sportscut/pipeline.py` defines `class PipelineError(Exception)`, which is not a subclass of MediaError or ValueError. It also defines `run(video, out_dir, top=10, min_len=10, max_len=30) -> list[dict]`, which returns a list equal to `json.loads(<out_dir>/highlights.json)`. Each entry has exactly the keys start, end, score, reason, file. `pipeline.py` does not import subprocess.
+- AC1: `sportscut/pipeline.py` defines `class PipelineError(Exception)`, which is not a subclass of MediaError or ValueError. It also defines `run(video, out_dir, top=10, min_len=10, max_len=30) -> list[dict]`, which returns a list equal to `json.loads(<out_dir>/highlights.json)`. Each entry has exactly the keys start, end, score, reason, event, file. `pipeline.py` does not import subprocess. (updated by T-010)
 - AC2: `run(burst_video, out)` returns 3 entries named clip_01.mp4..clip_03.mp4. All three files exist, and each has a probed duration of 12 s ± 0.5 s. With `top=1, min_len=4, max_len=6` it returns exactly 1 entry, of length 6 ± 0.01 s.
 - AC3: `run` raises PipelineError and writes no highlights.json in these cases: a non-video text file (message matches `^ffprobe failed for <path>: .+`), a video with no audio stream (message exactly `no audio stream in <path>`), a missing file (message exactly `media file not found: <path>`), and `min_len=20, max_len=10` (message `min_len must be <= max_len`).
 - AC4: With ffmpeg/ffprobe missing from PATH, `run` raises MediaError (`ffmpeg not found on PATH; install ffmpeg`), not PipelineError.

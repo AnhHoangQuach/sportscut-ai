@@ -16,7 +16,7 @@ Create `pyproject.toml`, `sportscut/__init__.py`, `sportscut/__main__.py`, `spor
 - AC2: `.venv/bin/sportscut --version` and `.venv/bin/python -m sportscut --version` each exit 0, write exactly `sportscut 0.1.0\n` to stdout, and write nothing to stderr.
 - AC3: Calling `sportscut.cli.main([])` returns 0 and prints help containing `usage: sportscut`; calling `main(['--version'])` raises `SystemExit` with code 0 and prints exactly the version line.
 - AC4: Root `.venv/bin/python -m pytest -q` and `.venv/bin/python -m pytest -q tests` both exit 0 and collect only tests below the root `tests/` directory, never `agent-office/tests`.
-- AC5: `Segment(start=1.0, end=3.5, score=0.8, reason='crowd noise').to_dict()` equals `{'start': 1.0, 'end': 3.5, 'score': 0.8, 'reason': 'crowd noise'}` with keys in that order and native `float`, `float`, `float`, and `str` value types.
+- AC5: `Segment(start=1.0, end=3.5, score=0.8, reason='crowd noise').to_dict()` equals `{'start': 1.0, 'end': 3.5, 'score': 0.8, 'reason': 'crowd noise', 'event': 'other'}` with keys in that order and native `float`, `float`, `float`, `str`, and `str` value types. (updated by T-010)
 - AC6: A `Segment` constructed with NumPy floating scalars produces a `to_dict()` result accepted by `json.dumps`, and each numeric result has exact type `float`.
 - AC7: `Segment` is immutable, and construction raises `ValueError` for each of `start=-1,end=2`, `start=5,end=5`, and `start=5,end=4`. No score-range validation is applied.
 - AC8: `PATH=/nonexistent .venv/bin/python -m pytest -q` exits 0 with zero failures and zero errors, proving this package/model slice does not accidentally require ffmpeg or ffprobe.

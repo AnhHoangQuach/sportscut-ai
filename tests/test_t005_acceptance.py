@@ -80,7 +80,7 @@ def test_acceptance_ac2_ac3_real_video_round_trip(api_client, burst_video):
     assert (job / "input").read_bytes() == source
     manifest = json.loads((job / "clips" / "highlights.json").read_text())
     assert [{k: v for k, v in h.items() if k != "clip_url"} for h in body["highlights"]] == [
-        {k: v for k, v in entry.items() if k != "file"} for entry in manifest
+        {k: v for k, v in entry.items() if k not in {"file", "event"}} for entry in manifest
     ]
     for number, highlight in enumerate(body["highlights"], 1):
         assert set(highlight) == {"start", "end", "score", "reason", "clip_url"}
