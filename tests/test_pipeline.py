@@ -53,7 +53,7 @@ def test_run_no_audio_raises_pipeline_error(require_ffmpeg, tmp_path):
     assert not (out / "highlights.json").exists()
 
 
-def test_run_missing_file_raises_pipeline_error(tmp_path):
+def test_run_missing_file_raises_pipeline_error(require_ffmpeg, tmp_path):
     path = tmp_path / "missing.mp4"
     with pytest.raises(PipelineError) as exc:
         run(path, tmp_path / "out")
