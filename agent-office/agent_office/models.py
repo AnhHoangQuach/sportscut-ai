@@ -86,8 +86,25 @@ class Task:
     eval_score: float | None = None  # quality metric measured on this task's branch (eval_cmd)
     conflicts: int = 0            # merge conflicts with the base branch so far
     merge_conflict: bool = False  # the next dev step must merge the base branch and resolve
+    files: list[str] = field(default_factory=list)  # files the spec says this task changes (overlap -> serial)
+    # Tech Lead triage: a technical blocker is handled by Claude as Tech Lead, never sent to the PO.
+    tl_issue: str = ""            # what went wrong (non-empty = the next step is the Tech Lead's)
+    tl_kind: str = ""             # questions | tests_failing | review_rejected | merge_conflict | guardrail ...
+    tl_rounds: int = 0            # Tech Lead decisions on this task so far (capped by tech_lead_rounds)
+    tl_guidance: str = ""         # latest Tech Lead instruction for the next developer run
+    tl_notes: list[str] = field(default_factory=list)  # every Tech Lead answer/decision, shown to later steps
+    retry_at: str = ""            # Tech Lead chose to wait: no step for this task before this time
+    attempt: int = 0              # fresh restarts from the base branch (branch office/T-xxx-r<n>)
+    dropped: str = ""             # why the Tech Lead retired the task without merging it (split/drop)
     history: list[dict[str, Any]] = field(default_factory=list)
     created_at: str = field(default_factory=now_iso)
+
+    def reroute(self, to: Stage, note: str = "") -> None:
+        """Tech Lead decision: send the task to any working stage (or retire it to done)."""
+        if to not in (Stage.TODO, Stage.SPEC, Stage.DEV, Stage.DONE):
+            raise InvalidTransition(f"{self.id}: Tech Lead cannot reroute to {to.value}")
+        self.history.append({"at": now_iso(), "from": self.stage.value, "to": to.value, "note": note})
+        self.stage = to
 
     def move(self, to: Stage, note: str = "") -> None:
         if to not in TRANSITIONS[self.stage]:
@@ -168,3 +185,10 @@ class Request:
     questions: list[str] = field(default_factory=list)
     summary: str = ""
     design: str = ""              # breakdown's goal/approaches/choice, committed as a design spec
+    tl_issue: str = ""            # technical problem the Tech Lead must decide on before planning goes on
+    tl_kind: str = ""
+    tl_rounds: int = 0
+    tl_questions: list[str] = field(default_factory=list)
+    tl_notes: list[str] = field(default_factory=list)   # Tech Lead answers, fed back into planning prompts
+    decisions: list[str] = field(default_factory=list)  # request-level decisions for DECISIONS.md
+    retry_at: str = ""

@@ -72,20 +72,25 @@ def test_missing_dependency_is_fixed_and_retried_without_the_po(env):
     assert "ENVIRONMENT" in dev[1] and "No module named 'numpy'" in dev[1]
 
 
-def test_po_is_asked_only_after_the_retries_are_used(env):
+def test_tech_lead_not_the_po_takes_over_after_the_retries_are_used(env):
     env.script(codex_dev=[{"message": MISSING}] * 3)
     office = env.office()
     office.add_request("Cut highlights")
     env.run_all(office)
     t1 = office.store.tasks["T-001"]
-    assert t1.stage == Stage.BLOCKED and t1.env_fixes == 2 and "numpy" in t1.blocked_reason
-    assert len([c for c in env.calls() if c["kind"] == "dev"]) == 3
+    assert t1.stage == Stage.PR and t1.tl_rounds == 1 and not t1.blocked_reason
+    tl = [c["prompt"] for c in env.calls() if c["kind"] == "techlead"]
+    assert len(tl) == 1 and "missing_dependency" in tl[0] and "numpy" in tl[0]
+    dev = [c["prompt"] for c in env.calls() if c["kind"] == "dev"]
+    assert len(dev) == 4 and "TECH LEAD DECISION" in dev[3]
 
 
-def test_a_real_blocker_still_goes_straight_to_the_po(env):
-    env.script(codex_dev=[{"message": "BLOCKED: the spec does not say which leagues to support"}])
+def test_a_business_blocker_reaches_the_po_through_the_tech_lead(env):
+    env.script(codex_dev=[{"message": "BLOCKED: the spec does not say which leagues to support"}],
+               claude_techlead=[{"tl": {"business_questions": ["Which leagues: Premier League only, or all?"]}}])
     office = env.office()
     office.add_request("Cut highlights")
     env.run_all(office)
     t1 = office.store.tasks["T-001"]
     assert t1.stage == Stage.BLOCKED and t1.env_fixes == 0
+    assert t1.questions == ["Which leagues: Premier League only, or all?"] and "business" in t1.blocked_reason

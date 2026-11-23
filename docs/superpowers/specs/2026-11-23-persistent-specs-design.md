@@ -40,3 +40,5 @@ after merge, so nothing reached `main`. The next request started from code alone
 - Spec files are written once; later edits by the developer (deviations) or later tasks are kept.
 - `docs/superpowers/` does not count toward `max_diff_lines`.
 - New PM JSON fields are optional (`design`, `decisions`, `related_specs`): old outputs still work.
+
+Updated by tech-lead-owns-blockers (2026-11-23): decision lines are appended whenever they are missing (not only the first time a task writes), so later Tech Lead decisions and request-level decisions also reach `DECISIONS.md`.

@@ -112,7 +112,7 @@ dở dang được lưu checkpoint. `office run --sequential` chạy từng bư�
 
 **Xung đột merge:** khi task khác vừa merge và đụng cùng dòng, task quay về Codex với
 `git merge main` đang dở; Codex gỡ xung đột, orchestrator kiểm tra không còn marker, rồi task
-đi lại test → review → merge (tối đa 2 lần, sau đó hỏi PO). Nếu `main` đã đổi mà merge vẫn
+đi lại test → review → merge (tối đa 2 lần, sau đó Tech Lead quyết). Nếu `main` đã đổi mà merge vẫn
 sạch, orchestrator chạy lại `test_cmd` trên bản đã gộp trước khi merge.
 
 **Rào chắn** (`[guardrails]`):
@@ -121,7 +121,7 @@ sạch, orchestrator chạy lại `test_cmd` trên bản đã gộp trước khi
 |---|---|---|
 | `max_calls_per_day` | `{ claude = 0, codex = 0 }` | Số lượt gọi mỗi agent mỗi ngày (0 = không giới hạn); chạm trần thì nghỉ tới nửa đêm |
 | `max_tasks_per_request` | 12 | Số task tối đa Claude được tạo cho một yêu cầu |
-| `max_diff_lines` | 4000 | Diff lớn hơn thì dừng và hỏi PO thay vì review |
+| `max_diff_lines` | 4000 | Diff lớn hơn thì không review; Tech Lead chia nhỏ task |
 | `block_secrets` | true | Diff có thứ giống key/token/private key thì dừng task |
 | `protected_paths` | `[]` | Đường dẫn agent không được sửa |
 
@@ -163,12 +163,15 @@ mốc mới. `office stats` in lịch sử điểm, reviewer thấy điểm tron
 - `merge_mode = "auto"` (mặc định): Claude approve và test pass thì task được merge vào
   `base_branch` ngay (PR mode: `gh pr merge --squash`; `open_pr = false`: fast-forward branch local),
   task phụ thuộc chạy tiếp. Đặt `"manual"` để dừng ở PR chờ PO merge như giai đoạn 1.
-- Claude PM chỉ hỏi khi yêu cầu thật sự mơ hồ (`{"questions": [...]}` lúc tách task hoặc viết spec).
-  Yêu cầu/task đó chuyển `blocked`, các task khác vẫn chạy. Trả lời bằng dashboard hoặc
-  `office answer R-001 "..."` / `office answer T-004 "..."`.
+- PO chỉ gửi yêu cầu. Mọi vướng mắc kỹ thuật (câu hỏi kỹ thuật, test fail mãi, review không qua,
+  xung đột merge, thiếu dependency, rào chắn) đi tới **Claude Tech Lead**, người tự quyết
+  (`retry` / `restart` / `split` / `wait` / `drop`) và ghi vào `docs/superpowers/DECISIONS.md`.
+  Chỉ câu hỏi **nghiệp vụ** mới làm yêu cầu/task chuyển `blocked`; các task khác vẫn chạy. Trả lời
+  bằng dashboard hoặc `office answer R-001 "..."` / `office answer T-004 "..."`. Chi tiết:
+  `docs/01-multi-agent.md` mục 1.10.
 - Khi mọi task của một yêu cầu đã merge, Claude kiểm tra repo so với yêu cầu gốc: đủ thì đánh dấu
   yêu cầu `done` kèm tóm tắt, thiếu thì tự tạo task bổ sung. Tối đa `max_goal_rounds` vòng (mặc định 3),
-  quá thì hỏi PO.
+  quá thì đóng yêu cầu với phần đã merge và báo cáo phần còn thiếu.
 - `office run --watch` chạy mãi, ngủ khi agent hết quota và nhận yêu cầu mới từ inbox.
 
 ## State machine
@@ -179,12 +182,12 @@ todo → spec → dev → test → review → pr → done
                └──────┘       │   test fail (tối đa 3 lần)
                ↑              │
                └──────────────┘   review "changes" (vòng 1–2)
-                                  vòng 3 vẫn "changes" → blocked → office answer
+                                  vòng 3 vẫn "changes" → Tech Lead quyết
 ```
 
 Task chỉ sang `spec` khi các task nó phụ thuộc đã `done` (đã merge), để worktree mới luôn có code
 của task trước. Trước khi merge, orchestrator merge `base_branch` mới nhất vào branch của task;
-xung đột thì task bị `blocked`.
+xung đột thì Codex gỡ, quá 2 lần thì Tech Lead quyết (thường làm lại từ `main` mới).
 
 ## Hết quota (usage limit)
 
@@ -200,7 +203,8 @@ xung đột thì task bị `blocked`.
 ## Bảo vệ đường dẫn
 
 `protected_paths` trong config liệt kê thư mục agent không được sửa (ví dụ `agent-office/` khi
-orchestrator nằm chung repo với sản phẩm). Diff của task đụng vào đó thì task bị `blocked`.
+orchestrator nằm chung repo với sản phẩm). Diff của task đụng vào đó thì không được review/merge;
+Tech Lead bảo Codex hoàn tác, hết lượt thì task bị gác lại.
 
 ## Cấu trúc
 

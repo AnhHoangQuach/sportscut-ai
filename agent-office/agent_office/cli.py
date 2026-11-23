@@ -182,8 +182,12 @@ def _print_status(store: Store) -> None:
             bits.append("checkpointed")
         if t.pr_url:
             bits.append(t.pr_url)
+        if t.tl_issue:
+            bits.append(f"Tech Lead: {t.tl_kind}")
+        if t.dropped:
+            bits.append(f"dropped: {t.dropped[:60]}")
         if t.blocked_reason:
-            bits.append(t.blocked_reason[:80])
+            bits.append("PO: " + t.blocked_reason[:80])
         print(f"  {t.id} {t.stage.value:<8} {t.title[:50]:<50} {' | '.join(bits)}")
 
 

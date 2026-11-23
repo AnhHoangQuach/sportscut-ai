@@ -40,7 +40,8 @@ def test_goal_check_adds_follow_up_tasks(auto_env):
 
 def test_unclear_request_asks_po_then_continues(auto_env):
     env = auto_env
-    env.script(claude_breakdown=[{"questions": ["Which sport first: football or basketball?"]}])
+    env.script(claude_breakdown=[{"questions": ["Which sport first: football or basketball?"]}],
+               claude_techlead=[{"tl": {"business_questions": ["Which sport first: football or basketball?"]}}])
     office = env.office()
     office.add_request("Cut highlights")
     env.run_all(office)
@@ -58,7 +59,8 @@ def test_unclear_request_asks_po_then_continues(auto_env):
 
 def test_unclear_task_spec_blocks_task_only(auto_env):
     env = auto_env
-    env.script(claude_spec=[{"questions": ["Clip length 10-30s or 5-15s?"]}])
+    env.script(claude_spec=[{"questions": ["Clip length 10-30s or 5-15s?"]}],
+               claude_techlead=[{"tl": {"business_questions": ["Clip length 10-30s or 5-15s?"]}}])
     office = env.office()
     office.add_request("Cut highlights")
     env.run_all(office)

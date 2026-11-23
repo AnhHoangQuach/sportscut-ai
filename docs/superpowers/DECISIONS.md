@@ -8,3 +8,8 @@ Newest last. Format: date, task (request): decision.
 - 2026-11-23 PO (Hoang): accuracy is measured by `sportscut eval ... --json` (F1); a change must not lower F1
 - 2026-11-23 PO (Hoang): a 90-minute match must process in under 10 minutes on a laptop CPU; vision/OCR models are optional extras and never run on every frame
 - 2026-11-23 PO (Hoang): every request and task commits its design, plan and decisions under `docs/superpowers/`
+- 2026-11-23 PO (Hoang): the PO only sends requests; PM + Tech Lead resolve every technical and coordination blocker; the PO is asked only when a business requirement is unclear (refines the 2026-11-22 "ask only when unclear" decision)
+- 2026-11-23 Tech Lead: every former technical escalation goes to a `techlead` step (retry / restart / split / wait / drop, or business_questions for the PO); `blocked` now means only "business question for the PO"
+- 2026-11-23 Tech Lead: guardrails are fixed, never waived; a secret in a diff discards (deletes) the branch and restarts from the base
+- 2026-11-23 Tech Lead: `tech_lead_rounds = 3` per task, then the task is dropped with a report to the PO and the goal check re-plans; requests pause 60 min instead; the goal-check cap closes the request with a report
+- 2026-11-23 Tech Lead: specs list `files`; tasks that change the same files never code at the same time (already-coding or lower id first)

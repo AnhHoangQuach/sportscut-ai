@@ -1,4 +1,5 @@
 import json
+import subprocess
 from datetime import datetime
 
 import pytest
@@ -101,22 +102,23 @@ def test_unknown_reset_uses_backoff_and_probe(env):
     assert codex.backoff_level == 0
 
 
-def test_review_loop_blocks_after_three_rounds_then_po_answer(env):
+def test_review_loop_goes_to_the_tech_lead_after_three_rounds_not_the_po(env):
     changes = [{"verdict": "changes"}] * 3
-    env.script(claude_review=changes)
+    env.script(claude_review=changes, claude_techlead=[{"tl": {
+        "action": "retry", "decision": "x.py comment is out of scope; keep the simple version",
+        "guidance": "Keep it simple, ignore the x.py comment."}}])
     office = env.office()
     office.add_request("Cut highlights")
     env.run_all(office)
     t1 = office.store.tasks["T-001"]
-    assert t1.stage == Stage.BLOCKED and t1.review_round == 3
+    assert t1.stage == Stage.PR and t1.review_round == 1 and t1.tl_rounds == 1
+    assert not any(h.get("to") == "blocked" for h in t1.history)
     dev_prompts = [c["prompt"] for c in env.calls() if c["kind"] == "dev"]
-    assert len(dev_prompts) == 3 and "revision" in dev_prompts[1]
+    assert len(dev_prompts) == 4 and "revision" in dev_prompts[1] and "ignore the x.py comment" in dev_prompts[3]
+    tl = next(c["prompt"] for c in env.calls() if c["kind"] == "techlead")
+    assert "review_rejected" in tl and "fix it" in tl
     task_md = (env.tmp / "sportscut-worktrees" / "T-001" / ".office" / "TASK.md").read_text()
-    assert "fix it" in task_md
-
-    office.answer("T-001", "Keep it simple, ignore x.py")
-    env.run_all(office)
-    assert t1.stage == Stage.PR and t1.review_round == 1
+    assert "x.py comment is out of scope" in task_md
 
 
 def test_failing_tests_go_back_to_dev(env):
@@ -150,11 +152,21 @@ def test_cli_status_and_show(env, capsys):
     assert "T-001" in out and "Scaffold CLI" in out
 
 
-def test_protected_paths_block_the_task(env):
+def test_protected_paths_are_never_merged_and_the_po_is_only_informed(env):
     cfg = env.repo / ".agent-office" / "config.toml"
     cfg.write_text(cfg.read_text().replace("protected_paths = []", 'protected_paths = ["feature_1.py"]'))
     office = env.office()
     office.add_request("Cut highlights")
     env.run_all(office)
     t1 = office.store.tasks["T-001"]
-    assert t1.stage == Stage.BLOCKED and "protected" in t1.blocked_reason
+    # every retry still touches the file, so the Tech Lead runs out of rounds and drops the task
+    assert t1.stage == Stage.DONE and "protected" in t1.dropped and t1.tl_rounds == 3
+    assert not any(h.get("to") == "blocked" for h in t1.history)
+    assert "feature_1.py" not in subprocess.run(["git", "ls-files"], cwd=env.repo, capture_output=True,
+                                                 text=True).stdout
+    report = [e for e in events(env.repo) if e["event"] == "message" and e["to"] == "po"]
+    assert any(e["topic"] == "report" for e in report) and not any(e["topic"] == "question" for e in report)
+
+
+def events(repo):
+    return [json.loads(x) for x in (repo / ".agent-office/events.jsonl").read_text().splitlines()]

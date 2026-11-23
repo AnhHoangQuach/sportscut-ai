@@ -31,8 +31,21 @@ the same practices in every prompt, so they apply even without any plugin instal
 ## Safety
 - Never commit secrets, API keys, tokens, `.env` files or large media (videos stay out of git).
 - Do not change paths listed in `protected_paths` of `.agent-office/config.toml`.
-- Ask the Product Owner only when a requirement is genuinely unclear; otherwise decide,
-  and write the assumption down.
+- Ask the Product Owner only about an unclear business requirement (see below); otherwise
+  decide, and write the assumption down.
+
+## Who decides (the PO only sends requests)
+- **Business** questions (what the product does for its users, unclear in the request, the
+  repo and `docs/superpowers/`) are the only thing that goes to the Product Owner.
+- **Technical and coordination** problems belong to PM + Tech Lead (Claude): technical
+  questions, tests that keep failing, review disagreements, merge conflicts, missing
+  dependencies, guardrail stops, task order. The Tech Lead decides (retry with guidance,
+  restart from the base branch, split, wait, drop), never the PO, and logs the decision in
+  `docs/superpowers/DECISIONS.md`.
+- Plan so parallel tasks do not block each other: tasks that change the same file depend on
+  each other; every spec lists the files it touches.
+- Guardrails (secrets, protected paths, diff size, daily call caps) are never waived: the fix
+  is to change the work, or to pause and retry when a system limit is hit.
 
 ## Project specifics
 - Product: **SportsCut**, a Python 3.11+ CLI that finds highlights in sports videos (football

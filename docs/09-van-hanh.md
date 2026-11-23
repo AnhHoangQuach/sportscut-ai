@@ -23,7 +23,7 @@
 | `0 step(s) done` | Chưa có yêu cầu nào | `office request ...` rồi chạy lại |
 | Văn phòng 3D đứng yên | Runner chưa chạy, hoặc agent đều đang nghỉ / chờ PO | Bấm "Bắt đầu"; xem khung "Cần anh trả lời"; `office status` để thấy lý do chờ |
 | Agent "nghỉ" liên tục | Hết quota thật, hoặc CLI lỗi lặp lại (chưa đăng nhập, sai lệnh) | Xem `.agent-office/logs/<task>/...log`; `office doctor --live` |
-| Task `blocked` | Câu hỏi cho PO, rào chắn (secret, diff lớn, protected path), hết lượt test/review/xung đột | `office show T-xxx` xem lý do; sửa hoặc trả lời bằng `office answer` |
+| Task `blocked` | Chỉ còn một lý do: câu hỏi **nghiệp vụ** cho PO (Tech Lead đã lọc). Vướng kỹ thuật (rào chắn, hết lượt test/review/xung đột, thiếu thư viện) do Tech Lead tự xử lý, task hiện nhãn "Tech Lead xử lý" | `office show T-xxx` xem câu hỏi; trả lời bằng `office answer`. Task bị "gác lại" thì xem dòng `Tech Lead` trong `docs/superpowers/DECISIONS.md` |
 | Task `blocked` vì thiếu thư viện/tool | Đã thử `dep_retries` lần mà vẫn thiếu; `setup_cmd` lỗi; tool hệ thống (ffmpeg) chưa có | Xem mục `ENVIRONMENT` trong log dev; sửa `setup_cmd` hoặc cài tool trên máy; `office answer T-xxx "đã cài"` (xem [2.7](02-quota-song-song-rao-chan.md#27-agent-tự-cài-dependency-khi-thiếu)) |
 | "Another `office run` is already working" | Đã có runner khác | Dừng runner kia (nút "Dừng" hoặc Ctrl+C); file `runner.pid` cũ tự bị bỏ qua nếu tiến trình đã chết |
 | Merge thất bại "uncommitted changes on main" | Có thay đổi chưa commit ở repo chính | Commit hoặc stash ở repo chính |

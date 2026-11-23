@@ -31,7 +31,8 @@ def test_post_request_goes_through_inbox(client):
 
 def test_answer_and_logs_and_notes(client):
     c, env = client
-    env.script(claude_spec=[{"questions": ["Which sport?"]}])
+    env.script(claude_spec=[{"questions": ["Which sport?"]}],
+               claude_techlead=[{"tl": {"business_questions": ["Which sport?"]}}])
     office = env.office()
     office.add_request("Cut highlights")
     env.run_all(office)

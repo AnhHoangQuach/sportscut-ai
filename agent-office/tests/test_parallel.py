@@ -78,15 +78,18 @@ def test_parallel_demo_runs_codex_twice_and_resolves_conflicts(auto_env):
     assert codex.calls_total >= 10 and codex.rests_total == 1 and codex.active == []
 
 
-def test_secret_in_diff_blocks_task(auto_env):
+def test_secret_in_diff_never_merges_and_the_branch_is_thrown_away(auto_env):
     env = auto_env
     env.script(codex_dev=[{"write": "settings.py", "text": "API_KEY = 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz'\n"}])
     office = env.office()
     office.add_request("Cut highlights")
     env.run_all(office)
     t1 = office.store.tasks["T-001"]
-    assert t1.stage == Stage.BLOCKED and "secret" in t1.blocked_reason
     assert any(e["event"] == "guardrail" and e["rule"] == "secret" for e in events(env.repo))
+    # Tech Lead retry on a secret = fresh branch from main; the secret commit is gone everywhere
+    assert t1.stage == Stage.DONE and t1.attempt == 1 and not t1.dropped
+    history = subprocess.run(["git", "log", "--all", "-p"], cwd=env.repo, capture_output=True, text=True).stdout
+    assert "sk-ant-api03" not in history
 
 
 def test_daily_budget_rests_agent_until_midnight(auto_env):

@@ -34,10 +34,16 @@ def ensure_excluded(repo: Path) -> None:
     exclude.write_text("\n".join(lines) + "\n")
 
 
-def ensure_worktree(repo: Path, root: Path, task_id: str, base_branch: str) -> tuple[Path, str, str]:
-    """Create (or reuse) the task worktree. Returns (path, branch, base_sha)."""
+def task_branch(task_id: str, attempt: int = 0) -> str:
+    return f"office/{task_id}" + (f"-r{attempt + 1}" if attempt else "")
+
+
+def ensure_worktree(repo: Path, root: Path, task_id: str, base_branch: str,
+                    attempt: int = 0) -> tuple[Path, str, str]:
+    """Create (or reuse) the task worktree. Returns (path, branch, base_sha).
+    attempt > 0: the Tech Lead restarted the task, so a fresh branch is cut from the base."""
     ensure_excluded(repo)
-    branch = f"office/{task_id}"
+    branch = task_branch(task_id, attempt)
     path = root / task_id
     base_sha = git(repo, "rev-parse", base_branch)
     if path.exists() and (path / ".git").exists():
@@ -87,6 +93,16 @@ def commits_since(wt: Path, base_sha: str) -> int:
 
 def remove_worktree(repo: Path, path: Path) -> None:
     git(repo, "worktree", "remove", "--force", str(path), check=False)
+
+
+def discard_branch(repo: Path, path: Path, branch: str, delete: bool = False) -> None:
+    """Throw a task's attempt away (Tech Lead restart): remove its worktree; keep the old branch
+    for reference unless `delete` (e.g. it contains something that looks like a secret)."""
+    if path.exists():
+        abort_merge(path)
+        remove_worktree(repo, path)
+    if delete and branch:
+        git(repo, "branch", "-D", branch, check=False)
 
 
 def push_and_open_pr(wt: Path, remote: str, branch: str, base: str, title: str, body: str) -> str:

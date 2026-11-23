@@ -81,8 +81,12 @@ Hai task song song có thể sửa cùng dòng. Khi task thứ hai tới bước
 2. Xung đột thì task quay về `dev` với `git merge main` **đang dở**, prompt nêu danh sách file xung đột.
 3. Codex gỡ xung đột, giữ cả hai phần, chạy test.
 4. Orchestrator kiểm tra không còn marker `<<<<<<<`/`>>>>>>>` rồi mới commit merge; còn marker thì hủy
-   merge và báo PO.
-5. Task đi lại test → review → merge. Tối đa `MAX_CONFLICT_ROUNDS = 2`.
+   merge và giao Tech Lead.
+5. Task đi lại test → review → merge. Tối đa `MAX_CONFLICT_ROUNDS = 2`, sau đó Tech Lead quyết
+   (thường là `restart` từ `main` mới, có thể `after` task kia), không hỏi PO (xem 1.10).
+
+Tốt hơn là tránh xung đột từ đầu: spec ghi `files`, scheduler không cho hai task sửa cùng file code
+cùng lúc (1.10).
 
 Nếu đang gỡ dở mà hết quota, checkpoint sẽ `git merge --abort` trước khi commit WIP, để không bao giờ
 commit marker xung đột.
@@ -91,12 +95,12 @@ commit marker xung đột.
 
 | Rào chắn | Ở đâu | Khi vi phạm |
 |---|---|---|
-| `protected_paths` | Sau bước dev | Task `blocked`, báo PO |
-| `block_secrets` | Quét các dòng **thêm mới** trong diff: private key, `AKIA...`, `sk-...`, `ghp_...`, `xox...`, `AIza...` | Task `blocked` |
-| `max_diff_lines` | Tổng dòng thêm + xóa so với base | Task `blocked` ("chia nhỏ task") |
+| `protected_paths` | Sau bước dev | Không review/merge; Tech Lead bảo Codex hoàn tác phần đó |
+| `block_secrets` | Quét các dòng **thêm mới** trong diff: private key, `AKIA...`, `sk-...`, `ghp_...`, `xox...`, `AIza...` | Không review/merge; nhánh bị xóa, Tech Lead cho làm lại từ `main` |
+| `max_diff_lines` | Tổng dòng thêm + xóa so với base | Không review; Tech Lead `split` task |
 | `max_calls_per_day` | Trước mỗi lần gọi agent | Agent nghỉ tới nửa đêm (giờ máy) |
 | `max_tasks_per_request` | Khi Claude tạo task | Cắt bớt, ghi sự kiện `guardrail` |
-| Giới hạn vòng lặp | Test 3 lần, review 3 vòng, xung đột 2 lần, goal check `max_goal_rounds` | `blocked` |
+| Giới hạn vòng lặp | Test 3 lần, review 3 vòng, xung đột 2 lần, goal check `max_goal_rounds` | Tech Lead quyết (`tech_lead_rounds`); goal check hết vòng thì đóng yêu cầu + báo cáo |
 | Sandbox | Claude chỉ có công cụ đọc + vài lệnh trong `allowed_commands`; Codex `workspace-write` trong worktree (có mạng, xem 2.7) | CLI từ chối |
 | Không API key | Xóa biến môi trường key trước khi gọi CLI | Luôn dùng gói thuê bao |
 
@@ -141,7 +145,7 @@ những việc cần để cài thư viện:
 | Mạng cho Codex | `[codex] network = true` (mặc định) | Thêm `-c sandbox_workspace_write.network_access=true`. Codex vẫn chỉ ghi được trong worktree |
 | Môi trường riêng mỗi worktree | `[office] setup_cmd` | Orchestrator (ngoài sandbox, có mạng) chạy lệnh này khi tạo worktree. Nếu nó tạo `.venv/`, thì `.venv/bin` được đặt đầu `PATH` của Codex, Claude, `test_cmd` và `eval_cmd`, nên `pip install` từ trong sandbox cài vào `.venv/` (nằm trong worktree, ghi được). `.venv/` không bao giờ bị commit |
 | Prompt dạy tự gỡ | `prompts/dev.md`, `prompts/test.md` | Thiếu package/tool **không phải** blocker: tự cài vào `.venv/` (hoặc `npm install` trong worktree), khai báo vào `pyproject.toml` / `requirements*.txt` / `package.json`, chạy lại. Không `sudo`, không cài ra ngoài worktree. Chỉ sau 2 lần cài vẫn lỗi mới `BLOCKED:` kèm lệnh và dòng lỗi |
-| Orchestrator thử lại | `[office] dep_retries = 2` | Nếu Codex vẫn trả `BLOCKED:` mà lý do giống thiếu dependency (`ModuleNotFoundError`, `command not found`, `No matching distribution`, lỗi DNS...), office chạy lại `setup_cmd`, ghi kết quả vào prompt dev lần sau (mục `ENVIRONMENT`) rồi giao lại. Hết số lần mới hỏi PO. Blocker thật (thiếu quyết định, yêu cầu mâu thuẫn) vẫn đi thẳng tới PO |
+| Orchestrator thử lại | `[office] dep_retries = 2` | Nếu Codex vẫn trả `BLOCKED:` mà lý do giống thiếu dependency (`ModuleNotFoundError`, `command not found`, `No matching distribution`, lỗi DNS...), office chạy lại `setup_cmd`, ghi kết quả vào prompt dev lần sau (mục `ENVIRONMENT`) rồi giao lại. Hết số lần thì Tech Lead quyết (không hỏi PO). Blocker khác cũng qua Tech Lead; chỉ câu hỏi nghiệp vụ mới tới PO |
 
 Claude vẫn là PM/Reviewer, **không** cài gì. `[claude] allowed_commands` (mặc định `python -m pytest`,
 `pytest`, `ffprobe`, `ffmpeg -version`) chỉ để reviewer tự chạy test khi cần. Mỗi mục thành

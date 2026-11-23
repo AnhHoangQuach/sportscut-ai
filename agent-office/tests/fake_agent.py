@@ -4,7 +4,8 @@ Usage: fake_agent.py <claude|codex> [cli args...]   (prompt on stdin)
 
 Behaviour is scripted through the JSON file in $FAKE_SCENARIO:
   {"codex:dev": [{"limit": "You've hit your usage limit. Try again in 2 hours.", "write": "half.py"}],
-   "claude:review": [{"verdict": "changes"}, {"verdict": "approve"}]}
+   "claude:review": [{"verdict": "changes"}, {"verdict": "approve"}],
+   "claude:techlead": [{"tl": {"business_questions": ["Which league?"]}}]}
 Each call pops the first scripted response for "<agent>:<kind>"; with none left it
 uses the default happy-path behaviour. Every call is appended to $FAKE_SCENARIO.calls.
 """
@@ -18,6 +19,8 @@ def kind_of(agent: str, prompt: str) -> str:
     if "Reply with exactly: OK" in prompt:
         return "probe"
     if agent == "claude":
+        if "**Tech Lead on call**" in prompt:
+            return "techlead"
         if "Split the request" in prompt:
             return "breakdown"
         if "implementation spec" in prompt:
@@ -61,6 +64,12 @@ def main() -> int:
         sys.stderr.write("boom\n")
         return 2
 
+    if agent == "claude" and kind == "techlead":
+        out = resp.get("result") or json.dumps(resp.get("tl") or {
+            "action": "retry", "decision": "Tech Lead: keep it simple, use the standard library",
+            "guidance": "Use argparse and the standard library; fix the failing part and re-run the tests."})
+        print(json.dumps({"type": "result", "is_error": False, "result": out}))
+        return 0
     if agent == "claude" and resp.get("questions"):
         out = json.dumps({"questions": resp["questions"]})
         print(json.dumps({"type": "result", "is_error": False, "result": out}))
