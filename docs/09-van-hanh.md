@@ -13,7 +13,7 @@
 | `office demo` | Văn phòng mô phỏng, không tốn quota |
 | `office status` / `board` / `show T-003` | Xem trạng thái, Kanban, chi tiết task |
 | `office answer T-003 "..."` / `office answer R-001 "..."` | Trả lời câu hỏi của Claude |
-| `office wake codex` | Cho agent làm lại ngay (bỏ qua giờ nghỉ) |
+| `office wake codex` / `office wake tester` | Cho CLI làm lại ngay (bỏ qua giờ nghỉ); tên vai đánh thức mọi vai trên CLI của nó vì chung quota |
 | `office retry-github` | Sau khi sửa `gh` trên máy: kiểm tra GitHub ngay, nếu ổn thì chạy lại ngay mọi PR / merge đang chờ (bị chặn vì GitHub, đang lùi lịch vì mạng, hay Tech Lead cũ bảo "chờ 60 phút"). Chạy được cả khi office đang chạy |
 | `office stats [--json]` | Lượt gọi, quota, xung đột, rào chắn, lịch sử điểm eval |
 | `office sync` | Nhận biết PR đã được merge tay |
@@ -24,7 +24,7 @@
 |---|---|---|
 | `0 step(s) done` | Chưa có yêu cầu nào | `office request ...` rồi chạy lại |
 | Văn phòng 3D đứng yên | Runner chưa chạy, hoặc agent đều đang nghỉ / chờ PO | Bấm "Bắt đầu"; xem khung "Cần anh trả lời"; `office status` để thấy lý do chờ |
-| Agent "nghỉ" liên tục / "sleeping 14 min" dù còn quota | Dòng `Waiting on:` dưới thông báo ngủ ghi rõ: `quota: ...` (CLI thật sự báo hết quota, kèm câu CLI in ra) hay `CLI failed repeatedly, not quota: ...` (CLI lỗi 2 lần liền: chưa đăng nhập, sandbox, mạng, sai lệnh; nghỉ 15/30/60 phút), hoặc một task chờ (`Tech Lead decision`, `GitHub network retry n/4`) | Mở file `log ...` được ghi trong dòng đó (`.agent-office/logs/<task>/NNN-<bước>-<agent>.log`), đọc phần `--- stderr ---`; sửa lỗi rồi `office wake codex` (hoặc `claude`) để làm ngay. Một lần chạy thành công (exit 0) không bao giờ bị coi là hết quota |
+| Agent "nghỉ" liên tục / "sleeping 14 min" dù còn quota | Dòng `Waiting on:` dưới thông báo ngủ ghi rõ: `quota: ...` (CLI thật sự báo hết quota, kèm câu CLI in ra) hay `CLI failed repeatedly, not quota: ...` (CLI lỗi 2 lần liền: chưa đăng nhập, sandbox, mạng, sai lệnh; nghỉ 15/30/60 phút), hoặc một task chờ (`Tech Lead decision`, `GitHub network retry n/4`) | Mở file `log ...` được ghi trong dòng đó (`.agent-office/logs/<task>/NNN-<bước>-<vai>.log`), đọc phần `--- stderr ---`; sửa lỗi rồi `office wake codex` (hoặc `claude`) để làm ngay. Một lần chạy thành công (exit 0) không bao giờ bị coi là hết quota |
 | Task `blocked` | Chỉ còn một lý do: câu hỏi **nghiệp vụ** cho PO (Tech Lead đã lọc). Vướng kỹ thuật (rào chắn, hết lượt test/review/xung đột, thiếu thư viện) do Tech Lead tự xử lý, task hiện nhãn "Tech Lead xử lý" | `office show T-xxx` xem câu hỏi; trả lời bằng `office answer`. Task bị "gác lại" thì xem dòng `Tech Lead` trong `docs/superpowers/DECISIONS.md` |
 | Task `blocked` vì thiếu thư viện/tool | Đã thử `dep_retries` lần mà vẫn thiếu; `setup_cmd` lỗi; tool hệ thống (ffmpeg) chưa có | Xem mục `ENVIRONMENT` trong log dev; sửa `setup_cmd` hoặc cài tool trên máy; `office answer T-xxx "đã cài"` (xem [2.7](02-quota-song-song-rao-chan.md#27-agent-tự-cài-dependency-khi-thiếu)) |
 | "Another `office run` is already working" | Đã có runner khác | Dừng runner kia (nút "Dừng" hoặc Ctrl+C); file `runner.pid` cũ tự bị bỏ qua nếu tiến trình đã chết |

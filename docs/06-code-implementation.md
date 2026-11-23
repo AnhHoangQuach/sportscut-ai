@@ -76,14 +76,15 @@ Agent không gửi tin cho nhau. Dữ liệu đi theo đường sau:
 
 | Từ → tới | Qua đâu |
 |---|---|
-| PO → Claude | `Request.text` + `po_answers` → biến `$request` trong prompt |
-| Claude (chia việc) → orchestrator | JSON `tasks` → `Task(title, brief, depends_on)` |
-| Claude (spec) → Codex | `task.spec`, `acceptance_criteria`, `test_plan` → `.office/TASK.md` trong worktree |
-| Codex (dev) → Codex (test) | Code trong worktree (đã commit) + `.office/DEV_NOTES.md` |
-| Codex (test) → Claude (review) | `.office/TEST_REPORT.md` + kết quả `test_cmd`/`eval_cmd` → `TEST_SUMMARY.md` → `$test_summary` |
-| Codex → Claude | `git diff base...HEAD` → `$diff`; `DEV_NOTES.md` → `$dev_notes` |
-| Claude (review) → Codex | `task.review_comments` → mục "Review feedback" trong `TASK.md` |
-| Test lỗi → Codex | `task.test_output` → mục "Last failing test output" trong `TASK.md` |
+| PO → PM | `Request.text` + `po_answers` → biến `$request` trong prompt |
+| PM (chia việc) → orchestrator | JSON `tasks` → `Task(title, brief, depends_on)` |
+| PM (spec) → Developer | `task.spec`, `acceptance_criteria`, `test_plan` → `.office/TASK.md` trong worktree |
+| Developer → Tester | Code trong worktree (đã commit) + `.office/DEV_NOTES.md` |
+| Tester → Developer | Test của Tester (commit `test(T-xxx)`, `task.tester_files`) + `task.test_output` (câu trả lời + `TEST_REPORT.md`) → mục "Tester's tests" và "Last failing test output" trong `TASK.md` |
+| Developer sửa test của Tester → Tester | `task.dev_changed_tests` + sự kiện `tests_changed_by_dev` → cảnh báo trong prompt test |
+| Tester → Tech Lead (review) | `.office/TEST_REPORT.md` + kết quả `test_cmd`/`eval_cmd` → `TEST_SUMMARY.md` → `$test_summary` |
+| Developer → Tech Lead | `git diff base...HEAD` → `$diff`; `DEV_NOTES.md` → `$dev_notes` |
+| Tech Lead (review) → Developer | `task.review_comments` → mục "Review feedback" trong `TASK.md` |
 | Hết quota → lần sau | `task.checkpoint` + `.office/CHECKPOINT.md` + commit WIP → prompt "RESUMING" |
 | Mọi bước → giao diện | `events.jsonl` (`message`, `stage_changed`, ...) |
 
@@ -111,7 +112,8 @@ bộ nhớ hội thoại của CLI, nên resume sau khi hết quota hay khởi �
 | `test_limits.py` | Các mẫu câu hết quota, đọc giờ reset |
 | `test_autonomy.py` | Tự merge, goal check thêm task, câu hỏi cho PO |
 | `test_dashboard.py`, `test_office3d.py` | REST, WebSocket, trang 3D, sự kiện hội thoại, demo mô phỏng |
-| `test_parallel.py` | Codex 2 phiên, xung đột thật được gỡ, rào chắn, thống kê |
+| `test_parallel.py` | Developer 2 phiên, xung đột thật được gỡ, rào chắn, thống kê |
+| `test_roles.py` | Bốn vai riêng: bước/log/tin nhắn theo vai, Tester trả lỗi về Developer, nghỉ quota theo CLI, `office wake <vai|cli>`, chuyển state/config cũ |
 | `test_practices.py` | Prompt có đủ kỷ luật, cổng eval chặn điểm tụt, `init` tạo quy tắc |
 | `test_techlead.py` | Câu hỏi kỹ thuật do Tech Lead trả lời, chỉ câu nghiệp vụ tới PO; retry/restart/split/wait/drop; hết lượt thì gác lại + báo cáo; task trùng file chạy lần lượt |
 

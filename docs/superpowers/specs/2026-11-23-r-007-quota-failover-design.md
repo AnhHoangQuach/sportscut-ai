@@ -26,3 +26,5 @@ Keep the office moving when exactly one subscription is quota-limited, without c
 
 The fake-agent suite covers both failover directions, both-available and both-resting states. Acceptance command: `cd agent-office && python -m pytest -q`.
 
+
+Updated 2026-11-23 (separate agent roles): agents are now roles on a CLI; failover pairs `pm ↔ dev`, `lead ↔ tester` and happens only while the preferred role's CLI is quota/budget-resting. `agent_failover` also records `preferred_provider` and `provider`. See `specs/2026-11-23-separate-agent-roles-design.md`.

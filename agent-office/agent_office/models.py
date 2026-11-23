@@ -22,17 +22,29 @@ class Stage(str, Enum):
     BLOCKED = "blocked"
 
 
-# Which agent does the work for a task sitting in a stage (None = orchestrator only).
+# Roles are separate agents (own state, prompt, log, session slots, desk). Each runs on one
+# subscription CLI ("provider"); roles on the same CLI share its quota and rest together.
+ROLES = ("pm", "lead", "dev", "tester")
+PROVIDERS = ("claude", "codex")
+DEFAULT_PROVIDER = {"pm": "claude", "lead": "claude", "dev": "codex", "tester": "codex"}
+ROLE_TITLE = {"pm": "Product Manager", "lead": "Tech Lead · Reviewer", "dev": "Developer", "tester": "Tester"}
+# While a CLI is out of quota, a role on the other CLI covers its work (creating <-> creating,
+# checking <-> checking). The covering role keeps its own identity; permissions follow the step.
+FAILOVER = {"pm": "dev", "dev": "pm", "lead": "tester", "tester": "lead"}
+
+# Which role does the work for a task sitting in a stage (None = orchestrator only).
 STAGE_AGENT: dict[Stage, str | None] = {
-    Stage.TODO: "claude",
-    Stage.SPEC: "claude",
-    Stage.DEV: "codex",
-    Stage.TEST: "codex",
-    Stage.REVIEW: "claude",
+    Stage.TODO: "pm",
+    Stage.SPEC: "pm",
+    Stage.DEV: "dev",
+    Stage.TEST: "tester",
+    Stage.REVIEW: "lead",
     Stage.PR: None,
     Stage.DONE: None,
     Stage.BLOCKED: None,
 }
+# Request-level steps.
+STEP_ROLE = {"breakdown": "pm", "goal": "pm", "techlead": "lead"}
 
 TRANSITIONS: dict[Stage, set[Stage]] = {
     Stage.TODO: {Stage.SPEC, Stage.BLOCKED},
@@ -87,6 +99,8 @@ class Task:
     conflicts: int = 0            # merge conflicts with the base branch so far
     merge_conflict: bool = False  # the next dev step must merge the base branch and resolve
     files: list[str] = field(default_factory=list)  # files the spec says this task changes (overlap -> serial)
+    tester_files: list[str] = field(default_factory=list)       # files the Tester wrote (its own tests)
+    dev_changed_tests: list[str] = field(default_factory=list)  # Tester files the Developer edited since
     # Tech Lead triage: a technical blocker is handled by Claude as Tech Lead, never sent to the PO.
     tl_issue: str = ""            # what went wrong (non-empty = the next step is the Tech Lead's)
     tl_kind: str = ""             # questions | tests_failing | review_rejected | merge_conflict | guardrail ...
@@ -139,7 +153,9 @@ class AgentStatus(str, Enum):
 
 @dataclass
 class Agent:
+    """One role (pm, lead, dev, tester). Rest fields are kept equal for all roles of a provider."""
     name: str
+    provider: str = ""    # subscription CLI this role runs on (claude | codex)
     status: AgentStatus = AgentStatus.IDLE
     rest_until: str = ""  # ISO timestamp, empty when not resting
     backoff_level: int = 0

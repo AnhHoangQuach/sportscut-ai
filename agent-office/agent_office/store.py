@@ -12,10 +12,12 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .models import Agent, Request, Task, now_iso
+from .models import PROVIDERS, ROLES, Agent, AgentStatus, Request, Task, now_iso
 
 OFFICE_DIR = ".agent-office"
-AGENT_NAMES = ("claude", "codex")
+AGENT_NAMES = ROLES
+# Kept once per provider when an old state (one agent per CLI) is split into roles.
+_COUNTERS = ("calls_today", "calls_total", "rests_total", "limits_today", "failures")
 
 
 class Store:
@@ -38,7 +40,8 @@ class Store:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.logs_dir.mkdir(exist_ok=True)
         if not self.exists():
-            self.agents = {n: Agent(name=n) for n in AGENT_NAMES}
+            self.agents = {}
+            self._sync_roles()
             self.save()
             self.event("office_initialized", repo=str(self.repo))
 
@@ -47,9 +50,8 @@ class Store:
             raise FileNotFoundError(f"No agent office here. Run `office init` in {self.repo}")
         data = json.loads(self.state_path.read_text(encoding="utf-8"))
         self.tasks = {t["id"]: Task.from_dict(t) for t in data.get("tasks", [])}
-        self.agents = {a["name"]: Agent.from_dict(a) for a in data.get("agents", [])}
-        for n in AGENT_NAMES:
-            self.agents.setdefault(n, Agent(name=n))
+        self.agents = {a["name"]: Agent.from_dict(a) for a in data.get("agents", []) if a.get("name") in ROLES}
+        self._sync_roles([a for a in data.get("agents", []) if a.get("name") in PROVIDERS])
         self.requests = {r["id"]: Request(**r) for r in data.get("requests", [])}
         self.meta = dict(data.get("meta", {}))
         return self
@@ -68,6 +70,42 @@ class Store:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         os.replace(tmp, self.state_path)
+
+    # ---------- roles ----------
+    def _sync_roles(self, legacy: list[dict[str, Any]] | None = None) -> None:
+        """Every role exists and runs on the provider the config names. `legacy` agents (one per CLI,
+        saved before roles were split) hand their rest state to every role on that CLI; their usage
+        counters go to the first such role only, so per-CLI totals stay right."""
+        from .config import load_config
+        roles = load_config(self.dir).roles
+        for old in legacy or []:
+            mates = [r for r in ROLES if roles[r] == old["name"] and r not in self.agents]
+            for i, r in enumerate(mates):
+                d = dict(old, name=r, provider=old["name"], active=[])
+                if d.get("status") == AgentStatus.WORKING.value:
+                    d["status"] = AgentStatus.IDLE.value
+                if i:
+                    d.update({k: 0 for k in _COUNTERS})
+                self.agents[r] = Agent.from_dict(d)
+        for r in ROLES:
+            self.agents.setdefault(r, Agent(name=r))
+            self.agents[r].provider = roles[r]
+        self.agents = {r: self.agents[r] for r in ROLES}
+
+    def roles_of(self, provider: str) -> list[Agent]:
+        return [a for a in self.agents.values() if a.provider == provider]
+
+    def providers(self) -> list[str]:
+        return list(dict.fromkeys(a.provider for a in self.agents.values()))
+
+    def provider_of(self, name: str) -> str:
+        """Provider for a role or provider name (`office wake tester` / `office wake codex`)."""
+        if name in self.agents:
+            return self.agents[name].provider
+        if name in self.providers():
+            return name
+        raise ValueError(f"unknown agent {name!r}: use a role ({', '.join(ROLES)}) or a CLI "
+                         f"({', '.join(self.providers())})")
 
     # ---------- events ----------
     def event(self, kind: str, **fields: Any) -> None:

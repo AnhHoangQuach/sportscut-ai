@@ -22,7 +22,7 @@ def set_cfg(env, *pairs):
 
 
 def run_parallel(env, office, limit=500):
-    peak = {"claude": 0, "codex": 0}
+    peak = {"pm": 0, "lead": 0, "dev": 0, "tester": 0}
     with ThreadPoolExecutor(max_workers=6) as pool:
         running = set()
         for _ in range(limit):
@@ -49,33 +49,37 @@ def test_plan_steps_respects_sessions_and_busy(auto_env):
     office.step()  # breakdown -> 4 independent tasks
     for t in office.store.tasks.values():
         t.stage = Stage.DEV
-    plan = plan_steps(office.store, env.now, True, slots={"claude": 1, "codex": 2})
+    plan = plan_steps(office.store, env.now, True, slots={"pm": 1, "lead": 1, "dev": 2, "tester": 1})
     assert [s.target for s in plan.steps] == ["T-001", "T-002"]
-    plan = plan_steps(office.store, env.now, True, busy={"T-001"}, slots={"claude": 1, "codex": 1})
+    plan = plan_steps(office.store, env.now, True, busy={"T-001"}, slots={"pm": 1, "lead": 1, "dev": 1, "tester": 1})
     assert [s.target for s in plan.steps] == ["T-002"]
+    office.store.tasks["T-003"].stage = office.store.tasks["T-004"].stage = Stage.TEST
+    plan = plan_steps(office.store, env.now, True, slots={"pm": 1, "lead": 1, "dev": 2, "tester": 1})
+    assert [(s.target, s.agent) for s in plan.steps] == [("T-003", "tester"), ("T-001", "dev"), ("T-002", "dev")]
 
 
 def test_plan_steps_keeps_normal_roles_when_both_agents_have_quota(auto_env):
     office = auto_env.office()
     req = office.add_request("Cut highlights")
-    assert plan_steps(office.store, auto_env.now, True).steps[0].agent == "claude"
+    assert plan_steps(office.store, auto_env.now, True).steps[0].agent == "pm"
     req.status = "planned"
     office._add_tasks(req, [{"key": "1", "title": "Cut", "brief": "x"}])
     task = office.store.tasks[req.task_ids[0]]
     task.stage = Stage.DEV
-    assert plan_steps(office.store, auto_env.now, True).steps[0].agent == "codex"
+    assert plan_steps(office.store, auto_env.now, True).steps[0].agent == "dev"
 
 
 def test_plan_steps_codex_takes_claude_role_during_quota_rest(auto_env):
     office = auto_env.office()
     office.add_request("Cut highlights")
-    claude = office.store.agents["claude"]
-    claude.status = AgentStatus.RESTING
-    claude.rest_until = "2026-11-22T14:00:00+00:00"
-    claude.rest_cause = "quota"
+    for role in ("pm", "lead"):
+        claude = office.store.agents[role]
+        claude.status = AgentStatus.RESTING
+        claude.rest_until = "2026-11-22T14:00:00+00:00"
+        claude.rest_cause = "quota"
 
     step = plan_steps(office.store, auto_env.now, True).steps[0]
-    assert (step.kind, step.agent) == ("breakdown", "codex")
+    assert (step.kind, step.agent) == ("breakdown", "dev")  # a Codex role covers the PM
 
 
 def test_plan_steps_claude_takes_codex_role_during_quota_rest(auto_env):
@@ -85,13 +89,14 @@ def test_plan_steps_claude_takes_codex_role_during_quota_rest(auto_env):
     office._add_tasks(req, [{"key": "1", "title": "Cut", "brief": "x"}])
     task = office.store.tasks[req.task_ids[0]]
     task.stage = Stage.DEV
-    codex = office.store.agents["codex"]
-    codex.status = AgentStatus.RESTING
-    codex.rest_until = "2026-11-22T14:00:00+00:00"
-    codex.rest_cause = "budget"
+    for role in ("dev", "tester"):
+        codex = office.store.agents[role]
+        codex.status = AgentStatus.RESTING
+        codex.rest_until = "2026-11-22T14:00:00+00:00"
+        codex.rest_cause = "budget"
 
     step = plan_steps(office.store, auto_env.now, True).steps[0]
-    assert (step.target, step.agent) == (task.id, "claude")
+    assert (step.target, step.agent) == (task.id, "pm")  # a Claude role covers the Developer
 
 
 def test_plan_steps_waits_when_both_agents_are_out_of_quota(auto_env):
@@ -116,7 +121,7 @@ def test_parallel_demo_runs_failover_and_finishes(auto_env):
     # The simulation deliberately rate-limits Codex; after that Claude may finish enough work
     # that a second concurrent Codex slot is timing-dependent. The scheduler-only test above
     # proves both Codex slots are retained while both subscriptions are available.
-    assert peak["codex"] >= 1 and peak["claude"] == 1
+    assert peak["dev"] >= 1 and peak["pm"] <= 1 and peak["lead"] <= 1 and peak["tester"] <= 1
     tasks = office.store.tasks
     assert len(tasks) == 5 and all(t.stage == Stage.DONE for t in tasks.values()), \
         {t.id: (t.stage.value, t.blocked_reason) for t in tasks.values()}
@@ -131,8 +136,9 @@ def test_parallel_demo_runs_failover_and_finishes(auto_env):
     log = subprocess.run(["git", "log", "--format=%s", "main"], cwd=env.repo, capture_output=True, text=True).stdout
     if "merge_conflict" in names:
         assert "conflicts resolved by" in log
-    codex = office.store.agents["codex"]
-    assert codex.calls_total >= 1 and codex.rests_total == 1 and codex.active == []
+    dev, tester = office.store.agents["dev"], office.store.agents["tester"]
+    assert dev.calls_total >= 1 and tester.calls_total >= 1 and dev.active == [] == tester.active
+    assert dev.rests_total + tester.rests_total == 1  # one Codex quota rest, shared by both roles
     assert "agent_failover" in names
 
 
@@ -156,8 +162,9 @@ def test_daily_budget_rests_agent_until_midnight(auto_env):
     office = env.office()
     office.add_request("Cut highlights")
     env.run_all(office)
-    claude = office.store.agents["claude"]
-    assert claude.status.value == "resting" and claude.calls_today == 2
+    claude = office.store.agents["lead"]
+    assert claude.status.value == "resting" and office.store.agents["pm"].status.value == "resting"
+    assert sum(office.store.agents[r].calls_today for r in ("pm", "lead")) == 2
     assert any(e["event"] == "budget_reached" for e in events(env.repo))
     assert "T00:00:00" in claude.rest_until or claude.rest_until  # rests until local midnight
 
@@ -178,7 +185,7 @@ def test_stats_command(auto_env, capsys):
     env.run_all(office)
     assert office_main(["--repo", str(env.repo), "stats"]) == 0
     out = capsys.readouterr().out
-    assert "claude" in out and "codex" in out and "done 2" in out
+    assert "claude" in out and "codex" in out and "tester" in out and "done 2" in out
 
 
 def test_stats_api(auto_env):
@@ -190,5 +197,5 @@ def test_stats_api(auto_env):
 
     c = TestClient(create_app(auto_env.repo))
     st = c.get("/api/stats").json()
-    assert st["agents"]["codex"]["max_sessions"] == 2 and st["done"] == 0
-    assert c.get("/api/state").json()["config"]["parallel"] == {"claude": 1, "codex": 2}
+    assert st["agents"]["dev"]["max_sessions"] == 2 and st["done"] == 0
+    assert c.get("/api/state").json()["config"]["parallel"] == {"pm": 1, "lead": 1, "dev": 2, "tester": 1}

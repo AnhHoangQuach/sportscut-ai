@@ -1,14 +1,15 @@
-"""Pick the next unit of work, honouring per-agent rest periods.
+"""Pick the next unit of work, honouring per-CLI rest periods.
 
-Agents rest independently: if Codex is out of quota, Claude can still write specs
-and reviews for other tasks.
+Each role (pm, lead, dev, tester) is its own agent with its own session slots. Roles on the same
+CLI share its quota and rest together; roles on the other CLI keep working (if Codex is out of
+quota, the PM can still write specs and the Tech Lead can still review other tasks).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from .models import STAGE_AGENT, AgentStatus, Stage, Task
+from .models import FAILOVER, STAGE_AGENT, STEP_ROLE, AgentStatus, Stage, Task
 from .store import Store
 
 # Finish work in flight before starting new work.
@@ -18,8 +19,8 @@ STAGE_PRIORITY = [Stage.PR, Stage.REVIEW, Stage.TEST, Stage.DEV, Stage.SPEC, Sta
 @dataclass
 class Step:
     kind: str            # "breakdown" | "goal" | "task" | "techlead" | "wake"
-    target: str          # request id, task id, or agent name
-    agent: str | None
+    target: str          # request id, task id, or provider name (wake)
+    agent: str | None    # role that runs it (None = orchestrator only)
 
 
 @dataclass
@@ -56,16 +57,19 @@ def agent_available(store: Store, name: str | None, now: datetime) -> bool:
 
 
 def assigned_agent(store: Store, preferred: str, now: datetime) -> str:
-    """Use the other subscription only while the preferred one is quota-resting.
+    """Use a role on the other subscription only while the preferred role's CLI is quota-resting.
 
     Busy/session limits are handled separately by ``take`` and never cause failover.
-    An expired rest is also not bypassed: the preferred agent must pass its wake probe first.
+    An expired rest is also not bypassed: the preferred CLI must pass its wake probe first.
     """
     agent = store.agents[preferred]
     if agent.status != AgentStatus.RESTING or agent.rest_cause not in ("quota", "budget"):
         return preferred
-    other = "codex" if preferred == "claude" else "claude"
-    return other if store.agents[other].status != AgentStatus.RESTING else preferred
+    for name in [FAILOVER.get(preferred, ""), *store.agents]:
+        other = store.agents.get(name)
+        if other is not None and other.provider != agent.provider and other.status != AgentStatus.RESTING:
+            return other.name
+    return preferred
 
 
 def deps_done(store: Store, task: Task) -> bool:
@@ -165,18 +169,23 @@ def plan_steps(store: Store, now: datetime | None = None, auto_merge: bool = Fal
         steps.append(step)
         return True
 
-    # Resting agents whose rest has expired get woken (probed) before they do anything else.
+    # Resting CLIs whose rest has expired get woken (one probe for all their roles) first.
+    seen: set[str] = set()
     for a in store.agents.values():
         if a.status != AgentStatus.RESTING:
             continue
         unavailable.add(a.name)
+        if a.provider in seen:
+            continue
+        seen.add(a.provider)
         until = _parse(a.rest_until)
         if until is None or now >= until:
-            if a.name not in busy and not full():
-                steps.append(Step("wake", a.name, a.name))
+            if a.provider not in busy and not full():
+                steps.append(Step("wake", a.provider, None))
             continue
         resting_wakes.append(until)
-        reasons.append(f"{a.name} resting until {a.rest_until} ({rest_reason(a)})")
+        roles = ", ".join(r.name for r in store.roles_of(a.provider) if r.status == AgentStatus.RESTING)
+        reasons.append(f"{a.provider} resting until {a.rest_until} (roles {roles}; {rest_reason(a)})")
 
     for req in store.requests.values():
         if full():
@@ -189,16 +198,16 @@ def plan_steps(store: Store, now: datetime | None = None, auto_merge: bool = Fal
             reasons.append(f"{req.id} waits until {req.retry_at} (Tech Lead decision)")
             continue
         if req.tl_issue and req.status in ("new", "planned"):
-            if not take(Step("techlead", req.id, assigned_agent(store, "claude", now))):
-                reasons.append(f"{req.id} waits for the Tech Lead (claude)")
+            if not take(Step("techlead", req.id, assigned_agent(store, STEP_ROLE["techlead"], now))):
+                reasons.append(f"{req.id} waits for the Tech Lead (lead)")
             continue
         if req.status == "new":
-            if not take(Step("breakdown", req.id, assigned_agent(store, "claude", now))):
-                reasons.append(f"{req.id} waits for claude")
+            if not take(Step("breakdown", req.id, assigned_agent(store, STEP_ROLE["breakdown"], now))):
+                reasons.append(f"{req.id} waits for the PM (pm)")
         elif req.status == "planned" and req.task_ids and all(
                 store.tasks[t].stage == Stage.DONE for t in req.task_ids if t in store.tasks):
-            if not take(Step("goal", req.id, assigned_agent(store, "claude", now))):
-                reasons.append(f"{req.id} goal check waits for claude")
+            if not take(Step("goal", req.id, assigned_agent(store, STEP_ROLE["goal"], now))):
+                reasons.append(f"{req.id} goal check waits for the PM (pm)")
         elif req.status == "blocked":
             reasons.append(f"{req.id} waits for the PO to answer a business question: {req.note}")
 
@@ -206,8 +215,8 @@ def plan_steps(store: Store, now: datetime | None = None, auto_merge: bool = Fal
     # Technical blockers first: the Tech Lead unblocks a task before new work starts.
     for t in tasks:
         if t.tl_issue and t.stage not in (Stage.DONE, Stage.BLOCKED) and t.id not in busy and not full():
-            if not take(Step("techlead", t.id, assigned_agent(store, "claude", now))):
-                reasons.append(f"{t.id} waits for the Tech Lead (claude): {t.tl_kind}")
+            if not take(Step("techlead", t.id, assigned_agent(store, STEP_ROLE["techlead"], now))):
+                reasons.append(f"{t.id} waits for the Tech Lead (lead): {t.tl_kind}")
     for t in tasks:
         until = _parse(t.retry_at)
         if until is not None and now < until and t.stage not in (Stage.DONE, Stage.BLOCKED):

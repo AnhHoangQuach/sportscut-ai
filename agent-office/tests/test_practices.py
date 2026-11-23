@@ -46,7 +46,7 @@ def test_eval_gate_blocks_a_quality_drop_then_lets_the_fix_through(auto_env):
     assert [h["score"] for h in office.store.meta["eval_history"]] == [0.8, 0.9]
     dev_prompts = [c["prompt"] for c in env.calls() if c["kind"] == "dev"]
     assert "got worse: 0.6000 vs 0.8000" in (env.repo / ".agent-office").joinpath("state.json").read_text() \
-        or any("Tests or the eval failed" in p for p in dev_prompts)
+        or any("found failures last time" in p for p in dev_prompts)
     review_prompts = [c["prompt"] for c in env.calls() if c["kind"] == "review"]
     assert any("Eval f1: 0.9000" in p for p in review_prompts)
 

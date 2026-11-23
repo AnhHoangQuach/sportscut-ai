@@ -15,7 +15,7 @@ from pathlib import Path
 from . import github
 from .agents.base import API_KEY_VARS, subscription_env
 from .config import load_config, write_default_config
-from .models import AgentStatus, Stage
+from .models import PROVIDERS, ROLES, ROLE_TITLE, AgentStatus, Stage
 from .scheduler import next_step
 from .store import Store
 
@@ -160,10 +160,10 @@ def cmd_run(args) -> int:
 
 
 def _print_status(store: Store) -> None:
-    print("\nAgents:")
+    print("\nAgents (role @ CLI):")
     for a in store.agents.values():
         extra = f" until {a.rest_until}" if a.rest_until else ""
-        print(f"  {a.name:<7} {a.status.value}{extra}")
+        print(f"  {a.name:<7} {ROLE_TITLE.get(a.name, ''):<22} @{a.provider:<7} {a.status.value}{extra}")
     if store.requests:
         print("Requests:")
         for r in store.requests.values():
@@ -390,7 +390,8 @@ def cmd_doctor(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="office", description="Agent Office: Claude (PM/TL) + Codex (dev/test)")
+    p = argparse.ArgumentParser(prog="office", description="Agent Office: PM + Tech Lead (Claude), Developer + "
+                                "Tester (Codex), each its own agent")
     p.add_argument("--repo", default=".", help="target git repository (default: current dir)")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("init", help="create .agent-office/ in the target repo").set_defaults(fn=cmd_init)
@@ -420,8 +421,8 @@ def main(argv: list[str] | None = None) -> int:
     tr.set_defaults(fn=cmd_triage)
     sub.add_parser("retry-github", help="after fixing gh: check GitHub now and retry waiting PRs/merges"
                    ).set_defaults(fn=cmd_retry_github)
-    w = sub.add_parser("wake", help="mark a resting agent available now")
-    w.add_argument("agent", choices=["claude", "codex"])
+    w = sub.add_parser("wake", help="mark a resting CLI available now (a role name wakes every role on its CLI)")
+    w.add_argument("agent", choices=[*ROLES, *PROVIDERS])
     w.set_defaults(fn=cmd_wake)
     db = sub.add_parser("dashboard", help="open the 2D dashboard (needs: pip install './agent-office[dashboard]')")
     db.add_argument("--host", default="127.0.0.1")
@@ -429,7 +430,8 @@ def main(argv: list[str] | None = None) -> int:
     db.add_argument("--no-browser", action="store_true")
     db.add_argument("--page", default="", choices=["", "office"], help="open the 3D office directly")
     db.set_defaults(fn=cmd_dashboard)
-    dm = sub.add_parser("demo", help="watch simulated Claude + Codex build SportsCut in the 3D office (free)")
+    dm = sub.add_parser("demo", help="watch the simulated PM, Tech Lead, Developer and Tester build SportsCut "
+                        "in the 3D office (free)")
     dm.add_argument("--dir", default=str(Path.home() / "agent-office-demo"))
     dm.add_argument("--delay", type=float, default=3.0, help="seconds per simulated agent call")
     dm.add_argument("--host", default="127.0.0.1")

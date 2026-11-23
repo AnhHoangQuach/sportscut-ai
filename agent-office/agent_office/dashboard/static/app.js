@@ -3,11 +3,20 @@
 // that lands in the office inbox, so it is safe while the runner works.
 
 const STAGES = [
-  ["todo", "Claude PM"], ["spec", "Claude PM"], ["dev", "Codex"], ["test", "Codex"],
-  ["review", "Claude TL"], ["pr", "merge"], ["done", ""], ["blocked", "chờ PO (nghiệp vụ)"],
+  ["todo", "PM"], ["spec", "PM"], ["dev", "Developer"], ["test", "Tester"],
+  ["review", "Tech Lead"], ["pr", "merge"], ["done", ""], ["blocked", "chờ PO (nghiệp vụ)"],
 ];
-const STAGE_AGENT = { spec: "claude", review: "claude", dev: "codex", test: "codex" };
-const ROLES = { claude: "PM · Tech Lead · Reviewer", codex: "Developer · Tester" };
+// Four separate agents (roles). Each runs on one subscription CLI (provider); roles on the same
+// CLI share its quota. Colours follow the provider, names follow the role.
+const STAGE_AGENT = { spec: "pm", review: "lead", dev: "dev", test: "tester" };
+const ROLE_LABEL = { pm: "PM", lead: "Tech Lead", dev: "Developer", tester: "Tester", po: "PO" };
+const ROLE_AV = { pm: "P", lead: "L", dev: "D", tester: "T" };
+const DEFAULT_PROVIDER = { pm: "claude", lead: "claude", dev: "codex", tester: "codex" };
+// Events written before the split name a CLI; show them at that CLI's first role.
+const norm = (a) => (state && state.legacy_agents && state.legacy_agents[a]) || ({ claude: "pm", codex: "dev" })[a] || a;
+const roleOf = (a) => (state && (state.roles || []).find((r) => r.name === norm(a))) || null;
+const providerOf = (a) => { const r = roleOf(a); return r ? r.provider : (DEFAULT_PROVIDER[norm(a)] || ""); };
+const roleName = (a) => ROLE_LABEL[norm(a)] || a;
 const REQ_STATUS = { new: "mới", planned: "đang làm", done: "xong", blocked: "chờ PO" };
 
 let state = null;
@@ -82,9 +91,9 @@ function setConn(s) {
   el.querySelector("span").textContent = s === "ok" ? "realtime" : s === "bad" ? "mất kết nối" : "đang kết nối";
 }
 function trackWorking(e) {
-  if (e.event === "agent_working") startWork(e.agent, e.task_id, e.label);
-  else if (["agent_done", "agent_failed"].includes(e.event)) endWork(e.agent, e.task_id);
-  else if (e.event === "agent_resting") clearWork(e.agent);
+  if (e.event === "agent_working") startWork(norm(e.agent), e.task_id, e.label);
+  else if (["agent_done", "agent_failed"].includes(e.event)) endWork(norm(e.agent), e.task_id);
+  else if (e.event === "agent_resting") (e.roles || [e.agent]).forEach((r) => clearWork(norm(r)));
 }
 
 function setState(s) {
@@ -118,7 +127,8 @@ function renderAgents() {
     const w = working[a.name];
     let status;
     if (a.status === "resting") {
-      status = `Nghỉ (hết quota) đến ${hhmm(a.rest_until)} · <span data-until="${esc(a.rest_until)}"></span>`;
+      const why = a.rest_cause === "failure" ? "CLI lỗi" : a.rest_cause === "budget" ? "hết ngân sách" : "hết quota";
+      status = `Nghỉ (${why} ${esc(a.provider)}) đến ${hhmm(a.rest_until)} · <span data-until="${esc(a.rest_until)}"></span>`;
     } else if (a.status === "working" || w) {
       status = `Đang làm ${esc(w ? `${w.label} · ${w.task}` : "")}`;
     } else {
@@ -126,11 +136,12 @@ function renderAgents() {
     }
     const cls = a.status === "resting" ? "resting" : (a.status === "working" || w) ? "working" : "idle";
     const wake = a.status === "resting" ? `<button class="btn small" data-wake="${esc(a.name)}">Làm lại ngay</button>` : "";
-    return `<div class="agent ${esc(a.name)} ${cls}">
-      <div class="avatar">${a.name === "claude" ? "C" : "X"}</div>
+    const role = roleOf(a.name) || {};
+    return `<div class="agent ${esc(a.provider)} ${cls}">
+      <div class="avatar">${ROLE_AV[a.name] || "?"}</div>
       <div class="agent-info">
-        <div class="agent-name">${a.name === "claude" ? "Claude" : "Codex"}</div>
-        <div class="agent-role">${ROLES[a.name] || ""}</div>
+        <div class="agent-name">${esc(roleName(a.name))} <span class="hint">@${esc(a.provider)}</span></div>
+        <div class="agent-role">${esc(role.title || "")}</div>
         <div class="agent-status"><span class="status-dot"></span>${status}</div>
         ${usage(a)}
         ${(a.rest_detail || a.last_error) && a.status === "resting" ? `<div class="hint">${esc(a.rest_detail || a.last_error).slice(0, 120)}</div>` : ""}
@@ -142,9 +153,12 @@ function usage(a) {
   const cfg = state.config || {};
   const today = new Date().toLocaleDateString("sv-SE");
   const calls = a.calls_day === today ? a.calls_today || 0 : 0;
-  const cap = (cfg.max_calls_per_day || {})[a.name] || 0;
+  // the daily budget is per CLI, shared by its roles
+  const mates = (state.agents || []).filter((m) => m.provider === a.provider);
+  const shared = mates.reduce((n, m) => n + (m.calls_day === today ? m.calls_today || 0 : 0), 0);
+  const cap = (cfg.max_calls_per_day || {})[a.provider] || 0;
   const par = (cfg.parallel || {})[a.name] || 1;
-  return `<div class="hint">Hôm nay ${calls}${cap ? `/${cap}` : ""} lượt · ${(a.active || []).length}/${par} phiên · đã nghỉ ${a.rests_total || 0} lần</div>`;
+  return `<div class="hint">Hôm nay ${calls} lượt (${esc(a.provider)}: ${shared}${cap ? `/${cap}` : ""}) · ${(a.active || []).length}/${par} phiên · đã nghỉ ${a.rests_total || 0} lần</div>`;
 }
 function tickCountdowns() {
   document.querySelectorAll("[data-until]").forEach((el) => {
@@ -198,7 +212,7 @@ function renderBoard() {
   $("board").innerHTML = STAGES.map(([stage, who]) => {
     const list = tasks.filter((t) => t.stage === stage);
     const cards = list.map((t) => {
-      const agent = STAGE_AGENT[t.stage] || "";
+      const agent = STAGE_AGENT[t.stage] ? providerOf(STAGE_AGENT[t.stage]) : "";
       const meta = [];
       if (active.has(t.id)) meta.push(`<span class="badge planned">đang chạy</span>`);
       if (t.review_round) meta.push(`<span class="badge">review ${t.review_round}/3</span>`);
@@ -231,10 +245,10 @@ function renderWaiting() {
 
 // ---------------------------------------------------------------- feed
 function describe(e) {
-  const who = (a) => `<span class="who ${esc(a)}">${a === "claude" ? "Claude" : a === "codex" ? "Codex" : a === "po" ? "PO" : esc(a)}</span>`;
+  const who = (a) => `<span class="who ${esc(providerOf(a) || a)}">${esc(roleName(a))}</span>`;
   switch (e.event) {
     case "request_added": return `PO gửi <b>${esc(e.request_id)}</b>`;
-    case "task_created": return `Claude tạo <b>${esc(e.task_id)}</b> ${esc(e.title)}`;
+    case "task_created": return `${who("pm")} tạo <b>${esc(e.task_id)}</b> ${esc(e.title)}`;
     case "stage_changed": {
       const cls = e.to === "blocked" ? "ev-warn" : e.to === "done" ? "ev-good" : "";
       return `<b>${esc(e.task_id)}</b> <span class="${cls}">${esc(e.frm)} → ${esc(e.to)}</span>${e.note ? ` · ${esc(e.note)}` : ""}`;
@@ -242,26 +256,27 @@ function describe(e) {
     case "agent_working": return `${who(e.agent)} bắt đầu ${esc(e.label)} (${esc(e.task_id)})`;
     case "agent_done": return `${who(e.agent)} xong ${esc(e.label)} (${esc(e.task_id)})`;
     case "agent_failed": return `${who(e.agent)} <span class="ev-bad">lỗi</span> (${esc(e.task_id)}, exit ${esc(e.exit_code)})`;
-    case "agent_resting": return `${who(e.agent)} <span class="ev-warn">hết quota</span>, nghỉ đến ${hhmm(e.until)}`;
+    case "agent_resting": return `${(e.roles || [e.agent]).map(who).join(", ")} <span class="ev-warn">${e.cause === "failure" ? "CLI lỗi" : e.cause === "budget" ? "hết ngân sách" : "hết quota"}${e.provider ? ` ${esc(e.provider)}` : ""}</span>, nghỉ đến ${hhmm(e.until)}`;
     case "agent_failover": return `${who(e.agent)} <span class="ev-good">tiếp quản</span> ${esc(e.step_kind)} (${esc(e.task_id)}) thay ${who(e.preferred)} đang hết quota`;
-    case "agent_awake": return `${who(e.agent)} làm việc lại`;
+    case "agent_awake": return `${(e.roles || [e.agent]).map(who).join(", ")} làm việc lại`;
     case "task_checkpoint": return `<b>${esc(e.task_id)}</b> lưu checkpoint (${esc(e.reason)})`;
-    case "review_done": return `Claude review <b>${esc(e.task_id)}</b> vòng ${esc(e.round)}: <span class="${e.verdict === "approve" ? "ev-good" : "ev-warn"}">${esc(e.verdict)}</span>`;
+    case "review_done": return `${who("lead")} review <b>${esc(e.task_id)}</b> vòng ${esc(e.round)}: <span class="${e.verdict === "approve" ? "ev-good" : "ev-warn"}">${esc(e.verdict)}</span>`;
     case "pr_opened": return `PR mở cho <b>${esc(e.task_id)}</b>`;
     case "pr_merged": return `<span class="ev-good">Đã merge</span> <b>${esc(e.task_id)}</b>`;
     case "request_blocked": return `<b>${esc(e.request_id)}</b> <span class="ev-warn">cần PO</span>: ${esc(e.note)}`;
     case "request_answered": return `PO trả lời <b>${esc(e.request_id)}</b>`;
-    case "request_followup": return `Claude thêm ${esc((e.tasks || []).length)} task cho <b>${esc(e.request_id)}</b>`;
+    case "request_followup": return `${who("pm")} thêm ${esc((e.tasks || []).length)} task cho <b>${esc(e.request_id)}</b>`;
     case "request_done": return `<span class="ev-good">Hoàn thành</span> <b>${esc(e.request_id)}</b>`;
     case "runner_started": return `Runner bắt đầu`;
     case "runner_stopped": return `Runner dừng sau ${esc(e.steps)} bước`;
     case "worktree_ready": return `Worktree cho <b>${esc(e.task_id)}</b>: ${esc(e.branch)}`;
     case "message": return `${who(e.frm)} → ${e.to === "all" ? "mọi người" : who(e.to)}: ${esc(String(e.text || "").slice(0, 160))}`;
-    case "merge_conflict": return `<b>${esc(e.task_id)}</b> <span class="ev-warn">xung đột merge</span>, Codex sẽ gỡ (lần ${esc(e.round)})`;
+    case "merge_conflict": return `<b>${esc(e.task_id)}</b> <span class="ev-warn">xung đột merge</span>, ${who("dev")} sẽ gỡ (lần ${esc(e.round)})`;
     case "conflict_resolved": return `<span class="ev-good">Đã gỡ xung đột</span> <b>${esc(e.task_id)}</b>`;
     case "guardrail": return `<span class="ev-bad">Rào chắn</span> dừng <b>${esc(e.task_id || e.request_id)}</b> (${esc(e.rule)})`;
     case "budget_reached": return `${who(e.agent)} <span class="ev-warn">hết ngân sách hôm nay</span> (${esc(e.calls)}/${esc(e.cap)})`;
-    case "techlead_needed": return `<b>${esc(e.task_id || e.request_id)}</b> vướng kỹ thuật (${esc(e.issue)}), <span class="who claude">Claude</span> Tech Lead xử lý`;
+    case "techlead_needed": return `<b>${esc(e.task_id || e.request_id)}</b> vướng kỹ thuật (${esc(e.issue)}), ${who("lead")} xử lý`;
+    case "tests_changed_by_dev": return `${who("dev")} sửa test của ${who("tester")} ở <b>${esc(e.task_id)}</b>: ${esc((e.files || []).join(", "))} (Tester sẽ kiểm tra lại)`;
     case "techlead_decision": return `Tech Lead quyết <b>${esc(e.task_id || e.request_id)}</b>: ${esc(e.action)}${e.decision ? ` · ${esc(e.decision)}` : ""}`;
     case "techlead_paused": return `<b>${esc(e.request_id)}</b> tạm dừng, thử lại lúc ${hhmm(e.until)}`;
     case "task_dropped": return `<b>${esc(e.task_id)}</b> <span class="ev-warn">gác lại</span>: ${esc(e.why)}`;
