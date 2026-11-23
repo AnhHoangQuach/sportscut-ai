@@ -193,3 +193,123 @@ def test_t010_ac11_cli_error_and_help(tmp_path: Path, capsys) -> None:
     assert exited.value.code == 0
     help_output = capsys.readouterr().out
     assert "DIRECTORY" in help_output and "--json" in help_output
+
+
+def test_t010_ac2_api_response_keys_unchanged(tmp_path: Path, monkeypatch) -> None:
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    import sportscut.api as api
+    from sportscut import pipeline
+
+    monkeypatch.setenv("SPORTSCUT_DATA_DIR", str(tmp_path))
+    entry = {**_segment(1, 12, 0.9, "goal").to_dict(), "file": "clip_01.mp4"}
+    monkeypatch.setattr(pipeline, "run", lambda *a, **k: [entry])
+    response = TestClient(api.app).post("/highlights", files={"file": ("x.mp4", b"data")})
+    assert response.status_code == 200
+    (highlight,) = response.json()["highlights"]
+    assert set(highlight) == {"start", "end", "score", "reason", "clip_url"}
+
+
+def test_t010_ac4_broken_json_and_non_string_type_name_path(tmp_path: Path) -> None:
+    path = tmp_path / "labels.json"
+    for text in ("[{", '[{"start":1,"end":2,"type":3}]', '[{"start":"1","end":2,"type":"goal"}]'):
+        path.write_text(text)
+        with pytest.raises(ValueError) as caught:
+            load_labels(path)
+        assert str(path) in str(caught.value)
+
+
+def test_t010_ac5_padded_cells_and_header_only_first(tmp_path: Path) -> None:
+    path = tmp_path / "labels.csv"
+    path.write_text(" 01:00 , 01:10.25 ,  Red_Card \n")
+    assert load_labels(path) == [Label(60, 70.25, "red_card")]
+    path.write_text("00:01,00:02,goal\nstart,end,type\n")
+    with pytest.raises(ValueError, match="line 2"):
+        load_labels(path)
+
+
+def test_t010_ac6_best_iou_wins_and_unmatched_stays_fp_fn() -> None:
+    # The label prefers the closer clip; the other clip is fp.
+    segments = [_segment(0, 30), _segment(10, 16)]
+    assert match_segments(segments, [Label(11, 15, "goal")]) == [(1, 0)]
+    counts = score_case([_segment(0, 30)], [Label(5, 7, "goal"), Label(20, 22, "goal")])
+    assert (counts["tp"], counts["fp"], counts["fn"]) == (1, 0, 1)
+    counts = score_case([_segment(10, 20), _segment(11, 21)], [Label(12, 18, "goal")])
+    assert (counts["tp"], counts["fp"], counts["fn"]) == (1, 1, 0)
+
+
+def _case(root: Path, name: str, labels: list[dict]) -> None:
+    case = root / name
+    case.mkdir()
+    (case / "match.mkv").touch()
+    (case / "labels.json").write_text(json.dumps(labels))
+
+
+def test_t010_ac9_sums_cases_in_sorted_order(tmp_path: Path, monkeypatch) -> None:
+    _case(tmp_path, "b", [{"start": 2, "end": 4, "type": "goal"}, {"start": 50, "end": 52, "type": "save"}])
+    _case(tmp_path, "a", [{"start": 2, "end": 4, "type": "foul"}])
+    (tmp_path / "notes").mkdir()  # no labels: not a case, ignored
+    (tmp_path / "c").mkdir()
+    (tmp_path / "c" / "labels.csv").write_text("00:01,00:05,goal\n")
+    (tmp_path / "c" / "clip.MP4").touch()
+    by_case = {
+        "a": [_segment(0, 10, 3), _segment(30, 40, 2)],
+        "b": [_segment(0, 10, 5, "goal")],
+        "c": [],
+    }
+    calls = []
+
+    def fake(video):
+        calls.append(Path(video).parent.name)
+        return by_case[Path(video).parent.name]
+
+    monkeypatch.setattr(detect, "find_highlights", fake)
+    report = evaluate_dir(tmp_path)
+    assert calls == ["a", "b", "c"]
+    # totals: tp=2 (a:1, b:1), fp=1, fn=2 -> p=0.6667, r=0.5
+    assert (report["precision"], report["recall"], report["f1"]) == (.6667, .5, .5714)
+    assert report["event_accuracy"] == 1.0
+    assert report["precision_at_5"] == .6667
+    assert report["per_event"]["goal"] == {"precision": 1.0, "recall": .5, "f1": .6667}
+    assert [m["match"] for m in report["per_match"]] == ["a", "b", "c"]
+    for entry in report["per_match"]:
+        assert list(entry) == ["match", "labels", "predictions", "f1", "precision",
+                               "recall", "event_accuracy", "precision_at_5"]
+    assert report["per_match"][2] == {"match": "c", "labels": 1, "predictions": 0, "f1": 0.0,
+        "precision": 0.0, "recall": 0.0, "event_accuracy": None, "precision_at_5": 0.0}
+
+
+def test_t010_ac11_case_without_video_exits_2_before_detection(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(detect, "find_highlights", lambda _: pytest.fail("detection ran"))
+    case = tmp_path / "m1"
+    case.mkdir()
+    (case / "labels.csv").write_text("00:01,00:02,goal\n")
+    assert main(["eval", str(tmp_path), "--json"]) == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err.startswith("sportscut eval: error: ") and "expected exactly one video" in output.err
+    (case / "labels.csv").write_text("00:01,00:02,penalty\n")
+    (case / "v.mp4").touch()
+    assert main(["eval", str(tmp_path)]) == 2
+    assert "penalty" in capsys.readouterr().err
+
+
+def test_t010_ac12_protected_files_untouched_and_specs_updated() -> None:
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    base = subprocess.run(["git", "merge-base", "HEAD", "main"], cwd=root,
+                          capture_output=True, text=True)
+    if base.returncode != 0:
+        pytest.skip("git main branch not available")
+    changed = subprocess.run(["git", "diff", "--name-only", base.stdout.strip()], cwd=root,
+                             capture_output=True, text=True, check=True).stdout.split()
+    protected = {"sportscut/api.py", "sportscut/detect.py", "sportscut/pipeline.py",
+                 "sportscut/export.py", "tests/conftest.py", "pyproject.toml"}
+    assert protected.isdisjoint(changed)
+    specs = root / "docs" / "superpowers" / "specs"
+    for prefix in ("t-035", "t-002", "t-004"):
+        (spec,) = specs.glob(f"2026-11-23-{prefix}-*-design.md")
+        text = spec.read_text()
+        assert "event" in text and "(updated by T-010)" in text, spec.name
