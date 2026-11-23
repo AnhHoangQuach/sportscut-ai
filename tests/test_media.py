@@ -8,8 +8,19 @@ from sportscut.media import (
     cut_clip,
     extract_audio,
     find_tool,
+    has_audio,
     probe_duration,
+    require_ffmpeg,
 )
+
+def _video_only(tmp_path: Path) -> Path:
+    path = tmp_path / "video_only.mp4"
+    subprocess.run([
+        "ffmpeg", "-v", "error", "-nostdin", "-y", "-f", "lavfi", "-i",
+        "color=c=black:s=160x120:r=5:d=3", "-c:v", "mpeg4", "-q:v", "5",
+        "-pix_fmt", "yuv420p", str(path),
+    ], check=True)
+    return path
 
 def _gray_mean(video: Path, time: float) -> float:
     args = ["ffmpeg", "-v", "error", "-nostdin", "-ss", str(time), "-i",
@@ -28,6 +39,33 @@ def test_find_tool_missing_raises_exact_message(name, monkeypatch, tmp_path):
 def test_find_tool_returns_path_from_path(require_ffmpeg):
     assert find_tool("ffmpeg") == shutil.which("ffmpeg")
     assert SAMPLE_RATE == 16_000 and issubclass(MediaError, RuntimeError)
+
+def test_has_audio_true_for_synthetic_video(synthetic_video):
+    assert has_audio(synthetic_video) is True
+
+def test_has_audio_false_for_video_only(require_ffmpeg, tmp_path):
+    assert has_audio(_video_only(tmp_path)) is False
+
+def test_has_audio_missing_file_raises(tmp_path):
+    path = tmp_path / "missing.mp4"
+    with pytest.raises(MediaError) as exc:
+        has_audio(path)
+    assert str(exc.value) == f"media file not found: {path}"
+
+def test_has_audio_rejects_non_media(require_ffmpeg, tmp_path):
+    path = tmp_path / "bad.mp4"
+    path.write_text("not a video")
+    with pytest.raises(MediaError, match="^" + re.escape(f"ffprobe failed for {path}: ") + ".+"):
+        has_audio(path)
+
+def test_require_ffmpeg_missing_tool(monkeypatch, tmp_path):
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(MediaError) as exc:
+        require_ffmpeg()
+    assert str(exc.value) == "ffmpeg not found on PATH; install ffmpeg"
+
+def test_require_ffmpeg_ok(require_ffmpeg):
+    assert globals()["require_ffmpeg"]() is None
 
 @pytest.mark.parametrize("function,tool", [(probe_duration, "ffprobe"), (extract_audio, "ffmpeg")])
 def test_media_operation_without_tool(function, tool, monkeypatch, tmp_path):

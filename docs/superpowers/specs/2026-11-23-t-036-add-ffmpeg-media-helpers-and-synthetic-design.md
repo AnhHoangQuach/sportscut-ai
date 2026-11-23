@@ -59,3 +59,5 @@ After foundation, create `sportscut/media.py`, `tests/conftest.py`, `tests/test_
 Updated by T-003: `sportscut.media` also owns frame-accurate clip cutting through
 `cut_clip`, re-encoding video as H.264 and audio as AAC so callers never invoke
 ffmpeg directly.
+
+Updated by T-004: sportscut.media also exposes require_ffmpeg() (both tools on PATH, else MediaError) and has_audio(path) -> bool (ffprobe audio-stream check; ffprobe failures raise MediaError).

@@ -1,11 +1,13 @@
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from sportscut import __version__
 from sportscut.detect import find_highlights
 from sportscut.eval_player import evaluate_dir
 from sportscut.media import MediaError
+from sportscut.pipeline import PipelineError, run
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,6 +27,12 @@ def main(argv: list[str] | None = None) -> int:
     detect_parser.add_argument("--min-len", type=float, default=10)
     detect_parser.add_argument("--max-len", type=float, default=30)
     detect_parser.add_argument("--json", action="store_true")
+    cut_parser = subparsers.add_parser("cut", help="detect and export highlight clips")
+    cut_parser.add_argument("video")
+    cut_parser.add_argument("--out", required=True)
+    cut_parser.add_argument("--top", type=int, default=10)
+    cut_parser.add_argument("--min-len", type=float, default=10)
+    cut_parser.add_argument("--max-len", type=float, default=30)
     eval_player_parser = subparsers.add_parser("eval-player", help="evaluate player-touch detection")
     eval_player_parser.add_argument("directory")
     eval_player_parser.add_argument("--json", action="store_true")
@@ -41,6 +49,19 @@ def main(argv: list[str] | None = None) -> int:
             print(f"sportscut eval-player: error: {exc}", file=sys.stderr)
             return 2
         print(json.dumps(report) if args.json else json.dumps(report, indent=2))
+        return 0
+
+    if args.command == "cut":
+        try:
+            entries = run(
+                args.video, args.out, top=args.top,
+                min_len=args.min_len, max_len=args.max_len,
+            )
+        except (PipelineError, MediaError) as exc:
+            print(f"sportscut: error: {exc}", file=sys.stderr)
+            return 1
+        for entry in entries:
+            print(Path(args.out) / entry["file"])
         return 0
 
     try:
