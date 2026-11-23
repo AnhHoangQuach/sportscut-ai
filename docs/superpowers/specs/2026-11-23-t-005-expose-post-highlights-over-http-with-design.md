@@ -55,3 +55,9 @@ Add `sportscut/api.py` (FastAPI, installed through the `[api]` extra: fastapi, u
 ## Existing specs this task changes
 
 - (none)
+
+## Updated by T-006
+
+- `file` is optional and `url` is the alternative input; exactly one is required (422 otherwise).
+- A `SourceError` from URL validation or downloading maps to HTTP 400.
+- Every successful job writes `job.json` containing its source URL or `null` for uploads.
