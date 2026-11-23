@@ -318,6 +318,9 @@ def test_ac8_put_validation_precedes_export_and_preserves_all_files(
         ({"segments": [{"start": 0.0, "end": 0.1}] * 51}, None),
         (None, '{"segments":[{"start":NaN,"end":1.0}]}'),
         (None, '{"segments":[{"start":0.0,"end":Infinity}]}'),
+        (None, '{"segments":{"a":NaN}}'),
+        (None, '{"segments":[[Infinity]]}'),
+        (None, '{"segments":[],"extra":[-Infinity]}'),
     ]
     for body, content in invalid_requests:
         if content is None:
