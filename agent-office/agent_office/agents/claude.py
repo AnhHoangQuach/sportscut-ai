@@ -10,6 +10,7 @@ from .base import AgentResult, CliAgent
 # Claude only reads the repo; the orchestrator owns every write.
 READ_ONLY_TOOLS = ["Read", "Grep", "Glob", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)",
                    "Bash(ls:*)"]
+WRITE_TOOLS = ["Edit", "Write", "Bash"]
 
 
 class ClaudeAgent(CliAgent):
@@ -20,7 +21,8 @@ class ClaudeAgent(CliAgent):
         if self.cfg.model:
             cmd += ["--model", self.cfg.model]
         if not extra.get("probe"):
-            cmd += ["--allowedTools", *READ_ONLY_TOOLS,
+            tools = WRITE_TOOLS if extra.get("role") == "write" else READ_ONLY_TOOLS
+            cmd += ["--allowedTools", *tools,
                     *(f"Bash({c.strip()}:*)" for c in self.cfg.allowed_commands if c.strip())]
         return cmd + list(self.cfg.extra_args)
 

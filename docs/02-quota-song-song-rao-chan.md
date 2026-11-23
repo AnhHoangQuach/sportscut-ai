@@ -31,7 +31,11 @@ flowchart TD
   H --> J[Task tiếp tục từ checkpoint:<br/>'RESUMING, đọc CHECKPOINT.md và git log']
 ```
 
-- Hai agent nghỉ **độc lập**: Codex nghỉ thì Claude vẫn viết spec, review task khác.
+- Hai agent nghỉ **độc lập**. Nếu chỉ một agent hết quota/ngân sách ngày, agent còn lại tiếp quản
+  vai của agent đó: Codex làm PM/review bằng sandbox chỉ đọc; Claude làm dev/test bằng quyền ghi
+  trong worktree. Nếu cả hai cùng nghỉ thì office chờ mốc thức sớm nhất.
+- Khi cả hai còn quota, phân vai cũ không đổi. Agent đang bận/hết session hoặc lỗi CLI lặp lại
+  không kích hoạt tiếp quản. Mỗi lần đổi vai ghi event `agent_failover` và được đếm trong stats.
 - Khi không còn gì để làm, `office run` ngủ tới lúc agent sớm nhất thức dậy, và tỉnh sớm nếu có
   lệnh mới trong inbox.
 - Hai lần thất bại không rõ lý do liên tiếp cũng được coi như hết quota (nghỉ theo thang).

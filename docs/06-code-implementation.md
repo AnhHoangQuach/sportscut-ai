@@ -30,7 +30,7 @@ flowchart TD
 | `store.py` | Lưu trữ trên đĩa, không có logic nghiệp vụ | `Store.load/save` (ghi nguyên tử), `event()`, `append_inbox/take_inbox`, `claim_runner/release_runner` |
 | `config.py` | Đọc `config.toml`, giá trị mặc định | `DEFAULT_CONFIG`, `load_config()`, `Config` |
 | `scheduler.py` | Quyết định bước tiếp theo (hàm thuần) | `plan_steps(store, now, auto_merge, busy, slots)`, `next_step()` |
-| `pipeline.py` | Thực thi bước: gọi agent, chuyển stage, commit, merge | `Office.step()`, `dispatch()`, `_execute()`, `_call()`, `_breakdown/_spec/_dev/_test/_review/_pr/_goal_check` |
+| `pipeline.py` | Thực thi bước, đổi vai khi quota, chuyển stage, commit, merge | `Office.step()`, `dispatch()`, `_execute()`, `_call()`, `_breakdown/_spec/_dev/_test/_review/_pr/_goal_check` |
 | `agents/base.py` | Chạy CLI headless an toàn | `CliAgent.run()`, `subscription_env()`, `AgentResult`, `extract_json()` |
 | `agents/claude.py`, `codex.py` | Dựng lệnh và đọc đầu ra từng CLI | `build_cmd()`, `parse()` |
 | `agents/sim.py` | Agent giả để demo và test | `SimAgent` |
@@ -98,6 +98,9 @@ bộ nhớ hội thoại của CLI, nên resume sau khi hết quota hay khởi �
   chạy; lỗi bất ngờ của một bước được ghi `step_crashed` và không làm dừng runner.
 - `cli.cmd_run`: vòng lặp `dispatch` → `wait(FIRST_COMPLETED, timeout=2)` → khi không còn gì thì ngủ
   tới lúc agent thức hoặc có lệnh trong inbox.
+- `plan_steps()` chỉ đổi sang agent còn lại khi agent ưu tiên có `rest_cause = quota|budget`; trạng
+  thái bận và số session không đổi vai. `_execute()` ghi `agent_failover`, rồi `_call()` cấp quyền
+  theo vai: chỉ đọc cho PM/review và ghi trong worktree cho dev/test.
 
 ## 6.5 Kiểm thử
 

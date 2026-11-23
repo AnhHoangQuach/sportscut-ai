@@ -5,10 +5,10 @@
 | Vai | Ai làm | Được làm gì | Không được làm gì |
 |---|---|---|---|
 | Product Owner | Hoang | Đưa yêu cầu, trả lời câu hỏi, đặt mục tiêu chất lượng | Không cần đọc code |
-| Product Manager | Claude | Tách yêu cầu thành task, viết spec + acceptance criteria (AC), kiểm tra mục tiêu cuối | Không sửa file |
-| Tech Lead / Reviewer | Claude | Review diff theo spec, approve hoặc yêu cầu sửa | Không sửa file |
-| Developer | Codex | Code theo spec trong worktree riêng của task | Không commit, push, đổi nhánh |
-| Tester | Codex | Bổ sung test cho mọi AC, chạy test, viết báo cáo | Không đổi phạm vi task |
+| Product Manager | Claude; Codex tiếp quản khi Claude hết quota | Tách yêu cầu thành task, viết spec + acceptance criteria (AC), kiểm tra mục tiêu cuối | Không sửa file |
+| Tech Lead / Reviewer | Claude; Codex tiếp quản khi Claude hết quota | Review diff theo spec, approve hoặc yêu cầu sửa | Không sửa file |
+| Developer | Codex; Claude tiếp quản khi Codex hết quota | Code theo spec trong worktree riêng của task | Không commit, push, đổi nhánh |
+| Tester | Codex; Claude tiếp quản khi Codex hết quota | Bổ sung test cho mọi AC, chạy test, viết báo cáo | Không đổi phạm vi task |
 | Orchestrator | Chương trình `office` (Python) | Lập lịch, gọi agent, commit, chạy test, merge, lưu trạng thái | Không tự "nghĩ": mọi quyết định nội dung là của agent |
 
 Vì sao hai hãng khác nhau: Claude mạnh ở đọc hiểu, lập kế hoạch, review; Codex mạnh ở viết và sửa

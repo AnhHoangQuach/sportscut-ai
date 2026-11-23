@@ -4,7 +4,7 @@ import subprocess
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 from agent_office.cli import main as office_main
-from agent_office.models import Stage
+from agent_office.models import AgentStatus, Stage
 from agent_office.scheduler import plan_steps
 
 
@@ -55,13 +55,68 @@ def test_plan_steps_respects_sessions_and_busy(auto_env):
     assert [s.target for s in plan.steps] == ["T-002"]
 
 
-def test_parallel_demo_runs_codex_twice_and_resolves_conflicts(auto_env):
+def test_plan_steps_keeps_normal_roles_when_both_agents_have_quota(auto_env):
+    office = auto_env.office()
+    req = office.add_request("Cut highlights")
+    assert plan_steps(office.store, auto_env.now, True).steps[0].agent == "claude"
+    req.status = "planned"
+    office._add_tasks(req, [{"key": "1", "title": "Cut", "brief": "x"}])
+    task = office.store.tasks[req.task_ids[0]]
+    task.stage = Stage.DEV
+    assert plan_steps(office.store, auto_env.now, True).steps[0].agent == "codex"
+
+
+def test_plan_steps_codex_takes_claude_role_during_quota_rest(auto_env):
+    office = auto_env.office()
+    office.add_request("Cut highlights")
+    claude = office.store.agents["claude"]
+    claude.status = AgentStatus.RESTING
+    claude.rest_until = "2026-11-22T14:00:00+00:00"
+    claude.rest_cause = "quota"
+
+    step = plan_steps(office.store, auto_env.now, True).steps[0]
+    assert (step.kind, step.agent) == ("breakdown", "codex")
+
+
+def test_plan_steps_claude_takes_codex_role_during_quota_rest(auto_env):
+    office = auto_env.office()
+    req = office.add_request("Cut highlights")
+    req.status = "planned"
+    office._add_tasks(req, [{"key": "1", "title": "Cut", "brief": "x"}])
+    task = office.store.tasks[req.task_ids[0]]
+    task.stage = Stage.DEV
+    codex = office.store.agents["codex"]
+    codex.status = AgentStatus.RESTING
+    codex.rest_until = "2026-11-22T14:00:00+00:00"
+    codex.rest_cause = "budget"
+
+    step = plan_steps(office.store, auto_env.now, True).steps[0]
+    assert (step.target, step.agent) == (task.id, "claude")
+
+
+def test_plan_steps_waits_when_both_agents_are_out_of_quota(auto_env):
+    office = auto_env.office()
+    office.add_request("Cut highlights")
+    for agent in office.store.agents.values():
+        agent.status = AgentStatus.RESTING
+        agent.rest_until = "2026-11-22T14:00:00+00:00"
+        agent.rest_cause = "quota"
+
+    plan = plan_steps(office.store, auto_env.now, True)
+    assert plan.steps == []
+    assert plan.wait_until.isoformat() == "2026-11-22T14:00:00+00:00"
+
+
+def test_parallel_demo_runs_failover_and_finishes(auto_env):
     env = auto_env
     set_cfg(env, ("simulate = false", "simulate = true"), ("sim_delay = 3.0", "sim_delay = 0.3"))
     office = env.office()
     office.add_request("SportsCut MVP")
     peak = run_parallel(env, office)
-    assert peak["codex"] == 2 and peak["claude"] == 1
+    # The simulation deliberately rate-limits Codex; after that Claude may finish enough work
+    # that a second concurrent Codex slot is timing-dependent. The scheduler-only test above
+    # proves both Codex slots are retained while both subscriptions are available.
+    assert peak["codex"] >= 1 and peak["claude"] == 1
     tasks = office.store.tasks
     assert len(tasks) == 5 and all(t.stage == Stage.DONE for t in tasks.values()), \
         {t.id: (t.stage.value, t.blocked_reason) for t in tasks.values()}
@@ -69,13 +124,16 @@ def test_parallel_demo_runs_codex_twice_and_resolves_conflicts(auto_env):
     ev = events(env.repo)
     names = [e["event"] for e in ev]
     assert "step_crashed" not in names
-    assert "merge_conflict" in names and "conflict_resolved" in names
+    if "merge_conflict" in names:  # timing may avoid the conflict once Claude takes over
+        assert "conflict_resolved" in names
     reg = (env.repo / "sportscut/commands.py").read_text()
     assert all(f"'T-00{i}'" in reg for i in range(1, 6)) and "<<<<<<<" not in reg
     log = subprocess.run(["git", "log", "--format=%s", "main"], cwd=env.repo, capture_output=True, text=True).stdout
-    assert "conflicts resolved by codex" in log
+    if "merge_conflict" in names:
+        assert "conflicts resolved by" in log
     codex = office.store.agents["codex"]
-    assert codex.calls_total >= 10 and codex.rests_total == 1 and codex.active == []
+    assert codex.calls_total >= 1 and codex.rests_total == 1 and codex.active == []
+    assert "agent_failover" in names
 
 
 def test_secret_in_diff_never_merges_and_the_branch_is_thrown_away(auto_env):

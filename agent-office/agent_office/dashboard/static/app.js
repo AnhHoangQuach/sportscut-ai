@@ -243,6 +243,7 @@ function describe(e) {
     case "agent_done": return `${who(e.agent)} xong ${esc(e.label)} (${esc(e.task_id)})`;
     case "agent_failed": return `${who(e.agent)} <span class="ev-bad">lỗi</span> (${esc(e.task_id)}, exit ${esc(e.exit_code)})`;
     case "agent_resting": return `${who(e.agent)} <span class="ev-warn">hết quota</span>, nghỉ đến ${hhmm(e.until)}`;
+    case "agent_failover": return `${who(e.agent)} <span class="ev-good">tiếp quản</span> ${esc(e.step_kind)} (${esc(e.task_id)}) thay ${who(e.preferred)} đang hết quota`;
     case "agent_awake": return `${who(e.agent)} làm việc lại`;
     case "task_checkpoint": return `<b>${esc(e.task_id)}</b> lưu checkpoint (${esc(e.reason)})`;
     case "review_done": return `Claude review <b>${esc(e.task_id)}</b> vòng ${esc(e.round)}: <span class="${e.verdict === "approve" ? "ev-good" : "ev-warn"}">${esc(e.verdict)}</span>`;

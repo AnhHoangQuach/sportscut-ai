@@ -145,6 +145,7 @@ class Agent:
     reset_known: bool = False
     failures: int = 0  # consecutive non-limit failures
     last_error: str = ""
+    rest_cause: str = ""  # quota | budget | failure; only quota/budget permit role failover
     active: list[str] = field(default_factory=list)  # task/request ids this agent works on right now
     calls_day: str = ""     # local date (YYYY-MM-DD) that calls_today counts
     calls_today: int = 0
@@ -167,6 +168,9 @@ class Agent:
     def from_dict(cls, d: dict[str, Any]) -> "Agent":
         d = dict(d)
         d["status"] = AgentStatus(d["status"])
+        if d["status"] == AgentStatus.RESTING and not d.get("rest_cause"):
+            error = str(d.get("last_error", "")).lower()
+            d["rest_cause"] = "failure" if error in ("repeated failures", "probe failed") else "quota"
         known = {f for f in cls.__dataclass_fields__}
         return cls(**{k: v for k, v in d.items() if k in known})
 

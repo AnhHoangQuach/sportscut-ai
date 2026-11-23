@@ -285,24 +285,35 @@ class Office:
         return s
 
     def _execute(self, s: Step) -> None:
+        preferred = None
+        if s.kind in ("breakdown", "goal", "techlead"):
+            preferred = "claude"
+        elif s.kind == "task" and s.target in self.store.tasks:
+            stage = self.store.tasks[s.target].stage
+            preferred = "claude" if stage in (Stage.SPEC, Stage.REVIEW) else (
+                "codex" if stage in (Stage.DEV, Stage.TEST) else None)
+        if preferred and s.agent and s.agent != preferred:
+            self.store.event("agent_failover", task_id=s.target, preferred=preferred, agent=s.agent,
+                             step_kind=s.kind, reason=self.store.agents[preferred].rest_cause)
+            self.echo(f"  [{s.agent}] covering {preferred} for {s.kind} ({s.target})")
         if s.kind == "wake":
             self._wake(s.target)
         elif s.kind == "breakdown":
-            self._breakdown(self.store.requests[s.target])
+            self._breakdown(self.store.requests[s.target], s.agent or "claude")
         elif s.kind == "goal":
-            self._goal_check(self.store.requests[s.target])
+            self._goal_check(self.store.requests[s.target], s.agent or "claude")
         elif s.kind == "techlead":
             if s.target in self.store.requests:
-                self._tech_lead_request(self.store.requests[s.target])
+                self._tech_lead_request(self.store.requests[s.target], s.agent or "claude")
             else:
-                self._tech_lead(self.store.tasks[s.target])
+                self._tech_lead(self.store.tasks[s.target], s.agent or "claude")
         else:
             task = self.store.tasks[s.target]
             handler = {
                 Stage.TODO: self._todo, Stage.SPEC: self._spec, Stage.DEV: self._dev,
                 Stage.TEST: self._test, Stage.REVIEW: self._review, Stage.PR: self._pr,
             }[task.stage]
-            handler(task)
+            handler(task) if s.agent is None else handler(task, s.agent)
         self.store.save()
 
     # ------------------------------------------------------------------ agent calls
@@ -331,7 +342,8 @@ class Office:
         log_path = self.store.log_path(task_id, f"{label}-{agent_name}")
         try:
             with self._unlocked():
-                res = self.agents[agent_name].run(text, cwd, log_path)
+                role = "write" if label == "dev" or label == "test" else "read"
+                res = self.agents[agent_name].run(text, cwd, log_path, role=role)
         finally:
             if task_id in agent.active:
                 agent.active.remove(task_id)
@@ -349,7 +361,8 @@ class Office:
                              timed_out=res.timed_out, log=res.log_path)
             self.echo(f"  [{agent_name}] failed (exit {res.exit_code}); see {res.log_path}")
             if agent.failures >= FAILURES_BEFORE_REST:
-                self._rest(agent_name, LimitHit(agent_name, "repeated failures", None), task, label, res)
+                self._rest(agent_name, LimitHit(agent_name, "repeated failures", None), task, label, res,
+                           cause="failure")
             elif task is not None:
                 self._checkpoint(task, label, f"{agent_name} failed (exit {res.exit_code})", res)
             return None
@@ -359,7 +372,7 @@ class Office:
         return res
 
     def _rest(self, agent_name: str, hit: LimitHit, task: Task | None, label: str,
-              res: AgentResult | None, budget: bool = False) -> None:
+              res: AgentResult | None, budget: bool = False, cause: str = "quota") -> None:
         a = self.store.agents[agent_name]
         if a.status == AgentStatus.RESTING and a.rest_until and datetime.fromisoformat(a.rest_until) > self.clock():
             # A parallel session of the same agent already hit the limit: just save this task's progress.
@@ -379,6 +392,7 @@ class Office:
         a.reset_known = known
         a.failures = 0
         a.last_error = hit.matched
+        a.rest_cause = "budget" if budget else cause
         if budget:
             self.say(agent_name, "all", f"Mình dùng hết ngân sách hôm nay ({hit.matched}), mai làm tiếp.",
                      kind="rest")
@@ -401,10 +415,11 @@ class Office:
                 res = self.agents[agent_name].run(prompt("probe"), self.repo, log_path, probe=True)
             if res.limit is not None or res.exit_code != 0:
                 self._rest(agent_name, res.limit or LimitHit(agent_name, "probe failed", None), None,
-                           "probe", res)
+                           "probe", res, cause="quota" if res.limit is not None else "failure")
                 return
         a.status = AgentStatus.IDLE
         a.rest_until = ""
+        a.rest_cause = ""
         a.reset_known = False
         a.backoff_level = 0
         self.store.event("agent_awake", agent=agent_name)
@@ -487,8 +502,8 @@ class Office:
             self.echo(f"{tid}: created '{t.title}'" + (f" (after {', '.join(deps)})" if deps else ""))
         return created
 
-    def _breakdown(self, req: Request) -> None:
-        res = self._call("claude", prompt("pm_breakdown", request=self._request_text(req), request_id=req.id,
+    def _breakdown(self, req: Request, agent_name: str = "claude") -> None:
+        res = self._call(agent_name, prompt("pm_breakdown", request=self._request_text(req), request_id=req.id,
                                          specs=specdocs.context(self.repo)),
                          self.repo, req.id, "breakdown")
         if res is None:
@@ -511,13 +526,13 @@ class Office:
         self.say("claude", "po", f"Em tách {req.id} thành {len(created)} task: "
                  + "; ".join(f"{t} {self.store.tasks[t].title}" for t in created), kind="plan")
 
-    def _goal_check(self, req: Request) -> None:
+    def _goal_check(self, req: Request, agent_name: str = "claude") -> None:
         done = [self.store.tasks[t] for t in req.task_ids if t in self.store.tasks]
         listing = "\n".join(f"- {t.id} {t.title}: {t.brief}"
                             + (f" (DROPPED, not merged: {t.dropped[:300]})" if t.dropped else "")
                             for t in done) or "- (none)"
         rnd = req.goal_rounds + 1
-        res = self._call("claude", prompt("pm_goal", request=self._request_text(req), request_id=req.id,
+        res = self._call(agent_name, prompt("pm_goal", request=self._request_text(req), request_id=req.id,
                                           done_tasks=listing, round=rnd, max_rounds=self.cfg.max_goal_rounds,
                                           specs=specdocs.context(self.repo)),
                          self.repo, req.id, f"goal{rnd}")
@@ -562,12 +577,12 @@ class Office:
     def _todo(self, task: Task) -> None:
         self._move(task, Stage.SPEC, "dependencies done")
 
-    def _spec(self, task: Task) -> None:
+    def _spec(self, task: Task, agent_name: str = "claude") -> None:
         req = self.store.requests.get(task.request_id)
         po = f"## Product Owner answer to an earlier question\n\n{task.po_answer}" if task.po_answer else ""
         if task.tl_notes:
             po += "\n\n## Tech Lead decisions (follow them; do not ask these again)\n\n" + "\n\n".join(task.tl_notes)
-        res = self._call("claude", prompt("pm_spec", request=self._request_text(req) if req else "", task_id=task.id,
+        res = self._call(agent_name, prompt("pm_spec", request=self._request_text(req) if req else "", task_id=task.id,
                                           title=task.title, brief=task.brief, po_answer=po,
                                           specs=specdocs.context(self.repo)),
                          self.repo, task.id, "spec", task)
@@ -645,7 +660,7 @@ class Office:
             parts.append(f"## Last failing test output\n\n```\n{task.test_output[-4000:]}\n```\n")
         (wt.notes_dir(path) / "TASK.md").write_text("\n".join(parts), encoding="utf-8")
 
-    def _dev(self, task: Task) -> None:
+    def _dev(self, task: Task, agent_name: str = "codex") -> None:
         path = self._ensure_worktree(task)
         conflict_files: list[str] = []
         if task.merge_conflict:
@@ -681,7 +696,7 @@ class Office:
                     "systematically: reproduce, find the root cause, add a test that captures it, then fix.")
         else:
             mode = "This is a fresh start on the task."
-        res = self._call("codex", prompt("dev", task_id=task.id, mode=mode), path, task.id, "dev", task)
+        res = self._call(agent_name, prompt("dev", task_id=task.id, mode=mode), path, task.id, "dev", task)
         if res is None:
             return
         if res.text.lstrip().startswith("BLOCKED:"):
@@ -705,7 +720,8 @@ class Office:
                 wt.abort_merge(path)
                 self._escalate(task, "merge_conflict", f"conflict markers left in {', '.join(left[:5])}")
                 return
-            wt.finish_merge(path, f"merge {self.cfg.base_branch} into {task.branch} (conflicts resolved by codex)")
+            wt.finish_merge(path, f"merge {self.cfg.base_branch} into {task.branch} "
+                                  f"(conflicts resolved by {agent_name})")
             task.merge_conflict = False
             self.store.event("conflict_resolved", task_id=task.id, files=conflict_files[:50])
         else:
@@ -799,10 +815,10 @@ class Office:
                     f"(allowed drop {self.cfg.eval_max_drop}). Find what lowered it and fix it.\n{out[-2500:]}")
         return ""
 
-    def _test(self, task: Task) -> None:
+    def _test(self, task: Task, agent_name: str = "codex") -> None:
         path = self._ensure_worktree(task)
         extra = f"The orchestrator will also run: `{self.cfg.test_cmd}`" if self.cfg.test_cmd else ""
-        res = self._call("codex", prompt("test", task_id=task.id, extra=extra), path, task.id, "test", task)
+        res = self._call(agent_name, prompt("test", task_id=task.id, extra=extra), path, task.id, "test", task)
         if res is None:
             return
         wt.commit_all(path, f"test({task.id}): tests for {task.title}")
@@ -835,14 +851,14 @@ class Office:
             self.say("codex", "all", f"{task.id} test fail ({task.test_attempts}/{MAX_TEST_ATTEMPTS}), "
                      "mình sửa lại.", task.id, kind="test_fail")
 
-    def _review(self, task: Task) -> None:
+    def _review(self, task: Task, agent_name: str = "claude") -> None:
         path = self._ensure_worktree(task)
         summary_file = path / wt.NOTES_DIR / "TEST_SUMMARY.md"
         test_summary = summary_file.read_text(encoding="utf-8") if summary_file.exists() else "(not recorded)"
         notes_file = path / wt.NOTES_DIR / "DEV_NOTES.md"
         dev_notes = notes_file.read_text(encoding="utf-8")[-6000:] if notes_file.exists() else "(none written)"
         rnd = task.review_round + 1
-        res = self._call("claude", prompt(
+        res = self._call(agent_name, prompt(
             "review", task_id=task.id, round=rnd, max_rounds=MAX_REVIEW_ROUNDS, spec=task.spec,
             acceptance_criteria=bullets(task.acceptance_criteria), test_summary=test_summary, dev_notes=dev_notes,
             specs=specdocs.context(path), spec_files=bullets([specdocs.design_path(task), specdocs.plan_path(task)]),
@@ -1003,7 +1019,7 @@ class Office:
                       issue=issue, questions=bullets(questions), round=rnd, max_rounds=self.cfg.tech_lead_rounds,
                       context=context, specs=specdocs.context(self.repo))
 
-    def _tech_lead(self, task: Task) -> None:
+    def _tech_lead(self, task: Task, agent_name: str = "claude") -> None:
         rnd = task.tl_rounds + 1
         req = self.store.requests.get(task.request_id)
         context = (f"## Product Owner request\n\n{self._request_text(req) if req else ''}\n\n"
@@ -1018,7 +1034,7 @@ class Office:
                    + f"\n\n### Last failing test output\n\n```\n{task.test_output[-2500:]}\n```\n\n"
                    f"## Other tasks (ordering and file overlap)\n\n{self._others(task)}")
         cwd = Path(task.worktree) if task.worktree and Path(task.worktree).exists() else self.repo
-        res = self._call("claude", self._tl_prompt(f"task {task.id}", task.tl_kind, task.tl_issue, task.questions,
+        res = self._call(agent_name, self._tl_prompt(f"task {task.id}", task.tl_kind, task.tl_issue, task.questions,
                                                    rnd, context), cwd, task.id, f"techlead{rnd}", task)
         if res is None:
             return  # resting: the issue stays and is picked up again
@@ -1129,11 +1145,11 @@ class Office:
                      f"không merge. Lý do: {why[:400]}. Khi kiểm tra mục tiêu em sẽ lên kế hoạch lại phần còn thiếu.",
                      task.id, kind="report")
 
-    def _tech_lead_request(self, req: Request) -> None:
+    def _tech_lead_request(self, req: Request, agent_name: str = "claude") -> None:
         rnd = req.tl_rounds + 1
         context = (f"## Product Owner request {req.id} (status {req.status})\n\n{self._request_text(req)}\n\n"
                    f"## Tasks so far\n\n{self._others(None)}")
-        res = self._call("claude", self._tl_prompt(f"request {req.id}", req.tl_kind, req.tl_issue, req.tl_questions,
+        res = self._call(agent_name, self._tl_prompt(f"request {req.id}", req.tl_kind, req.tl_issue, req.tl_questions,
                                                    rnd, context), self.repo, req.id, f"techlead{rnd}")
         if res is None:
             return

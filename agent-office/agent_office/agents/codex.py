@@ -15,9 +15,10 @@ class CodexAgent(CliAgent):
     def build_cmd(self, cwd: Path, extra: dict[str, Any]) -> list[str]:
         last = Path(tempfile.mkstemp(prefix="codex-last-", suffix=".txt")[1])
         extra["_last_msg"] = last
-        cmd = [self.cfg.cmd, "exec", "--json", "--sandbox", self.cfg.sandbox,
+        sandbox = "read-only" if extra.get("role") == "read" else self.cfg.sandbox
+        cmd = [self.cfg.cmd, "exec", "--json", "--sandbox", sandbox,
                "--skip-git-repo-check", "-C", str(cwd), "--output-last-message", str(last)]
-        if self.cfg.network and self.cfg.sandbox == "workspace-write":
+        if self.cfg.network and sandbox == "workspace-write":
             cmd += ["-c", "sandbox_workspace_write.network_access=true"]
         if self.cfg.model:
             cmd += ["--model", self.cfg.model]
