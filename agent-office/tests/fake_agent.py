@@ -61,7 +61,10 @@ def main() -> int:
         return 1
     if resp.get("missing_env"):  # what `codex exec --json` prints when the provider's env_key is unset
         print(json.dumps({"type": "turn.failed", "error": {
-            "message": f"Missing environment variable: `{resp['missing_env']}`."}}))
+            "message": f"Missing environment variable: `{resp['missing_env']}`."}}), flush=True)
+        if resp.get("hang"):
+            import time
+            time.sleep(resp["hang"])
         return 1
     if resp.get("fail"):
         sys.stderr.write("boom\n")

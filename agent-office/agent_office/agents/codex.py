@@ -30,6 +30,12 @@ class CodexAgent(CliAgent):
         key = provider_info().env_key
         return subscription_env(cwd, self.cfg.env_file, keep=(key,) if key else ())
 
+    def env_summary(self, env: dict[str, str]) -> str:
+        info = provider_info()
+        need = (f"; provider {info.name} needs {info.env_key}: {'set' if env.get(info.env_key) else 'MISSING'}"
+                if info.env_key else f"; provider {info.name} (no env_key)")
+        return super().env_summary(env) + need
+
     def env_problem(self) -> str:
         key = provider_info().env_key
         return key if key and not self.child_env().get(key) else ""

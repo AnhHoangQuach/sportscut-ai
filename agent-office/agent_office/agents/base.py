@@ -5,11 +5,13 @@ import json
 import os
 import re
 import subprocess
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..codex_provider import read_env_file
+from ..codex_provider import missing_env_var, read_env_file
 from ..limits import LimitHit, detect
 
 # Removed from the child environment so each CLI falls back to its subscription login.
@@ -80,29 +82,97 @@ class CliAgent:
         """Name of a variable the CLI needs but will not get ("" = none known)."""
         return ""
 
+    def env_summary(self, env: dict[str, str]) -> str:
+        """Where the extra variables came from, names only (never values): written to every call log."""
+        path = getattr(self.cfg, "env_file", "") or ""
+        if not path:
+            return "no env_file"
+        names = sorted(read_env_file(path))
+        state = "exists" if Path(path).is_file() else "missing"
+        return f"env_file {path} ({state}) gives {', '.join(names) or 'nothing'}"
+
     def run(self, prompt: str, cwd: Path, log_path: Path | None = None, **extra: Any) -> AgentResult:
+        """Run the CLI. Output goes to the log as it arrives (`tail -f` it); a CLI that reports a
+        missing environment variable is stopped at once, since it cannot recover by itself."""
         cmd = self.build_cmd(Path(cwd), extra)
+        env = self.child_env(Path(cwd))
+        log = None
+        if log_path:
+            log = log_path.open("w", encoding="utf-8")
+            log.write(f"$ {' '.join(cmd)}\n--- env: {self.env_summary(env)} ---\n--- prompt ---\n{prompt}\n"
+                      "--- live output ---\n")
+            log.flush()
+            res_log = str(log_path)
         try:
-            p = subprocess.run(
-                cmd, input=prompt, cwd=cwd, env=self.child_env(Path(cwd)), capture_output=True,
-                text=True, timeout=self.cfg.timeout_sec,
-            )
-            res = AgentResult(self.name, p.returncode, p.stdout, p.stderr)
-        except subprocess.TimeoutExpired as e:
-            res = AgentResult(self.name, None, _s(e.stdout), _s(e.stderr), timed_out=True)
-        except FileNotFoundError:
-            res = AgentResult(self.name, 127, "", f"command not found: {cmd[0]}")
+            res = self._spawn(cmd, prompt, cwd, env, log)
+        finally:
+            if log:
+                log.close()
         self.parse(res, extra)
         res.limit = detect(self.name, res.stdout, res.stderr, res.exit_code)
         if log_path:
-            log_path.write_text(
-                f"$ {' '.join(cmd)}\n--- prompt ---\n{prompt}\n--- exit {res.exit_code} "
-                f"timed_out={res.timed_out} limit={res.limit} ---\n--- stdout ---\n{res.stdout}\n"
-                f"--- stderr ---\n{res.stderr}\n",
-                encoding="utf-8",
-            )
-            res.log_path = str(log_path)
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write(f"--- exit {res.exit_code} timed_out={res.timed_out} limit={res.limit} ---\n"
+                        f"--- stdout ---\n{res.stdout}\n--- stderr ---\n{res.stderr}\n")
+            res.log_path = res_log
         return res
+
+    def _spawn(self, cmd: list[str], prompt: str, cwd: Path, env: dict[str, str], log) -> AgentResult:
+        try:
+            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 cwd=cwd, env=env, text=True, encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            return AgentResult(self.name, 127, "", f"command not found: {cmd[0]}")
+        out: dict[str, list[str]] = {"stdout": [], "stderr": []}
+        lock = threading.Lock()
+        fatal = threading.Event()
+
+        def pump(stream, key: str) -> None:
+            for line in stream:
+                with lock:
+                    out[key].append(line)
+                    if log:
+                        log.write(line)
+                        log.flush()
+                if missing_env_var(line):
+                    fatal.set()
+
+        readers = [threading.Thread(target=pump, args=(p.stdout, "stdout"), daemon=True),
+                   threading.Thread(target=pump, args=(p.stderr, "stderr"), daemon=True)]
+        for t in readers:
+            t.start()
+        try:
+            p.stdin.write(prompt)
+            p.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass
+        deadline = time.monotonic() + self.cfg.timeout_sec
+        timed_out = False
+        while p.poll() is None:
+            if fatal.is_set():
+                time.sleep(0.5)  # let the CLI finish printing, then stop it
+                if p.poll() is None:
+                    p.terminate()
+                break
+            if time.monotonic() > deadline:
+                timed_out = True
+                p.kill()
+                break
+            try:
+                p.wait(timeout=0.2)  # returns as soon as the CLI exits
+            except subprocess.TimeoutExpired:
+                pass
+        try:
+            p.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.wait()
+        for t in readers:
+            t.join(timeout=5)
+        code = None if timed_out else p.returncode
+        if fatal.is_set() and code == 0:
+            code = 1
+        return AgentResult(self.name, code, "".join(out["stdout"]), "".join(out["stderr"]), timed_out=timed_out)
 
 
 def _s(b) -> str:

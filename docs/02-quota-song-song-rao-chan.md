@@ -247,6 +247,20 @@ ok      codex server http://127.0.0.1:2455/backend-api/codex: reachable
 Doctor không bao giờ in giá trị key. Dòng `codex server` FAIL nghĩa là codex-lb chưa chạy.
 `office doctor --live` gửi một prompt nhỏ qua codex-lb để chắc chắn mọi thứ thông.
 
+**Key phải nằm ở đâu.** Office đọc `.agent-office/.env` của **repo đích** (thư mục chạy
+`office run`), không phải của `agent-office/` hay của worktree. Đặt key trong `~/.codex/.env`
+không có tác dụng: Codex không cho file đó đặt biến bắt đầu bằng `CODEX_`. Chạy `codex exec` bằng
+tay trong terminal cũng không đọc `.agent-office/.env`, nên lỗi khi chạy tay không có nghĩa là
+office lỗi.
+
+**Kiểm tra một lần gọi cụ thể.** Mỗi log `.agent-office/logs/<task>/NNN-<bước>-<vai>.log` có dòng
+`--- env: env_file ... (exists) gives CODEX_LB_API_KEY; provider codex-lb needs CODEX_LB_API_KEY: set ---`
+(chỉ tên biến, không có giá trị). `MISSING` ở đây nghĩa là file sai chỗ hoặc sai tên biến.
+Log được ghi **trong lúc** agent chạy (`tail -f <log>`) và đường dẫn log in ngay khi bắt đầu
+(`[tester@codex] test (T-008)... log ...`), nên một Codex đang làm bài test lâu sẽ không còn
+trông như bị treo. Nếu Codex in `Missing environment variable` mà không tự thoát, office dừng
+nó ngay.
+
 **Khi thiếu key lúc đang chạy:** office không gọi Codex (không tốn lượt), không tính là hết quota
 hay CLI lỗi. Dev và Tester nghỉ với lý do `environment problem for the user`, PO nhận **một** tin
 "Cần anh sửa trên máy" kèm cách sửa, Claude tạm làm thay việc của Codex (như khi Codex hết
