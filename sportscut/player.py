@@ -1,3 +1,4 @@
+import math
 import os
 import re
 from dataclasses import dataclass
@@ -38,7 +39,7 @@ class Touch:
     def __post_init__(self) -> None:
         if self.t < 0:
             raise ValueError("touch time must be >= 0")
-        if not 0 <= self.confidence <= 1:
+        if not math.isfinite(self.confidence) or not 0 <= self.confidence <= 1:
             raise ValueError("touch confidence must be between 0 and 1")
         if self.team is not None:
             object.__setattr__(self, "team", normalize_team(self.team))

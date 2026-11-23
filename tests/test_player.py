@@ -37,8 +37,9 @@ def test_touch_to_dict_and_validation() -> None:
     assert native == {"t": 2.0, "team": None, "number": None, "confidence": 0.5, "bbox": None}
     with pytest.raises(ValueError):
         Touch(-1, None, None, 0.5, None)
-    with pytest.raises(ValueError):
-        Touch(1, None, None, 1.5, None)
+    for confidence in (1.5, float("nan")):
+        with pytest.raises(ValueError):
+            Touch(1, None, None, confidence, None)
 
 
 def test_detect_touches_stub_and_find_filters(monkeypatch: pytest.MonkeyPatch) -> None:
