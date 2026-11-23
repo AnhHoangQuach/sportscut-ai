@@ -49,7 +49,8 @@ def main() -> int:
     with open(str(scen_path) + ".calls", "a") as f:
         f.write(json.dumps({"agent": agent, "kind": kind, "cwd": str(cwd), "prompt": prompt,
                             "has_api_key": any(k in os.environ for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")),
-                            "args": args, "path0": os.environ.get("PATH", "").split(os.pathsep)[0]}) + "\n")
+                            "args": args, "path0": os.environ.get("PATH", "").split(os.pathsep)[0],
+                            "env": {k: v for k, v in os.environ.items() if k.startswith("CODEX_LB")}}) + "\n")
 
     if resp.get("write"):
         (cwd / resp["write"]).write_text(resp.get("text", "# partial work\n"))
@@ -57,6 +58,13 @@ def main() -> int:
         sys.stderr.write(resp["limit"] + "\n")
         if agent == "claude":
             print(json.dumps({"type": "result", "is_error": True, "result": resp["limit"]}))
+        return 1
+    if resp.get("missing_env"):  # what `codex exec --json` prints when the provider's env_key is unset
+        print(json.dumps({"type": "turn.failed", "error": {
+            "message": f"Missing environment variable: `{resp['missing_env']}`."}}), flush=True)
+        if resp.get("hang"):
+            import time
+            time.sleep(resp["hang"])
         return 1
     if resp.get("fail"):
         sys.stderr.write("boom\n")

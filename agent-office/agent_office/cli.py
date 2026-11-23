@@ -5,15 +5,18 @@ import argparse
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 from . import github
 from .agents.base import API_KEY_VARS, subscription_env
+from .codex_provider import codex_home, provider_info, read_env_file
 from .config import load_config, write_default_config
 from .models import PROVIDERS, ROLES, ROLE_TITLE, AgentStatus, Stage
 from .scheduler import next_step
@@ -340,10 +343,56 @@ def cmd_sync(args) -> int:
     return 0
 
 
+def _port_open(url: str, timeout: float = 3.0) -> str:
+    """"" when the host:port of url accepts a TCP connection, else the error."""
+    u = urlparse(url)
+    if not u.hostname:
+        return "no host in base_url"
+    try:
+        socket.create_connection((u.hostname, u.port or (443 if u.scheme == "https" else 80)), timeout=timeout).close()
+        return ""
+    except OSError as e:
+        return str(e) or e.__class__.__name__
+
+
+def doctor_codex_provider(cfg) -> bool:
+    """The model provider `codex exec` will use (~/.codex/config.toml), its key and its server."""
+    info = provider_info()
+    where = info.config_path or f"{codex_home() / 'config.toml'} (not found: ChatGPT login)"
+    if info.error:
+        print(f"FAIL    codex config: {where}: {info.error}")
+        return False
+    print(f"ok      codex provider: {info.name} ({where})" + (f", base_url {info.base_url}" if info.base_url else ""))
+    ok = True
+    ef = cfg.codex.env_file
+    if ef:
+        names = sorted(read_env_file(ef))
+        print(f"{'ok' if Path(ef).is_file() else 'note':<7} env file {ef}: "
+              + (f"gives {', '.join(names) or 'nothing'}" if Path(ef).is_file() else "not found"))
+    if info.env_key:
+        from_file = info.env_key in read_env_file(cfg.codex.env_file)
+        if from_file or os.environ.get(info.env_key):
+            src = cfg.codex.env_file if from_file else "the shell running office"
+            print(f"ok      codex key {info.env_key}: set (from {src})")
+        else:
+            ok = False
+            print(f"FAIL    codex key {info.env_key}: not set, so `codex exec` stops with "
+                  f"'Missing environment variable: {info.env_key}'")
+            print(f"        -> add `{info.env_key}=<key>` to .agent-office/.env ({cfg.codex.env_file}; git ignores it)"
+                  f" or export it in the shell that runs `office run` / `office dashboard`")
+    if info.base_url:
+        err = _port_open(info.base_url)
+        print(f"{'ok' if not err else 'FAIL':<7} codex server {info.base_url}: " + ("reachable" if not err else err))
+        if err:
+            ok = False
+            print("        -> start the provider (codex-lb: `uvx codex-lb` or its docker container), then re-run")
+    return ok
+
+
 def cmd_doctor(args) -> int:
     repo = _repo(args)
     ok = True
-    leaked = [v for v in API_KEY_VARS if v in os.environ]
+    leaked = [v for v in API_KEY_VARS if v in os.environ and v != provider_info().env_key]
     if leaked:
         print(f"note: {', '.join(leaked)} set in your shell; Agent Office strips them so the CLIs use "
               "your subscription login.")
@@ -357,9 +406,12 @@ def cmd_doctor(args) -> int:
             print(f"MISSING {name}: `{cmd[0]}` not on PATH")
             ok = False
             continue
-        p = subprocess.run(cmd, capture_output=True, text=True, env=subscription_env())
+        p = subprocess.run(cmd, capture_output=True, text=True, env=subscription_env(env_file=cfg.codex.env_file
+                                                                                     if cfg else None))
         print(f"{'ok' if p.returncode == 0 else 'FAIL':<7} {name}: {(p.stdout or p.stderr).strip().splitlines()[0:1]}")
         ok = ok and p.returncode == 0
+    if cfg and "codex" in cfg.roles.values() and not cfg.simulate:
+        ok = doctor_codex_provider(cfg) and ok
     if not cfg or cfg.open_pr:
         needed = bool(cfg and cfg.open_pr and not cfg.simulate)
         print("GitHub (kiểm tra từ chính tiến trình office, như khi tạo PR / merge):")

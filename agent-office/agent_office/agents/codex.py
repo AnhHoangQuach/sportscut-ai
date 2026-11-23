@@ -6,7 +6,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .base import AgentResult, CliAgent
+from ..codex_provider import provider_info
+from .base import AgentResult, CliAgent, subscription_env
 
 
 class CodexAgent(CliAgent):
@@ -23,6 +24,21 @@ class CodexAgent(CliAgent):
         if self.cfg.model:
             cmd += ["--model", self.cfg.model]
         return cmd + list(self.cfg.extra_args) + ["-"]  # prompt comes from stdin
+
+    def child_env(self, cwd: Path | None = None) -> dict[str, str]:
+        """The provider's own key (e.g. CODEX_LB_API_KEY for codex-lb) is passed through."""
+        key = provider_info().env_key
+        return subscription_env(cwd, self.cfg.env_file, keep=(key,) if key else ())
+
+    def env_summary(self, env: dict[str, str]) -> str:
+        info = provider_info()
+        need = (f"; provider {info.name} needs {info.env_key}: {'set' if env.get(info.env_key) else 'MISSING'}"
+                if info.env_key else f"; provider {info.name} (no env_key)")
+        return super().env_summary(env) + need
+
+    def env_problem(self) -> str:
+        key = provider_info().env_key
+        return key if key and not self.child_env().get(key) else ""
 
     def parse(self, res: AgentResult, extra: dict[str, Any]) -> None:
         last: Path | None = extra.get("_last_msg")
