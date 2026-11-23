@@ -57,7 +57,7 @@ def test_set_coverage_and_timing_rules() -> None:
         assert 20 <= case["duration"] <= 40
         assert all(abs(t * 5 - round(t * 5)) < 1e-9 for t in times)
         assert times[0] >= 1 and times[-1] <= case["duration"] - 2
-        assert all(b - a >= 1 for a, b in zip(times, times[1:]))
+        assert all(b - a >= 1.2 - 1e-9 for a, b in zip(times, times[1:]))
     assert touches >= 35 and queries >= 17 and teams == {"red", "blue"}
     assert {p[0] for p in build.CASES["short_passes"]["players"] if p[1] == 10} == {"red", "blue"}
 
@@ -110,7 +110,11 @@ def test_number_hidden_case() -> None:
         frame = build.render_frame("number_hidden", t)
         x, y, w, h = build.player_box("number_hidden", "blue", 8, t)
         crop = frame[y:y+h, x:x+w]
-        assert np.count_nonzero(np.all(crop >= 200, axis=2)) <= 80  # ball only
+        white = np.all(crop >= 200, axis=2)
+        bx, by = (round(value) for value in build.ball_pos("number_hidden", t))
+        yy, xx = np.ogrid[:h, :w]
+        ball = (xx - (bx - x)) ** 2 + (yy - (by - y)) ** 2 <= build.BALL_R ** 2
+        assert np.count_nonzero(white & ~ball) == 0
     frame = build.render_frame("number_hidden", 7.5)
     x, y, w, h = build.player_box("number_hidden", "blue", 8, 7.5)
     assert np.count_nonzero(np.all(frame[y:y+h, x:x+w] >= 200, axis=2)) >= 10

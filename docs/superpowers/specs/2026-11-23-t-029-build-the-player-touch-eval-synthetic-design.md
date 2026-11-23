@@ -37,7 +37,7 @@ Goal of R-006: `sportscut player match.mp4 --team red --number 10 --out DIR` wri
 - AC9: Each committed `tests/fixtures/eval_player/<case>/labels.json` equals `build.case_labels(name)` (checked without ffmpeg).
 - Across the set there are ≥ 35 touches, ≥ 17 queries, and touches by both teams.
 - At least one case queries two players with the same number in different teams.
-- In every case, touch times are multiples of 0.2 s, ≥ 1.0 s apart, with the first ≥ 1.0 s and the last ≤ duration - 2 s.
+- In every case, touch times are multiples of 0.2 s, ≥ 1.2 s apart (> 2×tolerance + 0.1 s, so a +0.6 s shift cannot match the next touch), with the first ≥ 1.0 s and the last ≤ duration - 2 s.
 - AC10: Ball physics in the generator:
 - At every labelled touch, the ball centre is within 8 px of the toucher's box.
 - The ball velocity changes at every touch: angle ≥ 25° or speed ratio ≥ 1.5, measured over 0.2 s before and after. A stationary-to-moving change counts.
@@ -84,7 +84,8 @@ Goal of R-006: `sportscut player match.mp4 --team red --number 10 --out DIR` wri
 - The eval-player CLI prints compact one-line JSON with --json and indent=2 JSON otherwise. User errors (ValueError, OSError, MediaError) print `sportscut eval-player: error: <msg>` and exit 2.
 - build.py is standalone (it never imports sportscut), deterministic and data-driven. It encodes with the built-in mpeg4 encoder (-q:v 2, yuv420p, no audio), following T-036's no-libx264 rule.
 - Exception to T-036's 'media only in pytest temp dirs': build.py may write git-ignored clip.mp4 files into tests/fixtures/eval_player/ for the eval command. pytest builds the set only in temp dirs, and no media is ever committed. The T-036 design spec gets a bullet saying this.
-- The synthetic set is 4 cases (short_passes, dribble, near_miss, number_hidden) with 39 touches. Touch times are on 0.2 s frames and ≥ 1.0 s apart. The dribble zig-zags because the dribbler's own keyframes alternate ±14 px.
+- The synthetic set is 4 cases (short_passes, dribble, near_miss, number_hidden) with 39 touches. Touch times are on 0.2 s frames and ≥ 1.2 s apart. In short_passes, receiver touches use 5.2/11.2/14.2/17.6; the dribble zig-zags because the dribbler's own keyframes alternate ±14 px at 1.2 s intervals.
+- Synthetic feet use `cy + SHIRT_H/2 + BALL_R + 4`, giving the ball enough clearance from interpolating player boxes between touches while remaining within AC10's 8 px touch proximity.
 - The baseline (stub) report is f1 = precision = recall = touch_f1_any = 0.0 and team_accuracy = id_accuracy = null, recorded in README from a real run.
 - Tech Lead (dev_blocked): 2026-11-23 T-029: restart from the latest base after T-001 merges; the clean branch correctly stopped because its required scaffold exists only on office/T-001, not on T-029's base.
 

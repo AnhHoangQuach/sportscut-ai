@@ -1,4 +1,5 @@
 import json
+import math
 from pathlib import Path
 from collections.abc import Sequence
 import time
@@ -35,15 +36,7 @@ def prf(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
 
 
 def score_clip(touches, queries, detected: list[player.Touch], found: dict[player.PlayerQuery, list[player.Touch]]) -> dict:
-    def score_pairs(predicted, truth):
-        if len(predicted) == len(truth):
-            pred_order = sorted(range(len(predicted)), key=lambda i: predicted[i])
-            truth_order = sorted(range(len(truth)), key=lambda i: truth[i])
-            return [(pi, ti) for pi, ti in zip(pred_order, truth_order)
-                    if abs(predicted[pi] - truth[ti]) <= TOLERANCE + 1e-9]
-        return match_times(predicted, truth)
-
-    pairs = score_pairs([item.t for item in detected], [time for time, _ in touches])
+    pairs = match_times([item.t for item in detected], [time for time, _ in touches])
     counts = {
         "tp": 0, "fp": 0, "fn": 0,
         "any_tp": len(pairs), "any_fp": len(detected) - len(pairs), "any_fn": len(touches) - len(pairs),
@@ -56,7 +49,7 @@ def score_clip(touches, queries, detected: list[player.Touch], found: dict[playe
     for query in queries:
         truth = [time for time, author in touches if author == query]
         predicted = found[query]
-        matched = len(score_pairs([item.t for item in predicted], truth))
+        matched = len(match_times([item.t for item in predicted], truth))
         counts["tp"] += matched
         counts["fp"] += len(predicted) - matched
         counts["fn"] += len(truth) - matched
@@ -99,7 +92,8 @@ def load_labels(path) -> tuple[list[tuple[float, player.PlayerQuery]], list[play
                 raise ValueError(f"{label_path}: {location} must be an object")
             if field == "touches":
                 value = entry.get("t")
-                if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+                if (isinstance(value, bool) or not isinstance(value, (int, float))
+                        or not math.isfinite(value) or value < 0):
                     raise ValueError(f"{label_path}: {location}.t must be a non-negative number")
             try:
                 query = player.PlayerQuery(entry.get("team"), entry.get("number"))

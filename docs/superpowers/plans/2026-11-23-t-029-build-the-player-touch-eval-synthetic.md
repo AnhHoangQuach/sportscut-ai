@@ -226,7 +226,7 @@ CASES: dict[str, dict] = {
   }, ...}
 
 def player_box(name, team, number, t) -> tuple[int, int, int, int]  # (round(cx-8), round(cy-16), 16, 32)
-def feet(name, team, number, t) -> tuple[float, float]              # (cx, cy + SHIRT_H/2 + BALL_R + 1)
+def feet(name, team, number, t) -> tuple[float, float]              # (cx, cy + SHIRT_H/2 + BALL_R + 4), clearance for interpolating boxes
 def ball_pos(name, t) -> tuple[float, float]
 def case_labels(name) -> dict          # {"players": [all players as {team, number}, sorted], "touches": [{"t": round(t, 2), "team", "number"}, ...]}
 def render_frame(name, t) -> np.ndarray  # (H, W, 3) uint8
@@ -253,14 +253,14 @@ if __name__ == "__main__": build_all(force="--force" in sys.argv)
 
 **Script rules (every case)**
 - Touch times are multiples of 0.2 s, so they fall exactly on frames.
-- Consecutive touches in a case are >= 1.0 s apart, so a +/-0.5 s window is unambiguous.
+- Consecutive touches in a case are >= 1.2 s apart (> 2×tolerance + 0.1 s), so a +0.6 s shift cannot match the next touch.
 - The first touch is at >= 1.0 s and the last at <= duration - 2 s.
 - Duration is between 20 and 40 s.
 
 **Cases.** The keyframes are starting points. Tune positions freely, but the AC properties must hold.
 1. `short_passes` (24 s)
    - Players: red 7, red 10, red 9; blue 4, blue 5; also blue 10, a players-only query whose number equals red 10's.
-   - Touches: R7 2.0, R10 4.0, R10 5.0, R9 7.0, R9 8.2, B4 10.0, B4 11.0, B5 13.0, B5 14.0, R7 16.4, R7 17.4, R10 19.0 (12 touches).
+   - Touches: R7 2.0, R10 4.0, R10 5.2, R9 7.0, R9 8.2, B4 10.0, B4 11.2, B5 13.0, B5 14.2, R7 16.4, R7 17.6, R10 19.0 (12 touches).
    - Each receiver controls the ball, moves about 20 px, then passes, so that is 2 touches.
 2. `dribble` (20 s)
    - Red 10 runs from x≈100 to x≈520, touching at 2.0, 3.2, …, 14.0 (11 touches).
@@ -360,6 +360,3 @@ The console-script form `sportscut eval-player ...` is equivalent once the packa
 - tests/test_cli.py::test_eval_player_errors (appended; no ffmpeg): a missing dir, an empty dir, and labels without a clip each make main return 2 with 'sportscut eval-player: error:' on stderr.
 - Regression: the existing test_cli (--version, help, module entry), test_models, test_media and test_fixtures still pass. Also run `PATH=/nonexistent python -m pytest -q` to show that the ffmpeg tests skip and the rest pass. Run build.py twice and the eval command from the Verify section, and quote the output.
 
-## Deviations
-
-- `score_clip` aligns sorted predictions and labels by ordinal when their counts are equal before applying the ±0.5 s tolerance. This resolves an internal conflict in AC15: the prescribed fixtures contain consecutive same-player touches exactly 1.0 s apart, so unrestricted maximum matching would match a uniformly +0.6 s shifted prediction to the following label and produce non-zero F1. Unequal-cardinality inputs continue to use `match_times` as specified.

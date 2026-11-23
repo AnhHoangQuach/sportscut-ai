@@ -69,3 +69,4 @@ Newest last. Format: date, task (request): decision.
 - 2026-11-23 T-029 (R-006): The synthetic set is 4 cases (short_passes, dribble, near_miss, number_hidden) with 39 touches. Touch times are on 0.2 s frames and ≥ 1.0 s apart. The dribble zig-zags because the dribbler's own keyframes alternate ±14 px.
 - 2026-11-23 T-029 (R-006): The baseline (stub) report is f1 = precision = recall = touch_f1_any = 0.0 and team_accuracy = id_accuracy = null, recorded in README from a real run.
 - 2026-11-23 T-029 (R-006): Tech Lead (dev_blocked): 2026-11-23 T-029: restart from the latest base after T-001 merges; the clean branch correctly stopped because its required scaffold exists only on office/T-001, not on T-029's base.
+- 2026-11-23 T-029 (R-006): Tech Lead (review): touches in a synthetic case are ≥ 1.2 s apart (was 1.0 s) so AC15's +0.6 s shift gives F1 = 0 under maximum matching; short_passes receiver touches move to 5.2/11.2/14.2/17.6; score_clip uses match_times only.

@@ -22,14 +22,19 @@ FONT = {
 
 
 def _players(touches, points, extras):
-    players = {(team, number): [] for _, team, number in touches}
-    for (t, team, number), (x, y) in zip(touches, points):
-        players[(team, number)].append((t, x, y))
+    authors = sorted({(team, number) for _, team, number in touches})
+    players = {}
+    for player_index, who in enumerate(authors):
+        offset = 30 * (player_index + 1)
+        players[who] = [
+            (t, x if (team, number) == who else x + offset, y)
+            for (t, team, number), (x, y) in zip(touches, points)
+        ]
     players.update(extras)
     return players
 
 
-SHORT_TOUCHES = [(2.0,"red",7),(4.0,"red",10),(5.0,"red",10),(7.0,"red",9),(8.2,"red",9),(10.0,"blue",4),(11.0,"blue",4),(13.0,"blue",5),(14.0,"blue",5),(16.4,"red",7),(17.4,"red",7),(19.0,"red",10)]
+SHORT_TOUCHES = [(2.0,"red",7),(4.0,"red",10),(5.2,"red",10),(7.0,"red",9),(8.2,"red",9),(10.0,"blue",4),(11.2,"blue",4),(13.0,"blue",5),(14.2,"blue",5),(16.4,"red",7),(17.6,"red",7),(19.0,"red",10)]
 SHORT_POINTS = [(80,120),(150,190),(175,135),(245,110),(270,135),(340,195),(365,120),(430,110),(455,80),(520,195),(540,220),(590,120)]
 DRIBBLE_TIMES = [round(2 + 1.2 * i, 1) for i in range(11)]
 DRIBBLE_TOUCHES = [(t,"red",10) for t in DRIBBLE_TIMES] + [(15.2,"red",10),(17.0,"red",11)]
@@ -45,6 +50,12 @@ CASES = {
     "near_miss": {"duration": 20.0, "touches": NEAR_TOUCHES, "players": _players(NEAR_TOUCHES, NEAR_POINTS, {("blue",4): [(0,240,99)], ("blue",2): [(0,240,159)]}), "ball_end": (18.0,380,120), "hidden": []},
     "number_hidden": {"duration": 20.0, "touches": HIDDEN_TOUCHES, "players": _players(HIDDEN_TOUCHES, HIDDEN_POINTS, {}), "ball_end": (18.0,610,180), "hidden": [("blue",8,t-1,t+1) for t,team,number in HIDDEN_TOUCHES if (team,number)==("blue",8)]},
 }
+for case in CASES.values():
+    _, team, number = case["touches"][-1]
+    end_t, end_x, end_y = case["ball_end"]
+    case["players"][(team, number)].append(
+        (end_t, end_x, end_y - (SHIRT_H / 2 + BALL_R + 4))
+    )
 
 
 def _centre(name, team, number, t):
@@ -55,19 +66,12 @@ def _centre(name, team, number, t):
 
 def player_box(name, team, number, t):
     cx, cy = _centre(name, team, number, t)
-    box = (round(cx - SHIRT_W / 2), round(cy - SHIRT_H / 2), SHIRT_W, SHIRT_H)
-    is_touch = any(abs(t-time) < 1e-9 and (team, number) == (touch_team, touch_number)
-                   for time, touch_team, touch_number in CASES[name]["touches"])
-    if not is_touch:
-        ball_x, ball_y = ball_pos(name, t)
-        x, y, w, h = box
-        if x <= ball_x <= x + w and y <= ball_y <= y + h:
-            box = (x, y - 50, w, h)
-    return box
+    return round(cx - SHIRT_W / 2), round(cy - SHIRT_H / 2), SHIRT_W, SHIRT_H
 
 
 def feet(name, team, number, t):
     cx, cy = _centre(name, team, number, t)
+    # Keep the ball clear of the shirt between sampled frames and at touch time.
     return cx, cy + SHIRT_H / 2 + BALL_R + 4
 
 
@@ -156,6 +160,7 @@ def build_all(out_dir=HERE, force=False):
             stderr = process.stderr.read() if process.stderr else b""
             code = process.wait()
         if code:
+            temporary.unlink(missing_ok=True)
             raise RuntimeError(stderr.decode().strip())
         os.replace(temporary, clip)
     return clips

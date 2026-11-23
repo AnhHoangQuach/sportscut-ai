@@ -31,6 +31,7 @@ def test_load_labels_valid(tmp_path: Path) -> None:
     ({"touches": [{}]}, True),
     ({"touches": [{"t": "1", "team": "red", "number": 1}]}, True),
     ({"touches": [{"t": True, "team": "red", "number": 1}]}, True),
+    ({"touches": [{"t": float("nan"), "team": "red", "number": 1}]}, True),
     ({"touches": [{"t": -1, "team": "red", "number": 1}]}, True),
     ({"touches": [{"t": 1, "team": "maroon", "number": 1}]}, True),
     ({"touches": [{"t": 1, "team": "red", "number": 0}]}, True),
@@ -75,6 +76,17 @@ def test_score_clip_counts() -> None:
         "any_tp": 2, "any_fp": 1, "any_fn": 0,
         "team_hits": 1, "id_hits": 1,
     }
+
+
+def test_score_clip_maximum_matching_with_equal_counts() -> None:
+    query = PlayerQuery("red", 10)
+    labels = [(time, query) for time in (1.0, 2.0, 3.0, 4.0)]
+    predicted = [Touch(time, "red", 10, 1, None) for time in (2.0, 3.0, 4.0, 9.0)]
+
+    counts = score_clip(labels, [query], predicted, {query: predicted})
+
+    assert (counts["tp"], counts["fp"], counts["fn"]) == (3, 1, 1)
+    assert (counts["any_tp"], counts["any_fp"], counts["any_fn"]) == (3, 1, 1)
 
 
 def test_metrics_none_and_rounding() -> None:
