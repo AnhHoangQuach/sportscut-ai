@@ -962,7 +962,7 @@ class Office:
             if rnd >= self.cfg.tech_lead_rounds:
                 self._retire(task, f"Tech Lead answer not readable after {rnd} rounds ({task.tl_kind})", report=True)
             return
-        kind, issue = task.tl_kind, task.tl_issue
+        kind = task.tl_kind
         task.tl_issue, task.tl_kind = "", ""
         if business:
             task.questions = business
