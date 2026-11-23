@@ -14,7 +14,7 @@ from string import Template
 from typing import Callable
 
 from . import worktree as wt
-from .agents import AgentResult, ClaudeAgent, CliAgent, CodexAgent, extract_json
+from .agents import AgentResult, ClaudeAgent, CliAgent, CodexAgent, extract_json, subscription_env
 from .config import Config, load_config
 from .limits import LimitHit, detect, rest_until
 from .models import (MAX_CONFLICT_ROUNDS, MAX_REVIEW_ROUNDS, MAX_TEST_ATTEMPTS, AgentStatus, Request, Stage, Task,
@@ -34,6 +34,13 @@ SECRET_PATTERNS = [
     re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),               # Slack tokens
     re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),                   # Google API key
 ]
+
+# A `BLOCKED:` answer that matches one of these is an environment problem the office repairs itself.
+MISSING_DEP = re.compile(
+    r"ModuleNotFoundError|No module named|ImportError|command not found|not found on PATH|is not installed|"
+    r"not installed|missing (?:dependency|dependencies|package|module|tool)|Could not find a version|"
+    r"No matching distribution|Cannot find module|ENOTFOUND|Temporary failure in name resolution|"
+    r"network is (?:disabled|unreachable)|Permission denied.*site-packages", re.IGNORECASE)
 
 
 def prompt(name: str, **vars: object) -> str:
@@ -471,8 +478,24 @@ class Office:
         if not task.worktree:
             task.worktree, task.branch, task.base_ref = str(path), branch, base
             self.store.event("worktree_ready", task_id=task.id, path=str(path), branch=branch)
+            self._setup_env(task, path, "new worktree")
         self._write_task_md(task, path)
         return path
+
+    def _setup_env(self, task: Task, path: Path, why: str) -> tuple[bool, str]:
+        """Run setup_cmd in the worktree as the orchestrator (network, no sandbox)."""
+        if not self.cfg.setup_cmd:
+            return True, "(no setup_cmd configured)"
+        self.echo(f"  [office] setup env for {task.id} ({why})...")
+        with self._unlocked():
+            try:
+                p = subprocess.run(self.cfg.setup_cmd, shell=True, cwd=path, capture_output=True, text=True,
+                                   timeout=1800, env=subscription_env(path))
+                ok, out = p.returncode == 0, f"(exit {p.returncode})\n{p.stdout[-2000:]}\n{p.stderr[-2000:]}"
+            except subprocess.TimeoutExpired:
+                ok, out = False, "(timed out after 1800s)"
+        self.store.event("env_setup", task_id=task.id, why=why, ok=ok)
+        return ok, f"$ {self.cfg.setup_cmd}\n{out}"
 
     def _write_task_md(self, task: Task, path: Path) -> None:
         parts = [f"# {task.id}: {task.title}\n\n{task.brief}\n", f"## Spec\n\n{task.spec}\n",
@@ -507,6 +530,10 @@ class Office:
                     f"these files conflict: {', '.join(conflict_files[:20])}. Resolve every conflict so that "
                     f"both this task and the work already on {self.cfg.base_branch} keep working, remove all "
                     "conflict markers, `git add` the files, run the tests. Do not commit or abort the merge.")
+        elif task.env_note:
+            mode = ("ENVIRONMENT: last time you stopped on a missing dependency. The office re-ran the setup "
+                    f"command; result below. Install whatever is still missing yourself (see Rules), then "
+                    f"continue the task.\n\n{task.env_note}")
         elif task.checkpoint:
             mode = ("RESUMING: a previous run was interrupted. Read `.office/CHECKPOINT.md` and "
                     "`git log` to see what is already done, then continue; do not redo finished work.")
@@ -522,6 +549,15 @@ class Office:
             return
         if res.text.lstrip().startswith("BLOCKED:"):
             wt.commit_all(path, f"wip(office): {task.id} blocked")
+            reason = res.text.strip()
+            if MISSING_DEP.search(reason) and task.env_fixes < self.cfg.dep_retries:
+                task.env_fixes += 1
+                ok, out = self._setup_env(task, path, "missing dependency")
+                task.env_note = f"You reported:\n{reason[:1500]}\n\nSetup {'ok' if ok else 'FAILED'}:\n{out[-2500:]}"
+                self.store.event("env_retry", task_id=task.id, attempt=task.env_fixes, of=self.cfg.dep_retries)
+                self.say("codex", "all", f"{task.id} thiếu dependency, tự cài lại môi trường và thử lại "
+                         f"({task.env_fixes}/{self.cfg.dep_retries}).", task.id, kind="env_retry")
+                return  # still in DEV: the next step runs the developer again
             self.say("codex", "claude", f"{task.id} bị chặn: {res.text.strip()[8:400]}", task.id, kind="blocked")
             self._block(task, res.text.strip()[:1000])
             return
@@ -536,6 +572,7 @@ class Office:
             self.store.event("conflict_resolved", task_id=task.id, files=conflict_files[:50])
         else:
             wt.commit_all(path, f"feat({task.id}): {task.title}")
+        task.env_note = ""
         self._clear_checkpoint(task)
         problem = self._guardrail_problem(task, path)
         if problem:
@@ -574,14 +611,14 @@ class Office:
         if not self.cfg.test_cmd:
             return True, "(no test_cmd configured)"
         p = subprocess.run(self.cfg.test_cmd, shell=True, cwd=path, capture_output=True, text=True,
-                           timeout=1800)
+                           timeout=1800, env=subscription_env(path))
         return p.returncode == 0, f"$ {self.cfg.test_cmd}\n(exit {p.returncode})\n{p.stdout[-6000:]}\n{p.stderr[-3000:]}"
 
     def _run_eval(self, path: Path) -> tuple[float | None, str]:
         """Run eval_cmd and read the metric from the last JSON object it prints."""
         try:
             p = subprocess.run(self.cfg.eval_cmd, shell=True, cwd=path, capture_output=True, text=True,
-                               timeout=3600)
+                               timeout=3600, env=subscription_env(path))
         except subprocess.TimeoutExpired:
             return None, f"$ {self.cfg.eval_cmd}\n(timed out)"
         out = f"$ {self.cfg.eval_cmd}\n(exit {p.returncode})\n{p.stdout[-3000:]}\n{p.stderr[-1500:]}"
@@ -822,6 +859,7 @@ class Office:
             back = Stage.DEV
         task.review_round = 0
         task.test_attempts = 0
+        task.env_fixes = 0
         task.blocked_reason = ""
         self._move(task, back, "PO answered")
         self.say("po", "claude", f"Trả lời {task.id}: {text.strip()[:400]}", task.id, kind="answer")

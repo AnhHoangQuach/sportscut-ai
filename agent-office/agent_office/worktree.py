@@ -28,7 +28,7 @@ def ensure_excluded(repo: Path) -> None:
     exclude = common / "info" / "exclude"
     exclude.parent.mkdir(parents=True, exist_ok=True)
     lines = exclude.read_text().splitlines() if exclude.exists() else []
-    for entry in (f"{NOTES_DIR}/", ".agent-office/"):
+    for entry in (f"{NOTES_DIR}/", ".agent-office/", ".venv/"):
         if entry not in lines:
             lines.append(entry)
     exclude.write_text("\n".join(lines) + "\n")

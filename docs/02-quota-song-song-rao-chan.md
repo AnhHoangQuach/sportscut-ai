@@ -97,7 +97,7 @@ commit marker xung đột.
 | `max_calls_per_day` | Trước mỗi lần gọi agent | Agent nghỉ tới nửa đêm (giờ máy) |
 | `max_tasks_per_request` | Khi Claude tạo task | Cắt bớt, ghi sự kiện `guardrail` |
 | Giới hạn vòng lặp | Test 3 lần, review 3 vòng, xung đột 2 lần, goal check `max_goal_rounds` | `blocked` |
-| Sandbox | Claude chỉ có công cụ đọc; Codex `workspace-write` trong worktree | CLI từ chối |
+| Sandbox | Claude chỉ có công cụ đọc + vài lệnh trong `allowed_commands`; Codex `workspace-write` trong worktree (có mạng, xem 2.7) | CLI từ chối |
 | Không API key | Xóa biến môi trường key trước khi gọi CLI | Luôn dùng gói thuê bao |
 
 ## 2.5 Thống kê
@@ -121,3 +121,45 @@ Chỉ có một tiến trình ghi (runner), các nơi khác gửi lệnh qua inb
 JSON ghi nguyên tử + một khóa trong tiến trình là đủ, dễ đọc bằng mắt, dễ sao lưu. `events.jsonl`
 đã là lịch sử đầy đủ. Khi nào cần nhiều runner trên nhiều máy dùng chung một backlog thì mới đáng
 chuyển sang SQLite (WAL) hoặc Postgres.
+
+## 2.7 Agent tự cài dependency khi thiếu
+
+**Vì sao trước đây agent không tự cài được.** Hai CLI chạy không tương tác và mặc định chặn đúng
+những việc cần để cài thư viện:
+
+- `codex exec --sandbox workspace-write` chỉ cho ghi trong worktree và **tắt mạng**, nên
+  `pip install` / `npm install` không tải được gì. Kể cả có mạng, `pip` cài vào Python hệ thống
+  (ngoài worktree) cũng bị sandbox chặn.
+- `claude -p` chỉ được dùng các công cụ trong `--allowedTools` (đọc file, `git diff/log/show`).
+  Ở chế độ `-p` không có ai bấm "Allow", nên mọi lệnh khác bị từ chối.
+- Prompt cũ bảo "gặp gì chặn thì trả lời `BLOCKED:`", nên thiếu module cũng thành câu hỏi cho PO.
+
+**Bây giờ có 4 lớp tự sửa:**
+
+| Lớp | Cấu hình | Làm gì |
+|---|---|---|
+| Mạng cho Codex | `[codex] network = true` (mặc định) | Thêm `-c sandbox_workspace_write.network_access=true`. Codex vẫn chỉ ghi được trong worktree |
+| Môi trường riêng mỗi worktree | `[office] setup_cmd` | Orchestrator (ngoài sandbox, có mạng) chạy lệnh này khi tạo worktree. Nếu nó tạo `.venv/`, thì `.venv/bin` được đặt đầu `PATH` của Codex, Claude, `test_cmd` và `eval_cmd`, nên `pip install` từ trong sandbox cài vào `.venv/` (nằm trong worktree, ghi được). `.venv/` không bao giờ bị commit |
+| Prompt dạy tự gỡ | `prompts/dev.md`, `prompts/test.md` | Thiếu package/tool **không phải** blocker: tự cài vào `.venv/` (hoặc `npm install` trong worktree), khai báo vào `pyproject.toml` / `requirements*.txt` / `package.json`, chạy lại. Không `sudo`, không cài ra ngoài worktree. Chỉ sau 2 lần cài vẫn lỗi mới `BLOCKED:` kèm lệnh và dòng lỗi |
+| Orchestrator thử lại | `[office] dep_retries = 2` | Nếu Codex vẫn trả `BLOCKED:` mà lý do giống thiếu dependency (`ModuleNotFoundError`, `command not found`, `No matching distribution`, lỗi DNS...), office chạy lại `setup_cmd`, ghi kết quả vào prompt dev lần sau (mục `ENVIRONMENT`) rồi giao lại. Hết số lần mới hỏi PO. Blocker thật (thiếu quyết định, yêu cầu mâu thuẫn) vẫn đi thẳng tới PO |
+
+Claude vẫn là PM/Reviewer, **không** cài gì. `[claude] allowed_commands` (mặc định `python -m pytest`,
+`pytest`, `ffprobe`, `ffmpeg -version`) chỉ để reviewer tự chạy test khi cần. Mỗi mục thành
+`--allowedTools "Bash(<lệnh>:*)"`, tức là cho phép theo tiền tố lệnh, không dùng
+`--dangerously-skip-permissions`.
+
+Ví dụ cho SportsCut (Python):
+
+```toml
+[office]
+setup_cmd = "python3 -m venv .venv && .venv/bin/python -m pip install -q -e '.[dev]' || .venv/bin/python -m pip install -q pytest"
+dep_retries = 2
+test_cmd = ".venv/bin/python -m pytest -q"
+```
+
+`ffmpeg`/`ffprobe` là công cụ hệ thống: cài một lần trên máy chạy office (`brew install ffmpeg`,
+`apt install ffmpeg`), agent không tự cài bằng `sudo`.
+
+Các rào chắn khác giữ nguyên: secret vẫn bị chặn trước review, `max_calls_per_day` vẫn tính mỗi
+lần giao lại, và `protected_paths` vẫn được kiểm tra.
+

@@ -6,6 +6,12 @@ Rules:
 - Do NOT run `git commit`, `git push` or change branches; the orchestrator commits for you.
 - Write or update automated tests that cover every acceptance criterion.
 - Run the test suite and make it pass before you finish.
+- A missing package or tool is not a blocker: fix it yourself. Install it into the project
+  environment (`python -m pip install <pkg>` uses `.venv/` when it exists; `npm install` stays
+  in this directory), declare it where the project lists dependencies (`pyproject.toml`,
+  `requirements*.txt`, `package.json`), then re-run what failed. Never use `sudo` and never
+  install outside this directory. Only after 2 attempts at installing it still fail, answer
+  `BLOCKED:` with the exact command and the error line.
 - Stay within scope. If something blocks you (missing decision, impossible requirement),
   stop and explain it in your final message starting with the word `BLOCKED:`.
 

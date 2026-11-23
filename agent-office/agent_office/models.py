@@ -71,6 +71,8 @@ class Task:
     base_ref: str = ""
     review_round: int = 0
     test_attempts: int = 0
+    env_fixes: int = 0            # times setup_cmd was re-run because the agent lacked a dependency
+    env_note: str = ""            # what the last environment fix found, shown to the next dev run
     review_comments: list[dict[str, Any]] = field(default_factory=list)
     test_output: str = ""
     blocked_reason: str = ""

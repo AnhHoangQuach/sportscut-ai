@@ -24,6 +24,7 @@
 | Văn phòng 3D đứng yên | Runner chưa chạy, hoặc agent đều đang nghỉ / chờ PO | Bấm "Bắt đầu"; xem khung "Cần anh trả lời"; `office status` để thấy lý do chờ |
 | Agent "nghỉ" liên tục | Hết quota thật, hoặc CLI lỗi lặp lại (chưa đăng nhập, sai lệnh) | Xem `.agent-office/logs/<task>/...log`; `office doctor --live` |
 | Task `blocked` | Câu hỏi cho PO, rào chắn (secret, diff lớn, protected path), hết lượt test/review/xung đột | `office show T-xxx` xem lý do; sửa hoặc trả lời bằng `office answer` |
+| Task `blocked` vì thiếu thư viện/tool | Đã thử `dep_retries` lần mà vẫn thiếu; `setup_cmd` lỗi; tool hệ thống (ffmpeg) chưa có | Xem mục `ENVIRONMENT` trong log dev; sửa `setup_cmd` hoặc cài tool trên máy; `office answer T-xxx "đã cài"` (xem [2.7](02-quota-song-song-rao-chan.md#27-agent-tự-cài-dependency-khi-thiếu)) |
 | "Another `office run` is already working" | Đã có runner khác | Dừng runner kia (nút "Dừng" hoặc Ctrl+C); file `runner.pid` cũ tự bị bỏ qua nếu tiến trình đã chết |
 | Merge thất bại "uncommitted changes on main" | Có thay đổi chưa commit ở repo chính | Commit hoặc stash ở repo chính |
 | Eval làm task quay vòng mãi | Chỉ số dao động ngẫu nhiên | Đặt `max_drop` nhỏ (ví dụ 0.01), cố định seed trong eval |

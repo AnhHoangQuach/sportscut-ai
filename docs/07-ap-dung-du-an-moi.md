@@ -29,6 +29,7 @@ office init               # tạo .agent-office/ + AGENTS.md + CLAUDE.md (nếu 
 [office]
 base_branch = "main"
 test_cmd = "npm test"             # lệnh orchestrator tự chạy để xác nhận; nên luôn đặt
+setup_cmd = "npm ci"              # chuẩn bị môi trường mỗi worktree, agent tự cài thêm khi thiếu (mục 2.7)
 open_pr = true                     # false = merge local, không cần GitHub
 merge_mode = "auto"                # "manual" nếu muốn tự bấm merge từng PR
 protected_paths = ["AGENTS.md", "CLAUDE.md", ".github/", "infra/"]

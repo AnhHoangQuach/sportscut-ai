@@ -17,6 +17,8 @@ class CodexAgent(CliAgent):
         extra["_last_msg"] = last
         cmd = [self.cfg.cmd, "exec", "--json", "--sandbox", self.cfg.sandbox,
                "--skip-git-repo-check", "-C", str(cwd), "--output-last-message", str(last)]
+        if self.cfg.network and self.cfg.sandbox == "workspace-write":
+            cmd += ["-c", "sandbox_workspace_write.network_access=true"]
         if self.cfg.model:
             cmd += ["--model", self.cfg.model]
         return cmd + list(self.cfg.extra_args) + ["-"]  # prompt comes from stdin
