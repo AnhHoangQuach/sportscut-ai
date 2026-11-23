@@ -10,11 +10,34 @@ def find_tool(name: str) -> str:
     if tool is None:
         raise MediaError(f"{name} not found on PATH; install ffmpeg")
     return tool
+
+def require_ffmpeg() -> None:
+    """Raise MediaError unless both ffmpeg and ffprobe are on PATH."""
+    find_tool("ffmpeg")
+    find_tool("ffprobe")
+
 def _failure_detail(stderr: str | bytes, returncode: int) -> str:
     if isinstance(stderr, bytes):
         stderr = stderr.decode("utf-8", errors="replace")
     lines = [line.strip() for line in stderr.splitlines() if line.strip()]
     return lines[-1] if lines else f"exit code {returncode}"
+
+def has_audio(path: str | Path) -> bool:
+    """Return whether a media file contains at least one audio stream."""
+    p = Path(path)
+    if not p.is_file():
+        raise MediaError(f"media file not found: {path}")
+    ffprobe = find_tool("ffprobe")
+    args = [
+        ffprobe, "-v", "error", "-select_streams", "a", "-show_entries",
+        "stream=index", "-of", "csv=p=0", "-i", str(p),
+    ]
+    result = subprocess.run(args, capture_output=True, check=False, text=True)
+    if result.returncode:
+        detail = _failure_detail(result.stderr, result.returncode)
+        raise MediaError(f"ffprobe failed for {path}: {detail}")
+    return bool(result.stdout.strip())
+
 def probe_duration(path: str | Path) -> float:
     p = Path(path)
     if not p.is_file():

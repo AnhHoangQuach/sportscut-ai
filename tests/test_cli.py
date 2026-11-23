@@ -26,6 +26,7 @@ def test_no_args_prints_help_and_returns_zero(
     captured = capsys.readouterr()
     assert "usage: sportscut" in captured.out
     assert "detect" in captured.out
+    assert "cut" in captured.out
     assert captured.err == ""
 
 
@@ -82,6 +83,47 @@ def test_detect_invalid_options(tmp_path: Path, capsys: pytest.CaptureFixture[st
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "min_len must be <= max_len" in captured.err
+
+
+def test_cut_end_to_end(burst_video, tmp_path, capsys):
+    out = tmp_path / "out"
+    assert main(["cut", str(burst_video), "--out", str(out)]) == 0
+    captured = capsys.readouterr()
+    expected = [str(out / f"clip_{i:02d}.mp4") for i in range(1, 4)]
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert all(Path(path).is_file() for path in expected)
+    manifest = json.loads((out / "highlights.json").read_text())
+    assert [entry["file"] for entry in manifest] == [Path(path).name for path in expected]
+
+
+def test_cut_passes_options(burst_video, tmp_path, capsys):
+    out = tmp_path / "out"
+    args = ["cut", str(burst_video), "--out", str(out), "--top", "1", "--min-len", "4", "--max-len", "6"]
+    assert main(args) == 0
+    assert capsys.readouterr().out.splitlines() == [str(out / "clip_01.mp4")]
+    entry = json.loads((out / "highlights.json").read_text())[0]
+    assert entry["end"] - entry["start"] == pytest.approx(6, abs=0.01)
+
+
+def test_cut_non_video_exits_nonzero(require_ffmpeg, tmp_path):
+    bad = tmp_path / "bad.mp4"; bad.write_text("not a video")
+    out = tmp_path / "out"
+    result = subprocess.run(
+        [sys.executable, "-m", "sportscut", "cut", str(bad), "--out", str(out)],
+        cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr.startswith(f"sportscut: error: ffprobe failed for {bad}: ")
+    assert "Traceback" not in result.stderr
+    assert not (out / "highlights.json").exists()
+
+
+def test_cut_requires_out(capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["cut", "x.mp4"])
+    assert exc.value.code == 2
 
 
 @pytest.mark.parametrize("kind", ["missing", "empty", "no_clip"])
