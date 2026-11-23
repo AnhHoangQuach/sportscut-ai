@@ -39,6 +39,8 @@ def rest_reason(a) -> str:
     detail = a.rest_detail or a.last_error
     if a.rest_cause == "budget":
         text = f"daily call budget used: {detail}"
+    elif a.rest_cause == "env":
+        text = f"environment problem for the user (not out of quota): {detail}; add it to .agent-office/.env"
     elif a.rest_cause == "failure":
         text = f"CLI failed repeatedly, not quota: {detail}"
     else:
@@ -57,13 +59,13 @@ def agent_available(store: Store, name: str | None, now: datetime) -> bool:
 
 
 def assigned_agent(store: Store, preferred: str, now: datetime) -> str:
-    """Use a role on the other subscription only while the preferred role's CLI is quota-resting.
+    """Use a role on the other subscription only while the preferred role's CLI rests for quota, budget or a missing env var.
 
     Busy/session limits are handled separately by ``take`` and never cause failover.
     An expired rest is also not bypassed: the preferred CLI must pass its wake probe first.
     """
     agent = store.agents[preferred]
-    if agent.status != AgentStatus.RESTING or agent.rest_cause not in ("quota", "budget"):
+    if agent.status != AgentStatus.RESTING or agent.rest_cause not in ("quota", "budget", "env"):
         return preferred
     for name in [FAILOVER.get(preferred, ""), *store.agents]:
         other = store.agents.get(name)

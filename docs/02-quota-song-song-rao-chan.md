@@ -186,3 +186,69 @@ test_cmd = ".venv/bin/python -m pytest -q"
 Các rào chắn khác giữ nguyên: secret vẫn bị chặn trước review, `max_calls_per_day` vẫn tính mỗi
 lần giao lại, và `protected_paths` vẫn được kiểm tra.
 
+
+## 2.8 Chạy Codex qua codex-lb (gộp nhiều tài khoản ChatGPT)
+
+[codex-lb](https://github.com/Soju06/codex-lb) là proxy mã nguồn mở đứng giữa Codex CLI và
+ChatGPT: thêm nhiều tài khoản ChatGPT, nó chia tải và tự chuyển tài khoản khi một tài khoản hết
+quota, kèm dashboard theo dõi lượt dùng. Với office, đó là cách tăng quota cho Developer và Tester
+mà vẫn dùng gói thuê bao. Key của codex-lb là key của proxy trên máy anh, không phải API key trả
+tiền, nên office cho phép dùng (quyết định trong `docs/superpowers/DECISIONS.md`).
+
+**1. Chạy codex-lb** (một lần trên máy chạy office):
+
+```bash
+uvx codex-lb            # hoặc Docker:
+docker run -d --name codex-lb -p 2455:2455 -p 1455:1455 \
+  -v codex-lb-data:/var/lib/codex-lb ghcr.io/soju06/codex-lb:latest
+```
+
+Mở `http://localhost:2455`, bấm **Add account** để thêm các tài khoản ChatGPT. Nếu bật xác thực
+bằng API key (bắt buộc khi Codex ở máy khác), tạo key trong dashboard.
+
+**2. Trỏ Codex vào codex-lb** trong `~/.codex/config.toml` (hoặc `$CODEX_HOME/config.toml`):
+
+```toml
+model_provider = "codex-lb"
+
+[model_providers.codex-lb]
+name = "openai"                 # bắt buộc (bản Codex cũ dùng "OpenAI")
+base_url = "http://127.0.0.1:2455/backend-api/codex"
+wire_api = "responses"
+requires_openai_auth = true
+env_key = "CODEX_LB_API_KEY"    # chỉ cần khi codex-lb bật API key
+```
+
+**3. Đưa key cho office.** Codex đọc key từ biến môi trường tên trong `env_key`. Nếu tiến trình
+chạy `office run` / `office dashboard` không có biến đó (ví dụ chỉ `export` trong `.zshrc` của một
+terminal khác, hoặc office được mở từ app/launchd), `codex exec` dừng với
+`Missing environment variable: CODEX_LB_API_KEY`. Cách chắc chắn nhất: ghi key vào
+`.agent-office/.env` của repo đích (thư mục `.agent-office/` bị git bỏ qua, không bao giờ commit):
+
+```bash
+echo 'CODEX_LB_API_KEY=sk-clb-...' >> .agent-office/.env
+chmod 600 .agent-office/.env
+office doctor
+```
+
+Office đọc file này **trước mỗi lần gọi** CLI (đổi đường dẫn bằng `[office] env_file`), nên sửa
+xong không cần khởi động lại. Biến `env_key` của provider Codex luôn được giữ lại, kể cả khi trùng
+tên một API key mà office thường xóa (ví dụ `OPENAI_API_KEY`); các API key khác vẫn bị xóa.
+
+**4. Kiểm tra** bằng `office doctor`:
+
+```text
+ok      codex provider: codex-lb (/Users/<anh>/.codex/config.toml), base_url http://127.0.0.1:2455/backend-api/codex
+FAIL    codex key CODEX_LB_API_KEY: not set, so `codex exec` stops with 'Missing environment variable: CODEX_LB_API_KEY'
+        -> add `CODEX_LB_API_KEY=<key>` to .agent-office/.env (...; git ignores it) or export it in the shell that runs `office run` / `office dashboard`
+ok      codex server http://127.0.0.1:2455/backend-api/codex: reachable
+```
+
+Doctor không bao giờ in giá trị key. Dòng `codex server` FAIL nghĩa là codex-lb chưa chạy.
+`office doctor --live` gửi một prompt nhỏ qua codex-lb để chắc chắn mọi thứ thông.
+
+**Khi thiếu key lúc đang chạy:** office không gọi Codex (không tốn lượt), không tính là hết quota
+hay CLI lỗi. Dev và Tester nghỉ với lý do `environment problem for the user`, PO nhận **một** tin
+"Cần anh sửa trên máy" kèm cách sửa, Claude tạm làm thay việc của Codex (như khi Codex hết
+quota). Cứ 5 phút office tự kiểm tra lại trên máy (không gọi CLI); thấy key là Codex làm tiếp.
+Muốn chạy ngay: `office wake codex`.

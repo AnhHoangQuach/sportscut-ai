@@ -14,6 +14,7 @@ from string import Template
 from typing import Callable
 
 from . import github, specdocs
+from .codex_provider import missing_env_var
 from . import worktree as wt
 from .agents import AgentResult, ClaudeAgent, CliAgent, CodexAgent, extract_json, subscription_env
 from .config import Config, load_config
@@ -361,6 +362,10 @@ class Office:
             self._rest(agent_name, LimitHit(provider, f"daily budget of {cap} calls used", midnight), None,
                        label, None, budget=True)
             return None
+        missing = self.agents[provider].env_problem()
+        if missing:  # e.g. codex-lb key not set: the call cannot work, do not spend it
+            self._env_rest(agent_name, missing, task, label, None)
+            return None
         agent.count_call(day)
         agent.active.append(task_id)
         agent.status = AgentStatus.WORKING
@@ -384,6 +389,10 @@ class Office:
             self._rest(agent_name, res.limit, task, label, res)
             return None
         mates = self.store.roles_of(provider)
+        missing = "" if res.ok else missing_env_var(res.tail(4000))
+        if missing:
+            self._env_rest(agent_name, missing, task, label, res)
+            return None
         if not res.ok:
             agent.failures += 1
             agent.last_error = (res.stderr or res.stdout)[-500:] or f"exit {res.exit_code}"
@@ -454,12 +463,55 @@ class Office:
         if task is not None:
             self._checkpoint(task, label, f"{agent_name} usage limit: {hit.matched}", res)
 
+    def _env_rest(self, agent_name: str, var: str, task: Task | None, label: str,
+                  res: AgentResult | None) -> None:
+        """The CLI lacks an environment variable (e.g. CODEX_LB_API_KEY for codex-lb). Only the user
+        can fix it: tell them once, then re-check every ENV_RECHECK_MIN minutes without calling the CLI."""
+        a = self.store.agents[agent_name]
+        provider = a.provider
+        mates = self.store.roles_of(provider)
+        first_time = a.rest_cause != "env"
+        until = (self.clock() + timedelta(minutes=ENV_RECHECK_MIN)).isoformat(timespec="seconds")
+        for m in mates:
+            m.status = AgentStatus.RESTING
+            m.rest_until, m.reset_known, m.failures = until, True, 0
+            m.rest_cause, m.rest_detail = "env", f"missing environment variable {var}"
+            m.last_error = m.rest_detail
+            if res is not None:
+                m.rest_log = res.log_path
+        if first_time:
+            names = ", ".join(m.name for m in mates)
+            self.say(agent_name, "po", f"Cần anh sửa trên máy (không phải hết quota, không phải lỗi code): {provider} "
+                     f"cần biến môi trường {var} nhưng office không thấy. Thêm dòng `{var}=...` vào "
+                     f".agent-office/.env (git bỏ qua file này) hoặc export trong shell chạy `office run`, rồi "
+                     f"chạy `office doctor`. Office tự kiểm tra lại mỗi {ENV_RECHECK_MIN} phút; {names} chờ tới lúc đó.",
+                     task.id if task else "", kind="env")
+            self.store.event("env_problem", agent=agent_name, provider=provider, issue="missing_env", var=var,
+                             task_id=task.id if task else "", log=res.log_path if res else "")
+            self.echo(f"  [{provider}] missing environment variable {var}: reported to the PO, re-checking "
+                      f"every {ENV_RECHECK_MIN} min")
+        if task is not None:
+            self._checkpoint(task, label, f"{agent_name} missing environment variable {var}", res)
+
     def _wake(self, provider: str) -> None:
         """One probe for the CLI; when it answers, every role on it works again."""
         mates = self.store.roles_of(provider)
         if not mates:
             return
         first = mates[0]
+        if first.rest_cause == "env":
+            var = first.rest_detail.rsplit(" ", 1)[-1]
+            agent = self.agents[provider]
+            missing = agent.env_problem() or ("" if agent.child_env().get(var) else var)
+            if missing:
+                self._env_rest(first.name, missing, None, "wake", None)
+                return
+            self._clear_rest(provider)
+            self.store.event("agent_awake", agent=first.name, provider=provider, roles=[m.name for m in mates])
+            self.say(first.name, "all", f"{provider} đã có {var}, {', '.join(m.name for m in mates)} làm tiếp nhé.",
+                     kind="awake")
+            self.echo(f"  [{provider}] environment fixed, back to work")
+            return
         if not first.reset_known:
             # Rest length was a guess: spend one tiny prompt to check before real work.
             self.echo(f"  [{provider}] probing after rest...")

@@ -36,6 +36,8 @@ codex exec --json --sandbox workspace-write --skip-git-repo-check -C <worktree> 
   `--sandbox workspace-write` cho phép ghi trong worktree, không ra ngoài.
 - Trước khi chạy, orchestrator **xóa `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`** khỏi môi trường của
   tiến trình con (`subscription_env()`), để CLI chắc chắn dùng gói thuê bao chứ không tính tiền API.
+  Ngoại lệ duy nhất: biến `env_key` của provider Codex tự cấu hình (ví dụ `CODEX_LB_API_KEY` của
+  proxy codex-lb), lấy từ shell hoặc `.agent-office/.env` (xem [2.8](02-quota-song-song-rao-chan.md#28-chạy-codex-qua-codex-lb-gộp-nhiều-tài-khoản-chatgpt)).
 - Mỗi lần gọi có timeout (Claude 30 phút, Codex 60 phút) và log đầy đủ ở
   `.agent-office/logs/<task>/<n>-<bước>-<agent>.log`.
 
