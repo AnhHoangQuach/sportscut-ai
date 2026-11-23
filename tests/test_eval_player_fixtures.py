@@ -69,6 +69,7 @@ def test_ball_touch_proximity_and_velocity_change() -> None:
             before = np.array(build.ball_pos(name, t)) - np.array(build.ball_pos(name, t - 0.2))
             after = np.array(build.ball_pos(name, t + 0.2)) - np.array(build.ball_pos(name, t))
             if np.linalg.norm(before) < 1e-6 or np.linalg.norm(after) < 1e-6:
+                assert max(np.linalg.norm(before), np.linalg.norm(after)) >= 1e-6
                 continue
             cosine = np.dot(before, after) / np.linalg.norm(before) / np.linalg.norm(after)
             angle = math.degrees(math.acos(np.clip(cosine, -1, 1)))
@@ -93,6 +94,12 @@ def test_near_miss_case() -> None:
         for who in zero_touch:
             distance = box_distance(build.ball_pos("near_miss", t), build.player_box("near_miss", *who, t))
             if 6 <= distance <= 14:
+                before = np.array(build.ball_pos("near_miss", t)) - np.array(build.ball_pos("near_miss", t - 0.04))
+                after = np.array(build.ball_pos("near_miss", t + 0.04)) - np.array(build.ball_pos("near_miss", t))
+                cosine = np.dot(before, after) / np.linalg.norm(before) / np.linalg.norm(after)
+                angle = math.degrees(math.acos(np.clip(cosine, -1, 1)))
+                ratio = max(np.linalg.norm(before), np.linalg.norm(after)) / min(np.linalg.norm(before), np.linalg.norm(after))
+                assert angle < 5 and ratio <= 1.1
                 found.append((t, who))
     assert len({who for _, who in found}) >= 2
 
