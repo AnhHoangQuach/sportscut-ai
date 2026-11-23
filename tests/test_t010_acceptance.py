@@ -42,7 +42,19 @@ def test_t010_ac1_segment_public_contract() -> None:
             _segment(0, 1, event=invalid)
 
 
-def test_t010_ac2_detect_and_pipeline_public_shapes(burst_video, tmp_path: Path) -> None:
+def test_t010_ac2_detect_and_pipeline_public_shapes(
+    burst_video, tmp_path: Path, capsys
+) -> None:
+    assert main(["detect", str(burst_video), "--json"]) == 0
+    cli_output = capsys.readouterr()
+    assert cli_output.err == "" and cli_output.out.count("\n") == 1
+    cli_segments = json.loads(cli_output.out)
+    assert cli_segments and all(
+        set(item) == {"start", "end", "score", "reason", "event"}
+        and item["event"] == "other"
+        for item in cli_segments
+    )
+
     segments = detect.find_highlights(burst_video)
     assert segments and all(set(item.to_dict()) == {"start", "end", "score", "reason", "event"} for item in segments)
     assert all(item.event == "other" for item in segments)
@@ -63,11 +75,16 @@ def test_t010_ac3_mapping_vocabulary() -> None:
 
 @pytest.mark.parametrize("bad", [
     {}, [1], [{"end": 2, "type": "goal"}],
+    [{"start": 1, "type": "goal"}],
+    [{"start": 1, "end": 2}],
     [{"start": True, "end": 2, "type": "goal"}],
+    [{"start": 1, "end": False, "type": "goal"}],
     [{"start": math.inf, "end": 2, "type": "goal"}],
     [{"start": 1, "end": math.nan, "type": "goal"}],
+    [{"start": 1, "end": math.inf, "type": "goal"}],
     [{"start": -1, "end": 2, "type": "goal"}],
     [{"start": 2, "end": 2, "type": "goal"}],
+    [{"start": 2, "end": 1, "type": "goal"}],
     [{"start": 1, "end": 2, "type": "penalty"}],
 ])
 def test_t010_ac4_json_rejects_invalid_labels_with_path(tmp_path: Path, bad) -> None:
