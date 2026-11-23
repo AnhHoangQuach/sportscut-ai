@@ -76,7 +76,7 @@ def load_labels(path: str | Path) -> list[Label]:
     if label_path.suffix.lower() == ".json":
         try:
             data = json.loads(label_path.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError(f"{label_path}: {exc}") from exc
         if not isinstance(data, list):
             raise ValueError(f"{label_path}: top level must be a list")

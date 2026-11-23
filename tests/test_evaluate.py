@@ -48,6 +48,16 @@ def test_load_json_invalid(tmp_path: Path, value: str) -> None:
         load_labels(path)
 
 
+def test_load_json_decode_error_names_path(tmp_path: Path) -> None:
+    from sportscut.evaluate import load_labels
+
+    path = tmp_path / "labels.json"
+    path.write_bytes(b"\xff")
+    with pytest.raises(ValueError) as error:
+        load_labels(path)
+    assert str(path) in str(error.value)
+
+
 @pytest.mark.parametrize("line", ["12:60,13:00,goal", "1:2:3,13:00,goal", "00:01,00:02", "00:02,00:01,goal", "00:01,00:02,penalty"])
 def test_load_csv_invalid(tmp_path: Path, line: str) -> None:
     from sportscut.evaluate import load_labels
