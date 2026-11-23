@@ -136,6 +136,17 @@ Newest last. Format: date, task (request): decision.
 - 2026-11-23 T-006 (R-002): T-006 (R-002): New extra `youtube = ["yt-dlp>=2024.8.6"]`. `dependencies`, `api` and `dev` stay exactly as T-005 pinned them. Tests use a fake yt_dlp module and a monkeypatched downloader, so the suite needs neither yt-dlp nor network.
 - 2026-11-23 T-006 (R-002): T-006 (R-002): The PipelineError detail keeps replacing the input path with 'upload' for URL jobs too. The PO is responsible for the rights to linked videos (stated in the README). Processing stays synchronous; async jobs come only if real downloads time out.
 - 2026-11-23 T-006 (R-002): Tech Lead (dev_blocked): T-006 must restart from the latest base after T-005 is merged because its required API and pipeline entry point are absent and the task was incorrectly scheduled with no dependency.
+- 2026-11-23 T-008 (R-002): T-008 serves one plain HTML/vanilla-JS page from the existing FastAPI process; there is no frontend build step or external asset dependency.
+- 2026-11-23 T-008 (R-002): Static files live as data under `sportscut/web/` without `__init__.py` and are included explicitly using setuptools package-data patterns.
+- 2026-11-23 T-008 (R-002): FastAPI resolves the resource directory with `importlib.resources.files('sportscut')`, serves `/` with `FileResponse`, and mounts the same directory at `/static`.
+- 2026-11-23 T-008 (R-002): The browser constructs FormData manually because native `FormData(form)` would include blank optional numeric fields and cause 422 instead of allowing API defaults.
+- 2026-11-23 T-008 (R-002): The page performs a client-side exactly-one-source check, while the API remains authoritative and unchanged.
+- 2026-11-23 T-008 (R-002): The synchronous POST keeps the page busy until completion; this task adds no progress reporting.
+- 2026-11-23 T-008 (R-002): API errors retain their server-provided string detail, prefixed with the status; FastAPI validation arrays are converted to joined human-readable messages.
+- 2026-11-23 T-008 (R-002): Success always navigates to `/jobs/{encoded job_id}` even though that destination is implemented by a later task. T-008 tests navigation intent, not the destination page.
+- 2026-11-23 T-008 (R-002): Packaging is proven from a built and isolated installed wheel, not merely from the source checkout.
+- 2026-11-23 T-008 (R-002): UI text and control labels are Vietnamese; existing API error detail may remain English.
+- 2026-11-23 T-008 (R-002): No existing design decision is reversed: T-005 synchronous/local/no-auth behavior and T-006 exactly-one file-or-URL behavior remain authoritative.
 - 2026-11-23 PO (Hoang): Codex may run through the open-source codex-lb proxy (custom model provider in ~/.codex/config.toml); its proxy key (`CODEX_LB_API_KEY`) is allowed, it is not a paid API key
 - 2026-11-23 Tech Lead: agent CLIs get extra variables from the git-ignored `.agent-office/.env` (`[office] env_file`), read before every call; the Codex provider's `env_key` is never stripped even if it is named like an API key; values are never printed (doctor shows only set/not set)
 - 2026-11-23 Tech Lead: a missing provider key is an environment problem for the user (rest cause `env`): checked before each call so no call is spent, Codex output 'Missing environment variable' is treated the same, the PO is told once with the fix, the office re-checks locally every 5 minutes and resumes by itself; it never counts as quota or CLI failure, and like quota it allows failover to Claude
