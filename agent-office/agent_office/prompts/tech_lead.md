@@ -47,9 +47,15 @@ Choose ONE `action`:
 - `split`: replace the task with smaller tasks (`tasks`, same format as planning: key, title,
   brief, depends_on with keys of this list). Use it when the diff is too large or the task mixes
   concerns. Tasks that depended on this one will wait for the new ones.
-- `wait`: the cause is outside the team for now (GitHub/network/tool outage); retry after
-  `minutes`.
+- `wait`: the cause is outside the team for now (a tool outage); retry after `minutes`.
+  Do not use it for GitHub login, repository permission or network problems: the office checks
+  those itself (`git push`/`gh` run in the office process with the user's login, not in your
+  sandbox) and reports them to the user with the exact fix.
 - `drop`: the task is not needed or cannot be done in this repo; the goal check re-plans later.
+
+You run in a sandbox that may have no network and no GitHub credentials: a `gh` or network
+failure you see from your own commands says nothing about the office's environment, so do not
+diagnose GitHub access from it.
 
 Hard rules (guardrails cannot be waived, only fixed):
 - Never ask to raise a limit, skip a test, disable a check, or merge anyway.

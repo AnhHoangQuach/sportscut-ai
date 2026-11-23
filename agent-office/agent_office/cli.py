@@ -12,6 +12,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import github
 from .agents.base import API_KEY_VARS, subscription_env
 from .config import load_config, write_default_config
 from .models import AgentStatus, Stage
@@ -335,17 +336,25 @@ def cmd_doctor(args) -> int:
               "your subscription login.")
     store = Store(repo)
     cfg = load_config(store.dir) if store.exists() else None
-    checks = [("git", ["git", "--version"]), ("gh", ["gh", "auth", "status"])]
+    checks = [("git", ["git", "--version"])]
     if cfg:
         checks += [("claude", [cfg.claude.cmd, "--version"]), ("codex", [cfg.codex.cmd, "--version"])]
     for name, cmd in checks:
         if not shutil.which(cmd[0]):
             print(f"MISSING {name}: `{cmd[0]}` not on PATH")
-            ok = ok and name == "gh"
+            ok = False
             continue
         p = subprocess.run(cmd, capture_output=True, text=True, env=subscription_env())
         print(f"{'ok' if p.returncode == 0 else 'FAIL':<7} {name}: {(p.stdout or p.stderr).strip().splitlines()[0:1]}")
-        ok = ok and (p.returncode == 0 or name == "gh")
+        ok = ok and p.returncode == 0
+    if not cfg or cfg.open_pr:
+        needed = bool(cfg and cfg.open_pr and not cfg.simulate)
+        print("GitHub (kiểm tra từ chính tiến trình office, như khi tạo PR / merge):")
+        for c in github.preflight(repo, cfg.remote if cfg else "origin"):
+            print(f"{'ok' if c.ok else ('FAIL' if needed else 'note'):<7} {c.name}: {c.detail}")
+            if not c.ok:
+                print(f"        -> {c.hint}")
+                ok = ok and not needed
     for name in ("AGENTS.md", "CLAUDE.md"):
         print(f"{'ok' if (repo / name).exists() else 'note':<7} {name}: "
               + ("found" if (repo / name).exists() else "missing (`office init` writes a template)"))

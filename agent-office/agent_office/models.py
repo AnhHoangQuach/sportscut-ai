@@ -94,6 +94,7 @@ class Task:
     tl_guidance: str = ""         # latest Tech Lead instruction for the next developer run
     tl_notes: list[str] = field(default_factory=list)  # every Tech Lead answer/decision, shown to later steps
     retry_at: str = ""            # Tech Lead chose to wait: no step for this task before this time
+    net_retries: int = 0          # short automatic retries after a GitHub network error
     attempt: int = 0              # fresh restarts from the base branch (branch office/T-xxx-r<n>)
     dropped: str = ""             # why the Tech Lead retired the task without merging it (split/drop)
     history: list[dict[str, Any]] = field(default_factory=list)
