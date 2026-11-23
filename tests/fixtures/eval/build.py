@@ -118,6 +118,7 @@ def _draw_digit(frame, digit, x, y):
 
 def render_frame(name, t):
     display_t = _replay_source(name, t)
+    # Close-ups follow replay source time; extending MATCHES could replay one.
     closeup = any(kind == "red_card" and t0 + 4 <= display_t < t0 + 8
                   for kind, t0, *_ in MATCHES[name]["events"])
     frame = np.empty((H, W, 3), dtype=np.uint8)

@@ -365,6 +365,14 @@ def test_force_and_changed_labels_rebuild(eval_set: Path) -> None:
     assert all(changed[name] == forced[name] for name in build.MATCHES if name != "cards")
     assert label.read_text() == json.dumps(build.match_labels("cards"), indent=1) + "\n"
 
+    label.write_text("[]\n")
+    before_edit = changed["cards"]
+    build.build_all(eval_set)
+    edited = {name: path.stat().st_mtime_ns for name, path in videos.items()}
+    assert edited["cards"] != before_edit
+    assert all(edited[name] == changed[name] for name in build.MATCHES if name != "cards")
+    assert label.read_text() == json.dumps(build.match_labels("cards"), indent=1) + "\n"
+
 
 def test_ffmpeg_failure_removes_temporary_file(tmp_path: Path, monkeypatch) -> None:
     class BrokenInput:
