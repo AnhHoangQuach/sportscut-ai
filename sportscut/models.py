@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+EVENT_TYPES = ("goal", "save", "red_card", "controversy", "other")
+
 
 @dataclass(frozen=True)
 class Segment:
@@ -7,12 +9,17 @@ class Segment:
     end: float
     score: float
     reason: str
+    event: str = "other"
 
     def __post_init__(self) -> None:
         if self.start < 0:
             raise ValueError("start must be non-negative")
         if self.end <= self.start:
             raise ValueError("end must be greater than start")
+        if self.event not in EVENT_TYPES:
+            raise ValueError(
+                "event must be one of goal, save, red_card, controversy, other"
+            )
 
     def to_dict(self) -> dict[str, float | str]:
         return {
@@ -20,4 +27,5 @@ class Segment:
             "end": float(self.end),
             "score": float(self.score),
             "reason": str(self.reason),
+            "event": str(self.event),
         }
