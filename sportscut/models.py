@@ -7,7 +7,7 @@ EVENT_TYPES = ("goal", "save", "red_card", "controversy", "other")
 class Segment:
     start: float
     end: float
-    score: float
+    score: float | None
     reason: str
     event: str = "other"
 
@@ -21,11 +21,11 @@ class Segment:
                 "event must be one of goal, save, red_card, controversy, other"
             )
 
-    def to_dict(self) -> dict[str, float | str]:
+    def to_dict(self) -> dict[str, float | str | None]:
         return {
             "start": float(self.start),
             "end": float(self.end),
-            "score": float(self.score),
+            "score": None if self.score is None else float(self.score),
             "reason": str(self.reason),
             "event": str(self.event),
         }

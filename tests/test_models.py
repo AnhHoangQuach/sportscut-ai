@@ -76,3 +76,10 @@ def test_score_is_not_range_limited(score: float) -> None:
     segment = Segment(start=1.0, end=2.0, score=score, reason="raw score")
 
     assert segment.score == score
+
+
+def test_segment_allows_null_score() -> None:
+    result = Segment(start=1.0, end=2.0, score=None, reason="manual").to_dict()
+
+    assert result["score"] is None
+    assert json.loads(json.dumps(result))["score"] is None
