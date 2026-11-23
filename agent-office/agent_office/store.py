@@ -39,6 +39,9 @@ class Store:
     def init(self) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.logs_dir.mkdir(exist_ok=True)
+        ignore = self.dir / ".gitignore"
+        if not ignore.exists():  # .env holds keys for the agent CLIs (e.g. CODEX_LB_API_KEY): never commit it
+            ignore.write_text(".env\n", encoding="utf-8")
         if not self.exists():
             self.agents = {}
             self._sync_roles()

@@ -5,7 +5,7 @@
 | Lệnh | Tác dụng |
 |---|---|
 | `office init` | Tạo `.agent-office/`, `AGENTS.md`, `CLAUDE.md` |
-| `office doctor [--live]` | Kiểm tra git, claude, codex, quy tắc, plugin Superpowers và GitHub (remote, mạng tới api.github.com, `gh` đăng nhập tài khoản nào, có quyền ghi repo không) kèm lệnh sửa; `--live` thử đăng nhập agent |
+| `office doctor [--live]` | Kiểm tra git, claude, codex (provider Codex trong `~/.codex/config.toml`, key `env_key` có chưa, server như codex-lb có chạy không), quy tắc, plugin Superpowers và GitHub (remote, mạng tới api.github.com, `gh` đăng nhập tài khoản nào, có quyền ghi repo không) kèm lệnh sửa; `--live` thử đăng nhập agent |
 | `office request "..."` / `-f file.md` | Thêm yêu cầu PO |
 | `office triage` | Giao lại cho Tech Lead mọi task/yêu cầu đang chờ PO vì lý do kỹ thuật (tự chạy mỗi lần office khởi động) |
 | `office run [--watch] [--sequential] [--once] [--no-wait]` | Chạy văn phòng; `--watch` chạy mãi, chờ việc mới |
@@ -29,6 +29,7 @@
 | Task `blocked` vì thiếu thư viện/tool | Đã thử `dep_retries` lần mà vẫn thiếu; `setup_cmd` lỗi; tool hệ thống (ffmpeg) chưa có | Xem mục `ENVIRONMENT` trong log dev; sửa `setup_cmd` hoặc cài tool trên máy; `office answer T-xxx "đã cài"` (xem [2.7](02-quota-song-song-rao-chan.md#27-agent-tự-cài-dependency-khi-thiếu)) |
 | "Another `office run` is already working" | Đã có runner khác | Dừng runner kia (nút "Dừng" hoặc Ctrl+C); file `runner.pid` cũ tự bị bỏ qua nếu tiến trình đã chết |
 | Task `blocked` "environment problem for the user", tin "Cần anh sửa trên máy" | Duyệt xong nhưng `git push` / `gh pr create` / `gh pr merge` bị GitHub từ chối: `gh` chưa đăng nhập hoặc token hết hạn, tài khoản `gh` không có quyền ghi repo (đăng nhập nhầm tài khoản), `GH_TOKEN` cũ ghi đè, hoặc mất mạng lâu | Chạy `office doctor` (xem [9.1](#91-office-không-tạo-được-pr--merge)), làm theo dòng `->`; office tự kiểm tra lại mỗi 5 phút; muốn chạy ngay thì `office retry-github` |
+| Codex nghỉ "environment problem for the user", log có `Missing environment variable: CODEX_LB_API_KEY` | Codex chạy qua codex-lb (provider riêng trong `~/.codex/config.toml`) nhưng tiến trình office không có biến key | Ghi `CODEX_LB_API_KEY=...` vào `.agent-office/.env`, chạy `office doctor`; office tự làm tiếp trong 5 phút, hoặc `office wake codex` (xem [2.8](02-quota-song-song-rao-chan.md#28-chạy-codex-qua-codex-lb-gộp-nhiều-tài-khoản-chatgpt)) |
 | Merge thất bại "uncommitted changes on main" | Có thay đổi chưa commit ở repo chính | Commit hoặc stash ở repo chính |
 | Eval làm task quay vòng mãi | Chỉ số dao động ngẫu nhiên | Đặt `max_drop` nhỏ (ví dụ 0.01), cố định seed trong eval |
 

@@ -37,6 +37,8 @@ class Env:
         monkeypatch.setenv("FAKE_SCENARIO", str(self.scenario))
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-be-stripped")
         monkeypatch.setenv("OPENAI_API_KEY", "sk-should-be-stripped")
+        monkeypatch.setenv("CODEX_HOME", str(tmp / "codex-home"))  # never the developer's real ~/.codex
+        monkeypatch.delenv("CODEX_LB_API_KEY", raising=False)
         assert office_main(["--repo", str(self.repo), "init"]) == 0
         cfg = self.repo / ".agent-office" / "config.toml"
         text = cfg.read_text()

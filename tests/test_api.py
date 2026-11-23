@@ -4,6 +4,7 @@ import inspect
 import subprocess
 import sys
 from pathlib import Path
+import shutil
 import uuid
 
 import pytest
@@ -13,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from sportscut.api import app
 from sportscut.media import MediaError
-from sportscut import pipeline
+from sportscut import pipeline, sources
 
 
 client = TestClient(app)
@@ -218,3 +219,92 @@ def test_api_module_contracts():
 def test_cli_import_does_not_load_api_dependencies():
     code = "import sys, sportscut.cli; assert 'fastapi' not in sys.modules and 'uvicorn' not in sys.modules"
     assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
+
+
+@pytest.mark.parametrize("mode", ["both", "neither"])
+def test_exactly_one_of_file_or_url(monkeypatch, data_dir, mode):
+    calls = []
+    monkeypatch.setattr(pipeline, "run", lambda *a, **k: calls.append("pipeline"))
+    monkeypatch.setattr(sources, "download_youtube", lambda *a: calls.append("download"))
+    before = _jobs(data_dir)
+    files = {"file": ("x", b"x")} if mode == "both" else None
+    data = {"url": "https://youtu.be/abc123"} if mode == "both" else None
+    response = client.post("/highlights", files=files, data=data)
+    assert response.status_code == 422
+    assert response.json() == {"detail": "send exactly one of file or url"}
+    assert calls == [] and _jobs(data_dir) == before
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_url_with_file_is_upload(monkeypatch, blank):
+    monkeypatch.setattr(pipeline, "run", lambda *a, **k: [])
+    response = client.post(
+        "/highlights", files={"file": ("x", b"x")}, data={"url": blank}
+    )
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("url", ["https://evil.com/x", "http://169.254.169.254/"])
+def test_invalid_url_returns_400_without_download(monkeypatch, data_dir, url):
+    calls = []
+    monkeypatch.setattr(sources, "download_youtube", lambda *a: calls.append("download"))
+    monkeypatch.setattr(pipeline, "run", lambda *a, **k: calls.append("pipeline"))
+    before = _jobs(data_dir)
+    response = client.post("/highlights", data={"url": url})
+    assert response.status_code == 400
+    assert response.json() == {"detail": sources.URL_ERROR}
+    assert calls == [] and _jobs(data_dir) == before
+
+
+def test_download_failure_returns_400_and_cleans(monkeypatch, data_dir):
+    monkeypatch.setattr(sources, "download_youtube", lambda *a: (_ for _ in ()).throw(
+        sources.SourceError("could not download video: Video unavailable")
+    ))
+    before = _jobs(data_dir)
+    response = client.post("/highlights", data={"url": "https://youtu.be/abc123"})
+    assert response.status_code == 400
+    assert response.json() == {"detail": "could not download video: Video unavailable"}
+    assert _jobs(data_dir) == before
+
+
+def test_download_unexpected_error_removes_job(monkeypatch, data_dir):
+    monkeypatch.setattr(sources, "download_youtube", lambda *a: (_ for _ in ()).throw(
+        RuntimeError("unexpected download failure")
+    ))
+    before = _jobs(data_dir)
+    with pytest.raises(RuntimeError, match="unexpected download failure"):
+        client.post("/highlights", data={"url": "https://youtu.be/abc123"})
+    assert _jobs(data_dir) == before
+
+
+def test_upload_writes_job_json_with_null_source(monkeypatch, data_dir):
+    monkeypatch.setattr(pipeline, "run", lambda *a, **k: [])
+    response = client.post("/highlights", files={"file": ("x", b"x")})
+    job_id = response.json()["job_id"]
+    assert json.loads((data_dir / "jobs" / job_id / "job.json").read_text()) == {"source_url": None}
+    assert client.get(f"/highlights/{job_id}/clips/job.json").status_code == 404
+
+
+def test_url_job_matches_upload_result(monkeypatch, data_dir, burst_video):
+    calls = []
+
+    def fake_download(url, dest):
+        calls.append((url, dest))
+        dest.mkdir(parents=True)
+        return Path(shutil.copy(burst_video, dest / "source.mp4"))
+
+    monkeypatch.setattr(sources, "download_youtube", fake_download)
+    url = "https://youtu.be/abc123"
+    url_response = client.post("/highlights", data={"url": url})
+    with burst_video.open("rb") as upload:
+        upload_response = client.post("/highlights", files={"file": ("match.mp4", upload)})
+    assert url_response.status_code == upload_response.status_code == 200
+    body = url_response.json()
+    comparable = lambda items: [{k: v for k, v in item.items() if k != "clip_url"} for item in items]
+    assert comparable(body["highlights"]) == comparable(upload_response.json()["highlights"])
+    job_dir = data_dir / "jobs" / body["job_id"]
+    assert calls == [(url, job_dir / "download")]
+    assert (job_dir / "input").read_bytes() == burst_video.read_bytes()
+    assert not (job_dir / "download").exists()
+    assert json.loads((job_dir / "job.json").read_text()) == {"source_url": url}
+    assert all(client.get(item["clip_url"]).status_code == 200 for item in body["highlights"])

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SportsCut — Tạo highlight</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Tạo video highlight</h1>
+    <p>Chỉ chọn một trong hai: tệp video hoặc liên kết YouTube.</p>
+    <form id="highlights-form">
+      <label for="file">Tệp video</label>
+      <input id="file" name="file" type="file" accept="video/*">
+
+      <label for="url">Liên kết YouTube</label>
+      <input id="url" name="url" type="url" placeholder="Dán liên kết YouTube">
+
+      <div class="options">
+        <div>
+          <label for="top">Số đoạn tối đa (không bắt buộc)</label>
+          <input id="top" name="top" type="number" min="1" step="1">
+        </div>
+        <div>
+          <label for="min_len">Thời lượng tối thiểu, giây (không bắt buộc)</label>
+          <input id="min_len" name="min_len" type="number" min="0.1" step="any">
+        </div>
+        <div>
+          <label for="max_len">Thời lượng tối đa, giây (không bắt buộc)</label>
+          <input id="max_len" name="max_len" type="number" min="0.1" step="any">
+        </div>
+      </div>
+
+      <button id="submit" type="submit">Tạo highlight</button>
+      <p id="busy" role="status" hidden>Đang xử lý video, vui lòng chờ…</p>
+      <p id="error" role="alert" aria-live="assertive" hidden></p>
+    </form>
+  </main>
+</body>
+</html>

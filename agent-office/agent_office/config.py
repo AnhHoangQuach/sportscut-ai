@@ -39,6 +39,10 @@ protected_paths = []
 # so Codex can `pip install` into it from its sandbox.
 # e.g. "python -m venv .venv && .venv/bin/python -m pip install -e '.[dev]'"
 setup_cmd = ""
+# Extra environment variables for the agent CLIs, read from this file (relative to .agent-office/,
+# which git ignores) before every call, e.g. `CODEX_LB_API_KEY=...` when Codex runs through the
+# codex-lb proxy. Never put this file in git. Empty = no file.
+env_file = ".env"
 # A `BLOCKED:` answer caused by a missing package/tool triggers setup_cmd and a retry, this many
 # times per task, before the Tech Lead takes over.
 dep_retries = 2
@@ -120,6 +124,7 @@ class AgentConfig:
     sandbox: str = "workspace-write"
     network: bool = True
     allowed_commands: list[str] = field(default_factory=list)
+    env_file: str = ""  # extra variables for the CLI (the office's `.agent-office/.env`)
 
 
 @dataclass
@@ -190,6 +195,10 @@ def load_config(office_dir: Path) -> Config:
     q = raw.get("quality", {})
     caps = g.get("max_calls_per_day", {}) if isinstance(g.get("max_calls_per_day"), dict) else {}
     roles = _roles(raw.get("roles", {}))
+    env_file = str(o.get("env_file", ".env"))
+    env_path = str((office_dir / env_file).resolve()) if env_file else ""
+    claude, codex = _agent(raw.get("claude", {}), "claude", 1800), _agent(raw.get("codex", {}), "codex", 3600)
+    claude.env_file = codex.env_file = env_path
     return Config(
         base_branch=o.get("base_branch", "main"),
         worktrees_dir=o.get("worktrees_dir", "../{repo}-worktrees"),
@@ -204,8 +213,8 @@ def load_config(office_dir: Path) -> Config:
         max_goal_rounds=int(o.get("max_goal_rounds", 3)),
         simulate=bool(o.get("simulate", False)),
         sim_delay=float(o.get("sim_delay", 3.0)),
-        claude=_agent(raw.get("claude", {}), "claude", 1800),
-        codex=_agent(raw.get("codex", {}), "codex", 3600),
+        claude=claude,
+        codex=codex,
         backoff_minutes=list(raw.get("limits", {}).get("backoff_minutes", [15, 30, 60])) or [15, 30, 60],
         roles=roles,
         parallel=_parallel(par, roles),

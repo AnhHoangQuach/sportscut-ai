@@ -127,7 +127,7 @@ function renderAgents() {
     const w = working[a.name];
     let status;
     if (a.status === "resting") {
-      const why = a.rest_cause === "failure" ? "CLI lỗi" : a.rest_cause === "budget" ? "hết ngân sách" : "hết quota";
+      const why = a.rest_cause === "failure" ? "CLI lỗi" : a.rest_cause === "env" ? "thiếu biến môi trường" : a.rest_cause === "budget" ? "hết ngân sách" : "hết quota";
       status = `Nghỉ (${why} ${esc(a.provider)}) đến ${hhmm(a.rest_until)} · <span data-until="${esc(a.rest_until)}"></span>`;
     } else if (a.status === "working" || w) {
       status = `Đang làm ${esc(w ? `${w.label} · ${w.task}` : "")}`;
