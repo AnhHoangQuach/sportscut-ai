@@ -61,6 +61,25 @@ TL_KINDS = {
 }
 TL_ACTIONS = ("retry", "restart", "split", "wait", "drop")
 REQUEST_PAUSE_MIN = 60  # request-level Tech Lead out of rounds: pause, then try again
+BUSINESS_MARK = "business question for the PO"  # blocked_reason / note of a Tech-Lead-screened question
+
+# Reasons a pre-Tech-Lead office wrote when it blocked a task, mapped to the Tech Lead kind.
+LEGACY_KINDS = [
+    ("not parseable", "parse_error"), ("tests still failing", "tests_failing"),
+    ("review not approved", "review_rejected"), ("conflict", "merge_conflict"),
+    ("protected path", "protected_paths"), ("secret", "secret"), ("diff changes", "diff_size"),
+    ("could not merge", "merge_failed"), ("PM needs answers", "questions"),
+]
+
+
+def legacy_kind(task: Task) -> str:
+    reason = task.blocked_reason
+    if task.questions:
+        return "questions"
+    for needle, kind in LEGACY_KINDS:
+        if needle.lower() in reason.lower():
+            return "git_error" if kind == "merge_failed" and task.blocked_from != "pr" else kind
+    return "missing_dependency" if MISSING_DEP.search(reason) else "dev_blocked"
 
 
 def _minutes(value: object) -> int:
@@ -104,6 +123,7 @@ class Office:
         # CLI or the test command runs, so other steps can start meanwhile.
         self.lock = threading.RLock()
         self.inflight: dict[str, str | None] = {}  # target id -> agent running it
+        self._triaged = False  # old PO-waiting blocks re-classified once per office start
 
     @contextmanager
     def _unlocked(self):
@@ -143,6 +163,8 @@ class Office:
                 elif kind == "answer":
                     t = self.answer(str(c["id"]), str(c.get("text", "")))
                     results.append(f"{t.id} back to {t.stage.value}")
+                elif kind == "triage":
+                    results += self.triage() or ["nothing waits for the PO except business questions"]
                 elif kind == "wake":
                     self.wake(str(c["agent"]))
                     results.append(f"{c['agent']} marked available")
@@ -152,6 +174,53 @@ class Office:
                 results.append(f"{kind} failed: {e}")
                 self.store.event("command_failed", cmd=kind, error=str(e))
         return results
+
+    # ------------------------------------------------------------------ triage
+    def _triage_once(self) -> None:
+        if not self._triaged:
+            self._triaged = True
+            self.triage()
+
+    def triage(self) -> list[str]:
+        """Hand every block that waits for the PO but was never screened by the Tech Lead (e.g. state
+        saved before the Tech Lead existed) back to the Tech Lead. Business questions it already
+        screened stay with the PO. Returns one line per item moved."""
+        out = []
+        for t in sorted(self.store.tasks.values(), key=lambda t: t.id):
+            if t.stage != Stage.BLOCKED or t.blocked_reason.startswith(BUSINESS_MARK):
+                continue
+            kind, reason = legacy_kind(t), t.blocked_reason or "blocked (no reason recorded)"
+            back = Stage(t.blocked_from) if t.blocked_from in {"spec", "dev", "test", "review", "pr"} else Stage.DEV
+            t.blocked_reason = ""
+            self._move(t, back, "re-triaged: Tech Lead, not the PO")
+            t.tl_issue, t.tl_kind = reason[:6000], kind  # questions stay on the task for the Tech Lead
+            self.store.event("triaged", task_id=t.id, issue=kind)
+            self.store.event("techlead_needed", task_id=t.id, issue=kind, reason=reason[:500],
+                             round=t.tl_rounds + 1, of=self.cfg.tech_lead_rounds)
+            out.append(f"{t.id}: {kind} -> Tech Lead")
+        for r in self.store.requests.values():
+            if r.status != "blocked" or r.note.startswith(BUSINESS_MARK):
+                continue
+            note = r.note or "blocked (no reason recorded)"
+            r.status = r.blocked_stage if r.blocked_stage in ("new", "planned") else "new"
+            r.note = ""
+            if note.startswith("still not done after"):
+                out.append(f"{r.id}: goal-round cap -> closes with a report")  # the goal check closes it
+            else:
+                kind = "questions" if r.questions else "parse_error"
+                r.tl_issue, r.tl_kind, r.tl_questions = note[:6000], kind, list(r.questions)
+                self.store.event("techlead_needed", request_id=r.id, issue=kind, reason=note[:500],
+                                 round=r.tl_rounds + 1, of=self.cfg.tech_lead_rounds)
+                out.append(f"{r.id}: {kind} -> Tech Lead")
+            r.questions = []
+            self.store.event("triaged", request_id=r.id)
+        if out:
+            self.say("claude", "po", "Em nhận lại các việc đang chờ anh nhưng thuộc kỹ thuật: "
+                     + "; ".join(out)[:900] + ". Chỉ câu hỏi nghiệp vụ mới chờ anh.", kind="report")
+            self.store.save()
+            for line in out:
+                self.echo(f"triage: {line}")
+        return out
 
     # ------------------------------------------------------------------ requests
     def add_request(self, text: str) -> Request:
@@ -167,6 +236,7 @@ class Office:
     def step(self) -> Step | None:
         """Run the single highest-priority step to completion (sequential mode)."""
         with self.lock:
+            self._triage_once()
             self.drain_inbox()
             self.sync_merged()
             plan = next_step(self.store, self.clock(), self.cfg.merge_mode == "auto")
@@ -186,6 +256,7 @@ class Office:
     def dispatch(self, pool: Executor) -> list[Future]:
         """Start every step that fits in the free agent sessions. Returns the new futures."""
         with self.lock:
+            self._triage_once()
             self.drain_inbox()
             self.sync_merged()
             plan = plan_steps(self.store, self.clock(), self.cfg.merge_mode == "auto",
@@ -969,7 +1040,7 @@ class Office:
             self.store.event("techlead_decision", task_id=task.id, issue=kind, action="ask_po", round=rnd)
             self.say("claude", "po", f"{task.id}: câu hỏi nghiệp vụ, cần anh quyết: " + " | ".join(business),
                      task.id, kind="question")
-            self._block(task, "business question for the PO: " + " | ".join(business)[:800])
+            self._block(task, f"{BUSINESS_MARK}: " + " | ".join(business)[:800])
             return
         decision = str(d.get("decision", "")).strip() or f"{action} after {kind}"
         guidance = str(d.get("guidance", "")).strip()
@@ -1083,7 +1154,7 @@ class Office:
             self.store.event("techlead_decision", request_id=req.id, issue=kind, action="ask_po", round=rnd)
             self.say("claude", "po", f"{req.id}: câu hỏi nghiệp vụ, cần anh quyết: " + " | ".join(business),
                      kind="question")
-            self._block_request(req, "business question for the PO", business)
+            self._block_request(req, BUSINESS_MARK, business)
             return
         decision = str(d.get("decision", "")).strip() or f"{action} after {kind}"
         guidance = str(d.get("guidance", "")).strip()

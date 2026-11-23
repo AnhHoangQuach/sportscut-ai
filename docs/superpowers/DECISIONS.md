@@ -13,3 +13,4 @@ Newest last. Format: date, task (request): decision.
 - 2026-11-23 Tech Lead: guardrails are fixed, never waived; a secret in a diff discards (deletes) the branch and restarts from the base
 - 2026-11-23 Tech Lead: `tech_lead_rounds = 3` per task, then the task is dropped with a report to the PO and the goal check re-plans; requests pause 60 min instead; the goal-check cap closes the request with a report
 - 2026-11-23 Tech Lead: specs list `files`; tasks that change the same files never code at the same time (already-coding or lower id first)
+- 2026-11-23 Tech Lead: on every office start (and `office triage`) tasks/requests blocked for the PO without the Tech Lead's business mark are handed back to the Tech Lead; an old goal-round-cap block closes the request with a report

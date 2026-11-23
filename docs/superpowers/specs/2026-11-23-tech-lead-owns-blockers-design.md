@@ -60,3 +60,5 @@ Unchanged: quota limits and `max_calls_per_day` (the agent rests, then resumes),
 
 - Reading file lists from the breakdown (only the spec declares `files`).
 - Changing the 3D office scene (it already shows `blocked` as "PO must answer", now correct).
+
+Updated 2026-11-23 (re-triage): blocks saved before the Tech Lead existed are re-classified on office start and by `office triage`; only blocks marked `business question for the PO` keep waiting for the PO.
