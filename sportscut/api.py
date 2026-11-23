@@ -1,4 +1,5 @@
 import json
+from importlib import resources
 import os
 from pathlib import Path
 import shutil
@@ -6,6 +7,7 @@ import uuid
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from sportscut import pipeline, sources
 from sportscut.media import MediaError
@@ -19,12 +21,19 @@ INPUT_NAME = "input"
 CLIPS_DIR = "clips"
 DOWNLOAD_DIR = "download"
 JOB_FILE = "job.json"
+WEB_DIR = resources.files("sportscut").joinpath("web")
 
 app = FastAPI(title="SportsCut")
+app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
 
 
 def _data_dir() -> Path:
     return Path(os.environ.get("SPORTSCUT_DATA_DIR", "sportscut-data")).resolve()
+
+
+@app.get("/", include_in_schema=False)
+def get_web_app() -> FileResponse:
+    return FileResponse(WEB_DIR.joinpath("index.html"), media_type="text/html")
 
 
 @app.post("/highlights")
