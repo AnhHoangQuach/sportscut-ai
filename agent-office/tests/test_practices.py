@@ -54,3 +54,12 @@ def test_eval_gate_blocks_a_quality_drop_then_lets_the_fix_through(auto_env):
 def test_init_writes_team_rules(env):
     assert (env.repo / "AGENTS.md").exists() and "Test first" in (env.repo / "AGENTS.md").read_text()
     assert (env.repo / "CLAUDE.md").read_text().startswith("@AGENTS.md")
+
+
+def test_breakdown_prompt_keeps_tasks_independent():
+    """Chaining every task that touches a shared file made the PM plan one long line, so only
+    one Developer ever worked. depends_on is for real code dependencies only."""
+    text = prompt("pm_breakdown", request="x", request_id="R-001")
+    assert "make the later one depend on the earlier one" not in text
+    assert "only when it needs code" in text
+    assert "in parallel" in text

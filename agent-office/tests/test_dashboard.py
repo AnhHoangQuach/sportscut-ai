@@ -6,6 +6,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from agent_office.dashboard.server import create_app  # noqa: E402
+from agent_office.models import Stage  # noqa: E402
 
 
 @pytest.fixture
@@ -68,3 +69,21 @@ def test_websocket_streams_snapshot_then_events(client):
                 assert msg["event"]["event"] == "request_added"
                 break
         assert "event" in seen
+
+
+def test_waiting_list_explains_idle_sessions_while_a_task_runs(client):
+    """The dashboard used to show only why the *next* step could not start, so while one
+    Developer coded it said nothing about the other idle Developer sessions."""
+    c, env = client
+    env.script(claude_breakdown=[{"result": json.dumps({"tasks": [
+        {"key": "1", "title": "Task 1", "brief": "x", "depends_on": []},
+        {"key": "2", "title": "Task 2", "brief": "x", "depends_on": ["1"]}]})}])
+    office = env.office()
+    office.add_request("Cut highlights")
+    office.step()
+    office.store.tasks["T-001"].stage = Stage.DEV
+    office.store.agents["dev"].active = ["T-001"]
+    office.store.save()
+    w = c.get("/api/state").json()["waiting_on"]
+    assert any("T-002 waits for T-001 to be merged" in x for x in w)
+    assert not any(x.startswith("T-001") for x in w)  # being coded: not waiting

@@ -102,16 +102,20 @@ def _overlap(a: list[str], b: list[str]) -> list[str]:
     return out
 
 
+def _coding(u: Task) -> bool:
+    """In the Developer's hands: `dev`, or blocked out of `dev` with its worktree kept."""
+    return u.stage == Stage.DEV or (u.stage == Stage.BLOCKED and bool(u.worktree) and u.blocked_from == "dev")
+
+
 def file_conflict(store: Store, task: Task) -> tuple[str, list[str]]:
-    """Tech Lead ordering rule: a task that has not started coding waits while another active task
-    changes the same files (the one already coding, else the lower id, goes first). This keeps
-    parallel sessions from producing merge conflicts. Returns (other task id, shared files)."""
+    """Tech Lead ordering rule: tasks that change the same files never *code* at the same time
+    (the one already coding, else the lower id, goes first). Once the other task has left `dev`
+    (test, review, PR) this one may start; if both then touch the same lines, the merge conflict
+    is resolved by the Developer on the next dev round. Returns (other task id, shared files)."""
     if task.worktree or not task.files:
         return "", []
     for u in sorted(store.tasks.values(), key=lambda t: t.id):
-        if u.id == task.id or u.stage in (Stage.DONE, Stage.TODO, Stage.SPEC) or not u.files:
-            continue
-        if u.stage == Stage.BLOCKED and not u.worktree:
+        if u.id == task.id or not u.files or not _coding(u):
             continue
         if not (u.worktree or u.id < task.id):
             continue

@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from .. import runner_proc
 from ..config import load_config
 from ..models import PROVIDERS, ROLE_TITLE, ROLES
-from ..scheduler import next_step
+from ..scheduler import plan_steps
 from ..store import Store
 from ..worktree import NOTES_DIR
 
@@ -44,7 +44,11 @@ def snapshot(repo: Path) -> dict[str, Any]:
     raw = json.loads(store.state_path.read_text(encoding="utf-8"))
     store.load()
     cfg = load_config(store.dir)
-    plan = next_step(store, datetime.now(timezone.utc), cfg.merge_mode == "auto")
+    # The runner's view: tasks being worked on are busy and use a session, so the list says why
+    # every other task (and every idle session) waits, not only why the next step cannot start.
+    busy = {t for a in store.agents.values() for t in a.active}
+    slots = {n: cfg.parallel.get(n, 1) - len(a.active) for n, a in store.agents.items()}
+    plan = plan_steps(store, datetime.now(timezone.utc), cfg.merge_mode == "auto", busy=busy, slots=slots)
     raw["config"] = {"merge_mode": cfg.merge_mode, "base_branch": cfg.base_branch, "open_pr": cfg.open_pr,
                      "max_goal_rounds": cfg.max_goal_rounds, "parallel": cfg.parallel,
                      "max_calls_per_day": cfg.max_calls_per_day}

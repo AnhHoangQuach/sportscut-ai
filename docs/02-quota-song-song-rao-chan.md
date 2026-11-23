@@ -83,6 +83,19 @@ sequenceDiagram
   nghỉ; phiên còn lại khi xong sẽ chỉ lưu checkpoint, không báo nghỉ lần hai.
 - `office run --sequential` (hoặc `--once`, `--max-steps`) chạy từng bước như cũ.
 
+**Vì sao `dev = 3` mà chỉ một Developer làm?** Số phiên chỉ là giới hạn trên: một phiên chỉ chạy khi
+có task sẵn sàng. Task chờ khi (a) `depends_on` một task chưa merge, hoặc (b) cùng `files` với một task
+**đang code** (stage `dev`). Task kia đã sang test/review/PR thì task này được code luôn; nếu sau đó
+xung đột thì Developer gỡ (2.3). Prompt chia việc của PM chỉ đặt `depends_on` khi task thật sự cần code
+của task trước, không đặt chỉ vì sửa chung file. Khi một vai nhiều phiên còn phiên trống, runner in một
+lần (và ghi sự kiện `slots_idle`):
+
+```
+  dev: 2/3 sessions idle; waiting: T-012 waits for T-011 to be merged; T-013 waits for T-011: both change sportscut/cli.py
+```
+
+Dashboard ("Đang chờ") cũng liệt kê lý do của mọi task đang chờ, kể cả khi đã có task đang chạy.
+
 Thêm phiên giúp nhanh hơn nhưng tiêu quota nhanh hơn. Gợi ý: Codex 2 phiên khi gói ChatGPT Pro,
 1 phiên khi gói Plus; Claude 1 phiên là đủ vì việc của Claude ngắn.
 
