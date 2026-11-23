@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..codex_provider import read_env_file
 from ..limits import LimitHit, detect
 
 # Removed from the child environment so each CLI falls back to its subscription login.
@@ -21,9 +22,15 @@ API_KEY_VARS = (
 )
 
 
-def subscription_env(cwd: Path | None = None) -> dict[str, str]:
-    """Child env without API keys. A `.venv/` in cwd (made by setup_cmd) goes first on PATH."""
-    env = {k: v for k, v in os.environ.items() if k not in API_KEY_VARS}
+def subscription_env(cwd: Path | None = None, env_file: Path | str | None = None,
+                     keep: tuple[str, ...] = ()) -> dict[str, str]:
+    """Child env without API keys. A `.venv/` in cwd (made by setup_cmd) goes first on PATH.
+
+    `keep` names variables the CLI itself needs even if they look like API keys (the key of a
+    custom Codex provider such as codex-lb). Variables in `env_file` (`.agent-office/.env`, never
+    committed) are added as written: the user put them there for the agents on purpose."""
+    env = {k: v for k, v in os.environ.items() if k not in API_KEY_VARS or k in keep}
+    env.update(read_env_file(env_file))
     env.setdefault("NO_COLOR", "1")
     venv = Path(cwd) / ".venv" if cwd else None
     if venv is not None:
@@ -66,11 +73,18 @@ class CliAgent:
     def parse(self, res: AgentResult, extra: dict[str, Any]) -> None:
         res.text = res.stdout.strip()
 
+    def child_env(self, cwd: Path | None = None) -> dict[str, str]:
+        return subscription_env(cwd, getattr(self.cfg, "env_file", ""))
+
+    def env_problem(self) -> str:
+        """Name of a variable the CLI needs but will not get ("" = none known)."""
+        return ""
+
     def run(self, prompt: str, cwd: Path, log_path: Path | None = None, **extra: Any) -> AgentResult:
         cmd = self.build_cmd(Path(cwd), extra)
         try:
             p = subprocess.run(
-                cmd, input=prompt, cwd=cwd, env=subscription_env(Path(cwd)), capture_output=True,
+                cmd, input=prompt, cwd=cwd, env=self.child_env(Path(cwd)), capture_output=True,
                 text=True, timeout=self.cfg.timeout_sec,
             )
             res = AgentResult(self.name, p.returncode, p.stdout, p.stderr)
