@@ -58,6 +58,19 @@ def test_load_json_decode_error_names_path(tmp_path: Path) -> None:
     assert str(path) in str(error.value)
 
 
+@pytest.mark.parametrize("digits", [400, 5000])
+def test_load_json_large_number_error_names_path(tmp_path: Path, digits: int) -> None:
+    from sportscut.evaluate import load_labels
+
+    path = tmp_path / "labels.json"
+    path.write_text(
+        '[{"start": ' + "9" * digits + ', "end": 2, "type": "goal"}]'
+    )
+    with pytest.raises(ValueError) as error:
+        load_labels(path)
+    assert str(path) in str(error.value)
+
+
 @pytest.mark.parametrize("line", ["12:60,13:00,goal", "1:2:3,13:00,goal", "00:01,00:02", "00:02,00:01,goal", "00:01,00:02,penalty"])
 def test_load_csv_invalid(tmp_path: Path, line: str) -> None:
     from sportscut.evaluate import load_labels
@@ -67,6 +80,16 @@ def test_load_csv_invalid(tmp_path: Path, line: str) -> None:
     with pytest.raises(ValueError) as error:
         load_labels(path)
     assert str(path) in str(error.value) and "line 2" in str(error.value)
+
+
+def test_load_csv_decode_error_names_path(tmp_path: Path) -> None:
+    from sportscut.evaluate import load_labels
+
+    path = tmp_path / "labels.csv"
+    path.write_bytes(b"\xff")
+    with pytest.raises(ValueError) as error:
+        load_labels(path)
+    assert str(path) in str(error.value)
 
 
 def test_score_case_worked_example() -> None:
@@ -98,6 +121,24 @@ def test_evaluate_dir_validates_then_aggregates(tmp_path: Path, monkeypatch) -> 
     assert report["f1"] == 1.0
     assert [item["match"] for item in report["per_match"]] == ["a", "b"]
     assert list(report["per_match"][0]) == ["match", "labels", "predictions", "f1", "precision", "recall", "event_accuracy", "precision_at_5"]
+
+
+def test_evaluate_dir_ignores_hidden_video_metadata(tmp_path: Path, monkeypatch) -> None:
+    from sportscut import detect
+    from sportscut.evaluate import evaluate_dir
+
+    case = tmp_path / "match"
+    case.mkdir()
+    (case / "labels.json").write_text("[]")
+    video = case / "video.mp4"
+    video.touch()
+    (case / "._video.mp4").touch()
+    seen = []
+    monkeypatch.setattr(detect, "find_highlights", lambda path: seen.append(path) or [])
+
+    evaluate_dir(tmp_path)
+
+    assert seen == [video]
 
 
 def test_cli_eval_json_and_error(tmp_path: Path, monkeypatch, capsys) -> None:

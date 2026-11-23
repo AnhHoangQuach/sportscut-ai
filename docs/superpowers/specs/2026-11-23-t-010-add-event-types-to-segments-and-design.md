@@ -54,6 +54,7 @@ Without --json, the same report is printed with indent=2.
 - T-010 (R-003): The report key order is f1, precision, recall, event_accuracy, per_event (all 5 EVENT_TYPES in order), precision_at_5, per_match. per_match entries are {match, labels, predictions, f1, precision, recall, event_accuracy, precision_at_5}, sorted by directory name. Floats are rounded to 4 decimals.
 - T-010 (R-003): Updating the key-set assertions in tests/test_cli.py, tests/test_pipeline.py and tests/test_t004_acceptance.py to include 'event' follows an intended spec change. It does not weaken those tests, and nothing else in them changes.
 - Tech Lead (dev_blocked): 2026-11-23 T-010: restart after T-005 is merged because the failure is the intended precondition detecting a missing R-001 dependency, not an implementation defect; T-010 must depend on T-005.
+- Updated by T-010 review round 2: malformed label text and oversized JSON numbers raise path-qualified `ValueError`s, and dot-prefixed metadata files are ignored when counting case videos.
 
 ## Existing specs this task changes
 

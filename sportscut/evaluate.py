@@ -50,7 +50,11 @@ def match_segments(segments: Sequence[Segment], labels: Sequence[Label]) -> list
 
 def _label(start, end, kind, where: str) -> Label:
     for name, value in (("start", start), ("end", end)):
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        try:
+            finite = math.isfinite(value)
+        except (OverflowError, TypeError):
+            finite = False
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not finite:
             raise ValueError(f"{where}: {name} must be a finite number")
     if start < 0:
         raise ValueError(f"{where}: start must be non-negative")
@@ -76,7 +80,7 @@ def load_labels(path: str | Path) -> list[Label]:
     if label_path.suffix.lower() == ".json":
         try:
             data = json.loads(label_path.read_text())
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeError, ValueError) as exc:
             raise ValueError(f"{label_path}: {exc}") from exc
         if not isinstance(data, list):
             raise ValueError(f"{label_path}: top level must be a list")
@@ -91,7 +95,7 @@ def load_labels(path: str | Path) -> list[Label]:
         raise ValueError(f"{label_path}: unsupported label format")
     try:
         rows = list(csv.reader(label_path.read_text().splitlines()))
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         raise ValueError(f"{label_path}: {exc}") from exc
     result, seen_data = [], False
     for number, row in enumerate(rows, 1):
@@ -154,7 +158,9 @@ def evaluate_dir(path: str | Path) -> dict:
             raise ValueError(f"{case}: has both labels.json and labels.csv")
         if not label_files:
             continue
-        videos = [item for item in case.iterdir() if item.is_file() and item.suffix.lower() in VIDEO_SUFFIXES]
+        videos = [item for item in case.iterdir()
+                  if item.is_file() and not item.name.startswith(".")
+                  and item.suffix.lower() in VIDEO_SUFFIXES]
         if len(videos) != 1:
             raise ValueError(f"{case}: expected exactly one video (.mp4, .mkv, .mov), found {len(videos)}")
         prepared.append((case, videos[0], load_labels(label_files[0])))

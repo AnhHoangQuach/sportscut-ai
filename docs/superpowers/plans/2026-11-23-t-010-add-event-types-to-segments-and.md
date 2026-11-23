@@ -242,3 +242,7 @@ With the labels from Step 10, the report is:
 - tests/test_evaluate.py::test_cli_eval_error_exit_2: a missing dir and a case without a video each give exit 2, `sportscut eval: error:` on stderr and empty stdout.
 - Key-set updates: tests/test_cli.py::test_detect_json, tests/test_pipeline.py::test_run_returns_manifest_entries and tests/test_t004_acceptance.py (2 assertions) gain 'event'.
 - Tester: tests/test_t010_acceptance.py, written independently from AC1-AC12. It includes at least the worked example, the CSV minute > 59 case, the one-to-one cases, the burst_video CLI e2e, and a check that the API response keys are unchanged (via TestClient with a monkeypatched pipeline.run).
+
+## Deviations
+
+- Review round 2 added focused hardening tests for path-qualified CSV/JSON decoding errors and for ignoring dot-prefixed video metadata files. These are small extensions requested by the review nits and do not change the evaluation metrics or public report shape.
