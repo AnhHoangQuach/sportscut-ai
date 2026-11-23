@@ -1,9 +1,25 @@
-import pytest
+import inspect
 import numpy as np
+import pytest
 import re
 
+import sportscut.detect as detect
 from sportscut.detect import SAMPLE_RATE, find_highlights
-from sportscut.media import probe_duration
+from sportscut.media import extract_audio, probe_duration
+
+
+def test_public_detector_contract() -> None:
+    assert inspect.signature(find_highlights).parameters == {
+        "video": inspect.Parameter("video", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=str),
+        "top": inspect.Parameter("top", inspect.Parameter.POSITIONAL_OR_KEYWORD, default=10, annotation=int),
+        "min_len": inspect.Parameter("min_len", inspect.Parameter.POSITIONAL_OR_KEYWORD, default=10, annotation=float),
+        "max_len": inspect.Parameter("max_len", inspect.Parameter.POSITIONAL_OR_KEYWORD, default=30, annotation=float),
+    }
+    assert inspect.signature(find_highlights).return_annotation == list[detect.Segment]
+    assert (detect.PRE_SEC, detect.POST_SEC, detect.BASELINE_SEC) == (8.0, 4.0, 120)
+    assert (detect.MIN_Z, detect.MIN_SCALE_DB) == (3.0, 1.0)
+    assert detect.extract_audio is extract_audio
+    assert detect.probe_duration is probe_duration
 
 
 @pytest.mark.parametrize(
