@@ -2,13 +2,17 @@
 
 ## 1.1 Vai trò
 
-| Vai | Ai làm | Được làm gì | Không được làm gì |
+Mỗi vai là **một agent riêng** (tên `pm`, `lead`, `dev`, `tester`): trạng thái, prompt, log, số phiên
+song song, bàn trong văn phòng 3D và thống kê riêng. Hai vai cùng chạy trên một CLI thì dùng chung
+một gói thuê bao (xem 1.11).
+
+| Vai (agent) | Chạy trên | Được làm gì | Không được làm gì |
 |---|---|---|---|
-| Product Owner | Hoang | Đưa yêu cầu, trả lời câu hỏi, đặt mục tiêu chất lượng | Không cần đọc code |
-| Product Manager | Claude; Codex tiếp quản khi Claude hết quota | Tách yêu cầu thành task, viết spec + acceptance criteria (AC), kiểm tra mục tiêu cuối | Không sửa file |
-| Tech Lead / Reviewer | Claude; Codex tiếp quản khi Claude hết quota | Review diff theo spec, approve hoặc yêu cầu sửa | Không sửa file |
-| Developer | Codex; Claude tiếp quản khi Codex hết quota | Code theo spec trong worktree riêng của task | Không commit, push, đổi nhánh |
-| Tester | Codex; Claude tiếp quản khi Codex hết quota | Bổ sung test cho mọi AC, chạy test, viết báo cáo | Không đổi phạm vi task |
+| Product Owner | Hoang | Đưa yêu cầu, trả lời câu hỏi nghiệp vụ, đặt mục tiêu chất lượng | Không cần đọc code |
+| Product Manager (`pm`) | Claude; `dev` (Codex) tiếp quản khi Claude hết quota | Tách yêu cầu thành task, viết spec + acceptance criteria (AC), kiểm tra mục tiêu cuối | Không sửa file |
+| Tech Lead / Reviewer (`lead`) | Claude; `tester` (Codex) tiếp quản khi Claude hết quota | Review diff theo spec, approve hoặc yêu cầu sửa; quyết mọi blocker kỹ thuật, lọc câu hỏi (chỉ câu nghiệp vụ tới PO) | Không sửa file |
+| Developer (`dev`) | Codex; `pm` (Claude) tiếp quản khi Codex hết quota | Code + unit test (TDD) theo spec trong worktree riêng của task | Không commit/push/đổi nhánh; không xóa, skip hay làm yếu test của Tester |
+| Tester (`tester`) | Codex; `lead` (Claude) tiếp quản khi Codex hết quota | Tự viết test chấp nhận từ AC (không dựa vào test của Dev), kiểm tra test của Dev có thể fail, chạy toàn bộ, báo lỗi về Dev | Không sửa code sản phẩm, không đổi phạm vi |
 | Orchestrator | Chương trình `office` (Python) | Lập lịch, gọi agent, commit, chạy test, merge, lưu trạng thái | Không tự "nghĩ": mọi quyết định nội dung là của agent |
 
 Vì sao hai hãng khác nhau: Claude mạnh ở đọc hiểu, lập kế hoạch, review; Codex mạnh ở viết và sửa
@@ -43,10 +47,11 @@ Mỗi vai có một file prompt trong `agent-office/agent_office/prompts/`:
 |---|---|---|
 | `pm_breakdown.md` | Claude chia việc | `{"tasks":[{"key","title","brief","depends_on"}]}` hoặc `{"questions":[...]}` |
 | `pm_spec.md` | Claude viết spec | `{"spec","acceptance_criteria","test_plan","out_of_scope"}` hoặc `{"questions"}` |
-| `dev.md` | Codex code | Văn bản tóm tắt; bắt đầu bằng `BLOCKED:` nếu bị chặn |
-| `test.md` | Codex test | Dòng cuối `RESULT: PASS` hoặc `RESULT: FAIL` |
-| `review.md` | Claude review | `{"verdict":"approve|changes","summary","comments":[{file,line,severity,text}]}` |
-| `pm_goal.md` | Claude kiểm tra mục tiêu | `{"done":true,"summary"}` hoặc thêm task bổ sung |
+| `dev.md` | Developer code | Văn bản tóm tắt; bắt đầu bằng `BLOCKED:` nếu bị chặn |
+| `test.md` | Tester kiểm tra độc lập | `.office/TEST_REPORT.md` (mục "Failures for the Developer"); dòng cuối `RESULT: PASS` hoặc `RESULT: FAIL` |
+| `review.md` | Tech Lead review | `{"verdict":"approve|changes","summary","comments":[{file,line,severity,text}]}` |
+| `tech_lead.md` | Tech Lead gỡ blocker | `{"action":...}` hoặc `{"business_questions":[...]}` |
+| `pm_goal.md` | PM kiểm tra mục tiêu | `{"done":true,"summary"}` hoặc thêm task bổ sung |
 
 Kỹ thuật dùng:
 
@@ -63,17 +68,17 @@ Kỹ thuật dùng:
 
 ```mermaid
 stateDiagram-v2
-  [*] --> todo: Claude tách yêu cầu
+  [*] --> todo: PM tách yêu cầu
   todo --> spec: các task phụ thuộc đã merge
-  spec --> dev: Claude viết spec + AC
+  spec --> dev: PM viết spec + AC
   spec --> blocked: câu hỏi nghiệp vụ (Tech Lead đã lọc)
-  dev --> test: Codex code xong
-  test --> review: test pass (+ eval không tụt)
-  test --> dev: test fail (tối đa 3 lần)
-  review --> pr: Claude approve
+  dev --> test: Developer code xong
+  test --> review: Tester pass (+ test_cmd, eval không tụt)
+  test --> dev: Tester báo lỗi cho Developer (tối đa 3 lần)
+  review --> pr: Tech Lead approve
   review --> dev: yêu cầu sửa (tối đa 3 vòng)
   pr --> done: merge vào main
-  pr --> dev: xung đột merge (Codex gỡ, tối đa 2 lần)
+  pr --> dev: xung đột merge (Developer gỡ, tối đa 2 lần)
   blocked --> spec: PO trả lời
   blocked --> dev: PO trả lời
   dev --> dev: vướng kỹ thuật → Tech Lead quyết (retry/restart/split/wait/drop)
@@ -92,46 +97,56 @@ stateDiagram-v2
 sequenceDiagram
   participant PO as PO
   participant O as Orchestrator
-  participant C as Claude
-  participant X as Codex
+  participant P as PM (Claude)
+  participant D as Developer (Codex)
+  participant T as Tester (Codex)
+  participant L as Tech Lead (Claude)
   PO->>O: office request "..."
-  O->>C: pm_breakdown (đọc repo)
-  C-->>O: 5 task + phụ thuộc
-  O->>C: pm_spec T-001
-  C-->>O: spec + AC + test plan
+  O->>P: pm_breakdown (đọc repo)
+  P-->>O: 5 task + phụ thuộc
+  O->>P: pm_spec T-001
+  P-->>O: spec + AC + test plan
   O->>O: tạo worktree office/T-001, ghi .office/TASK.md
-  O->>X: dev T-001 (trong worktree)
-  X-->>O: code + DEV_NOTES
+  O->>D: dev T-001 (trong worktree)
+  D-->>O: code + unit test + DEV_NOTES
   O->>O: commit "feat(T-001)"
-  O->>X: test T-001
-  X-->>O: RESULT: PASS
-  O->>O: chạy lại test_cmd, eval_cmd
-  O->>C: review (spec + diff + kết quả test + DEV_NOTES)
-  C-->>O: approve
+  O->>T: test T-001 (tự viết test chấp nhận từ AC)
+  T-->>O: RESULT: FAIL + TEST_REPORT
+  O->>D: dev T-001 lần 2 (lỗi của Tester trong TASK.md)
+  O->>T: test T-001
+  T-->>O: RESULT: PASS
+  O->>O: commit "test(T-001)", chạy lại test_cmd, eval_cmd
+  O->>L: review (spec + diff + kết quả test + DEV_NOTES)
+  L-->>O: approve
   O->>O: gộp main mới nhất, test lại, merge vào main
-  O->>C: pm_goal khi mọi task xong
-  C-->>O: done + tóm tắt
+  O->>P: pm_goal khi mọi task xong
+  P-->>O: done + tóm tắt
   O-->>PO: "R-001 đã xong"
 ```
 
-Orchestrator **không tin lời agent một mình**: sau khi Codex báo pass, nó tự chạy `test_cmd` và
-`eval_cmd`; sau khi Claude approve, nó tự kiểm tra xung đột và test lại trước khi merge.
+Orchestrator **không tin lời agent một mình**: Tester không tin test của Developer (tự viết test của
+mình), sau khi Tester báo pass orchestrator tự chạy `test_cmd` và `eval_cmd`; sau khi Tech Lead
+approve, nó tự kiểm tra xung đột và test lại trước khi merge.
 
-Mỗi bước còn phát một sự kiện `message` (người gửi, người nhận, nội dung tiếng Việt) để giao diện
-hiển thị như một cuộc hội thoại: "Claude → Codex: Giao T-002...", "Codex → Claude: T-002 test pass,
-nhờ review", "Claude → PO: Đã merge T-002".
+Mỗi bước còn phát một sự kiện `message` (người gửi, người nhận là tên vai, nội dung tiếng Việt) để
+giao diện hiển thị như một cuộc hội thoại: "PM → Developer: Giao T-002...", "Developer → Tester:
+T-002 code xong", "Tester → Developer: T-002 test fail..." hoặc "Tester → Tech Lead: T-002 test pass",
+"Tech Lead → PO: Đã merge T-002".
 
 ## 1.6 Lập lịch (scheduler)
 
 `scheduler.plan_steps()` là một hàm thuần (dễ test) trả về mọi bước có thể chạy ngay:
 
-1. Agent hết giờ nghỉ được **đánh thức** trước (một prompt "probe" rất nhỏ để chắc đã có quota).
+1. CLI hết giờ nghỉ được **đánh thức** trước: một prompt "probe" rất nhỏ cho cả CLI, đạt thì mọi vai
+   trên CLI đó làm lại.
 2. Yêu cầu mới cần chia việc; yêu cầu có mọi task xong cần kiểm tra mục tiêu.
 3. Task theo thứ tự ưu tiên **làm nốt việc dở trước**: `pr > review > test > dev > spec > todo`.
-4. Bỏ qua task chưa đủ phụ thuộc, task `blocked`, agent đang nghỉ, agent hết phiên trống.
+4. Bỏ qua task chưa đủ phụ thuộc, task `blocked`, vai đang nghỉ, vai hết phiên trống (`[parallel]`
+   tính riêng từng vai).
 
 Hàm trả kèm danh sách lý do đang chờ ("T-005 waits for T-003, T-004 to be merged",
-"codex resting until 19:15") để CLI và dashboard giải thích vì sao đứng yên.
+"codex resting until 19:15 (roles dev, tester; quota: ...)") để CLI và dashboard giải thích vì sao
+đứng yên.
 
 ## 1.7 Git worktree: mỗi task một bàn làm việc
 
@@ -222,3 +237,41 @@ Codex không tạo ra xung đột merge. `INDEX.md`/`DECISIONS.md` (merge=union)
 Runner là nơi duy nhất ghi `state.json`. Mọi tác nhân khác **xếp lệnh vào inbox**; runner lấy
 inbox một cách nguyên tử (đổi tên file) ở đầu mỗi vòng. Nhờ vậy không có hai tiến trình ghi đè
 trạng thái của nhau, và không cần database.
+
+## 1.11 Bốn agent riêng trên hai gói thuê bao
+
+Trước đây chỉ có hai agent (`claude` làm PM + Tech Lead + Reviewer, `codex` làm Dev + Tester). Giờ mỗi
+vai là một agent riêng, nên PM có thể viết spec task sau trong khi Tech Lead review task trước, và
+Tester kiểm tra công việc của Developer như một người khác.
+
+| Thứ | Theo **vai** (`pm`, `lead`, `dev`, `tester`) | Theo **CLI / gói thuê bao** (`claude`, `codex`) |
+|---|---|---|
+| Prompt, bước | `pm`: breakdown, spec, goal; `lead`: review, techlead; `dev`: dev; `tester`: test | |
+| Log | `.agent-office/logs/<task>/NNN-<bước>-<vai>.log` | probe: `logs/_probe/NNN-<cli>.log` |
+| Phiên song song | `[parallel] pm = 1, lead = 1, dev = 2, tester = 1` | |
+| Trạng thái, thẻ dashboard, bàn 3D, thống kê lượt gọi | riêng từng vai | `office stats` cộng theo CLI |
+| Quota, giờ nghỉ, probe, ngân sách `max_calls_per_day` | | **chung**: một vai chạm giới hạn thì mọi vai trên CLI đó nghỉ cùng giờ; 2 lần lỗi liên tiếp của bất kỳ vai nào trên CLI = CLI lỗi |
+
+- `[roles]` trong `config.toml` chọn CLI cho từng vai (mặc định `pm`/`lead` = claude, `dev`/`tester` =
+  codex). Ví dụ chỉ có gói Claude: đặt cả bốn vai là `"claude"`.
+- Tiếp quản khi hết quota (R-007) đi theo cặp: `pm` ↔ `dev`, `lead` ↔ `tester`. Vai thay thế giữ tên
+  của mình, chạy bằng CLI của mình, nhận quyền của bước đang làm (sự kiện `agent_failover` ghi cả vai
+  và CLI).
+- `office wake <vai|cli>`: `office wake tester` hay `office wake codex` đều đánh thức mọi vai trên Codex.
+
+**Tester độc lập với Developer.** Prompt `test.md` bắt Tester viết test chấp nhận của riêng mình
+(`*_acceptance*`) từ AC trong `TASK.md`, không dựa vào test của Dev; thử làm hỏng code để chắc test của
+Dev có thể fail; **không sửa code sản phẩm**; lỗi ghi vào `TEST_REPORT.md` mục "Failures for the
+Developer" và dòng cuối `RESULT: FAIL`. Office:
+
+1. Commit test của Tester, ghi danh sách file vào `task.tester_files`.
+2. Nếu fail: `task.test_output` = câu trả lời + báo cáo của Tester (+ đầu ra `test_cmd`), task về `dev`,
+   tin nhắn `Tester → Developer` (topic `test_fail`). `TASK.md` của Dev có mục "Tester's tests" (không
+   được xóa/skip/làm yếu).
+3. Nếu Dev vẫn sửa một file test của Tester: sự kiện `tests_changed_by_dev`, lần test sau prompt Tester
+   có cảnh báo để Tester đọc thay đổi và khôi phục nếu test bị làm yếu.
+
+**State cũ.** `state.json` có agent `claude`/`codex` được tách tự động khi tải: trạng thái nghỉ chép
+sang mọi vai của CLI đó, bộ đếm lượt gọi giữ ở vai đầu (`pm`, `dev`) để tổng theo CLI không bị nhân
+đôi. `config.toml` cũ (`[parallel] claude = 1, codex = 2`, không có `[roles]`) vẫn chạy: số phiên của
+CLI áp cho từng vai trên CLI đó. Sự kiện cũ mang tên `claude`/`codex` được dashboard hiện ở `pm`/`dev`.

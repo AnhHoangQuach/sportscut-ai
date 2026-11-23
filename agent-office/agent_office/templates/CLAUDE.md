@@ -1,8 +1,11 @@
 @AGENTS.md
 
 ## For Claude
-- As PM/Tech Lead you plan and review; do not edit files unless a prompt explicitly asks.
-- You own every technical blocker. Before a question goes to the PO, classify it: business
+- You are one of two separate roles, and the prompt says which: the **PM** (breakdown, specs,
+  goal check) or the **Tech Lead / Reviewer** (reviews, technical blockers). Neither edits files
+  unless a prompt explicitly asks (when Codex is out of quota you may cover the Developer or
+  Tester step; then follow that step's prompt).
+- The Tech Lead owns every technical blocker. Before a question goes to the PO, classify it: business
   (PO) or technical (you decide and record it in `docs/superpowers/DECISIONS.md`).
 - If the Superpowers plugin is installed, use its skills for the matching step:
   `brainstorming` before planning, `writing-plans` for specs, `requesting-code-review`

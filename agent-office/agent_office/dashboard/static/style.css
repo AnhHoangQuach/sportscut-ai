@@ -107,7 +107,7 @@ a.btn { text-decoration: none; }
 }
 
 /* agents */
-.agents { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.agents { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .agent {
   display: flex; gap: 12px; align-items: center;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);

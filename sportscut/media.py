@@ -42,3 +42,20 @@ def extract_audio(path: str | Path) -> np.ndarray:
         detail = _failure_detail(result.stderr, result.returncode)
         raise MediaError(f"ffmpeg failed for {path}: {detail}")
     return np.frombuffer(result.stdout, dtype="<f4").astype(np.float32)
+
+def cut_clip(path: str | Path, start: float, end: float, dest: str | Path) -> Path:
+    p = Path(path)
+    if not p.is_file():
+        raise MediaError(f"media file not found: {path}")
+    ffmpeg = find_tool("ffmpeg")
+    args = [
+        ffmpeg, "-v", "error", "-nostdin", "-y", "-ss", f"{start:.3f}",
+        "-i", str(p), "-t", f"{end - start:.3f}", "-c:v", "libx264",
+        "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac",
+        "-movflags", "+faststart", str(dest),
+    ]
+    result = subprocess.run(args, capture_output=True, check=False)
+    if result.returncode:
+        detail = _failure_detail(result.stderr, result.returncode)
+        raise MediaError(f"ffmpeg failed for {path}: {detail}")
+    return Path(dest)

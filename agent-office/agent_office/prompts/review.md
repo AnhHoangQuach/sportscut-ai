@@ -10,7 +10,7 @@ $spec
 
 $acceptance_criteria
 
-## Test result (run by the orchestrator / tester)
+## Test result (the Tester's independent check + the orchestrator's test command)
 
 $test_summary
 

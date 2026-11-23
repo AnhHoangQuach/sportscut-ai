@@ -1,7 +1,9 @@
 """Simulated agents for `office demo` and `simulate = true`.
 
-They behave like Claude and Codex (plan, spec, code, test, review, run out of quota)
-without calling any CLI, so you can watch the whole office work for free.
+One SimAgent per CLI (claude, codex); the four roles (PM, Tech Lead, Developer, Tester) call it
+like the real CLIs. They plan, spec, code, test independently (the Tester rejects T-002 once),
+review (T-003 needs a second round) and run out of quota once, without calling any CLI, so you
+can watch the whole office work for free.
 """
 from __future__ import annotations
 
@@ -155,7 +157,19 @@ class SimAgent(CliAgent):
                 f"from sportscut.{slug} import run\n\n\ndef test_run():\n    assert run() == \"{tid}\"\n")
             return f"Đã thêm sportscut/{slug}.py và tests/test_{slug}.py, pytest pass.", "", 0
         if kind == "test":
+            slug = tid.lower().replace("-", "_")
             (cwd / ".office").mkdir(exist_ok=True)
-            (cwd / ".office" / "TEST_REPORT.md").write_text("Mọi AC có test, pytest: pass\n")
-            return "3 passed\nRESULT: PASS", "", 0
+            (cwd / "tests").mkdir(exist_ok=True)
+            # The Tester's own acceptance test, written from the spec, not from the developer's tests.
+            (cwd / "tests" / f"test_{slug}_acceptance.py").write_text(
+                f"from sportscut.{slug} import run\n\n\ndef test_{slug}_acceptance():\n    assert run() == \"{tid}\"\n")
+            if tid == "T-002" and not st.get("t2_tested"):
+                st["t2_tested"] = True
+                self._save(st)
+                (cwd / ".office" / "TEST_REPORT.md").write_text(
+                    "AC2 -> test_t_002_acceptance -> FAIL: video không có audio thì báo lỗi khó hiểu\n")
+                return ("test_t_002_acceptance FAIL: video không có audio làm ffmpeg lỗi, cần thông báo rõ\n"
+                        "RESULT: FAIL"), "", 0
+            (cwd / ".office" / "TEST_REPORT.md").write_text("Mọi AC có test (của Dev + Tester), pytest: pass\n")
+            return "4 passed\nRESULT: PASS", "", 0
         return "OK", "", 0

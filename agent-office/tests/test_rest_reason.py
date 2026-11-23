@@ -15,9 +15,10 @@ def test_repeated_cli_failures_rest_with_the_real_error_not_quota(env):
     office = env.office()
     office.add_request("Cut highlights")
     env.run_all(office)
-    codex = office.store.agents["codex"]
+    codex = office.store.agents["dev"]  # the Developer's runs failed; every Codex role rests
     assert codex.status.value == "resting" and codex.rest_cause == "failure"
-    assert codex.rest_detail == "boom" and codex.rest_log.endswith("-codex.log")
+    assert office.store.agents["tester"].rest_cause == "failure"
+    assert codex.rest_detail == "boom" and codex.rest_log.endswith("-dev.log")
     said = [e["text"] for e in events(env.repo) if e["event"] == "message" and e.get("topic") == "rest"]
     assert said and "Mình hết quota" not in said[-1] and "không phải hết quota" in said[-1] and "boom" in said[-1] and "CLI" in said[-1]
     assert not any("usage limit" in line for line in env.lines)

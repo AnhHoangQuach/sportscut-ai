@@ -78,6 +78,12 @@ def commit_all(wt: Path, message: str) -> bool:
     return True
 
 
+def changed_files(wt: Path, since: str, exclude: str = "docs/superpowers") -> list[str]:
+    """Files changed by the commits after `since` (an agent's own commit), without the spec docs."""
+    out = git(wt, "diff", "--name-only", f"{since}..HEAD", "--", ".", f":(exclude){exclude}", check=False)
+    return [f for f in out.splitlines() if f.strip()]
+
+
 def diff(wt: Path, base_sha: str, max_chars: int = 120_000) -> str:
     d = git(wt, "diff", f"{base_sha}...HEAD")
     if len(d) > max_chars:

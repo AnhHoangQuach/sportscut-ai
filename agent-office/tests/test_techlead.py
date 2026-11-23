@@ -178,7 +178,7 @@ def test_tasks_that_change_the_same_files_run_one_after_the_other(env):
         _task("T-002", Stage.DEV, ["./sportscut/cli.py"]),
         _task("T-003", Stage.DEV, ["sportscut/audio.py", "docs/superpowers/DECISIONS.md"]),
         _task("T-004", Stage.DEV, ["sportscut/"]))}
-    plan = plan_steps(st, env.now, False, slots={"claude": 1, "codex": 4})
+    plan = plan_steps(st, env.now, False, slots={"pm": 1, "lead": 1, "dev": 4, "tester": 1})
     assert [s.target for s in plan.steps] == ["T-001", "T-003"]
     assert any("T-002 waits for T-001: both change sportscut/cli.py" in w for w in plan.waiting_on)
     # a task already coding keeps its files even when a lower id arrives later
