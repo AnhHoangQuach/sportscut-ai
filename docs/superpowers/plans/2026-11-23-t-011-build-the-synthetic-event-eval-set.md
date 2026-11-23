@@ -13,6 +13,8 @@ Request R-003. Builds on T-010 (`sportscut/evaluate.py`, `sportscut eval DIR --j
 ## Goal
 We need a small, deterministic, labelled synthetic set at `tests/fixtures/eval/`. Later R-003 classifier tasks will score themselves against it. Their targets are per-event recall >= 0.9 and goal recall >= 0.95, and they must not lower F1. This task builds the set, proves that every cue is really present in the generated media, and records the baseline of the current detector (every segment `event='other'`) in the README. **No production code under `sportscut/` changes.**
 
+Updated by T-011: the corrected plan moves the controversy-match chant to 105 s, adds its fades, uses integer-window cue measurements, and fixes label counts to [4,3,4,5].
+
 The eval command is:
 ```bash
 python tests/fixtures/eval/build.py && python -m sportscut eval tests/fixtures/eval --json
@@ -66,7 +68,7 @@ The mix is `crowd_env(t)*crowd + boo_env(t)*boo + whistle`, clipped to [-1, 1]. 
 - **quiet stoppage, red_card:** crowd_env = 0.005 on [t0+1, t0+12].
 - **long stoppage, controversy:** crowd_env = 0.005 on [t0+1, t0+36]. boo_env = 0.08 on [t0+3, t0+33] (30 s) with 0.5 s linear ramps inside that span, and 0 elsewhere.
 - **distractor swell:** crowd_env rises linearly from 0.02 to 0.08 over [t0, t0+2.5] and back over [t0+2.5, t0+5].
-- **distractor chant:** crowd_env = 0.08*(0.6 + 0.4*sin(2*pi*2*(t-t0))) on [t0, t0+6].
+- **distractor chant:** crowd_env = 0.02 + g(t)*(0.08*(0.6 + 0.4*sin(2*pi*2*(t-t0))) - 0.02), where g rises linearly 0->1 on [t0,t0+2], holds at 1 on [t0+2,t0+4], and falls linearly 1->0 on [t0+4,t0+6].
 
 Distractors have no whistle, no scoreboard change, no replay and no red close-up, and are not labelled.
 
@@ -87,12 +89,12 @@ Each event is (kind, t0) or, for goals, (kind, t0, team).
 ```python
 MATCHES = {
   "cards":       {"duration": 180.0, "events": [("red_card", 20), ("save", 50), ("controversy", 75), ("swell", 130), ("red_card", 155)]},
-  "controversy": {"duration": 180.0, "events": [("controversy", 20), ("goal", 75, "away"), ("chant", 110), ("controversy", 130)]},
+  "controversy": {"duration": 180.0, "events": [("controversy", 20), ("goal", 75, "away"), ("chant", 105), ("controversy", 130)]},
   "goals_saves": {"duration": 180.0, "events": [("goal", 20, "home"), ("save", 55), ("swell", 75), ("goal", 100, "away"), ("save", 140), ("chant", 160)]},
   "mixed":       {"duration": 180.0, "events": [("save", 15), ("red_card", 40), ("goal", 70, "home"), ("swell", 105), ("goal", 125, "home"), ("save", 160)]},
 }
 ```
-Totals: 5 goals, 5 saves, 3 red cards, 3 controversies (16 labels) and 5 distractors.
+Totals: 5 goals, 5 saves, 3 red cards, 3 controversies (16 labels) and 5 distractors. Labels per match are cards 4, controversy 3, goals_saves 4, mixed 5.
 
 ## build.py interface
 ```python
@@ -151,13 +153,13 @@ There is no minimum score; this task records the baseline. The README values mus
 - Unit, `tests/test_eval_fixtures.py::test_committed_labels_match_generator`: compare each committed labels.json byte for byte with match_labels and check the key set, type set and sorting (AC2).
 - Unit, `test_set_coverage_and_spacing`: check the per-type label counts (5/5/3/3), 5 distractors, 180 s durations, footprints within [10, 170] and >= 12 s gaps (AC2, AC3).
 - Unit, `test_untracked_video`: `git ls-files tests/fixtures/eval` lists only build.py and the 4 labels.json files; skip if git is unavailable (AC2).
-- Unit, `test_scoreboard_changes_only_at_goals`: sample every 0.1 s, count SCOREBOARD crop changes and their times, and check score_at values (AC4).
+- Unit, `test_scoreboard_changes_only_at_goals`: sample at integer-tenth times t=k/10, count SCOREBOARD crop changes and their times, and check score_at values (AC4).
 - Unit, `test_red_closeup_only_for_red_cards`: compute the red share on 0.1 s samples inside and outside the windows (AC5).
-- Unit, `test_replays_repeat_source_and_play_moves`: check replay equality outside the box, motion in play, and stillness during frozen spans (AC6).
-- Unit, `test_audio_level_cues`: compute 0.1 s RMS dB from audio_track and check goal >= 8 s roar, save 2-3 s, red-card quiet, distractor peak and slow rise vs. sharp save (AC7).
+- Unit, `test_replays_repeat_source_and_play_moves`: check replay equality outside the box; require motion for at least 95% of eligible integer-tenth samples; and require stillness only for frozen pairs outside replay and red close-up windows (AC6).
+- Unit, `test_audio_level_cues`: compute aligned, non-overlapping 0.1 s RMS dB windows; use stepped 1 s distractor peaks; and compare integer rise indices (distractors >=10, saves <=2) while checking goal, save and red-card levels (AC7).
 - Unit, `test_audio_spectral_cues`: compute FFT band shares per whole second for the whistle 2.8-3.2 kHz and booing < 220 Hz, inside and outside their spans (AC8).
 - Integration (ffmpeg; module-scope `eval_set` fixture = build.build_all(tmp_path_factory.mktemp('eval'))), `test_encoded_format_ffprobe`: check codecs, size, fps, audio channels and rate, duration, and that no temp file is left (AC9).
-- Integration, `test_decoded_cues_survive_encoding`: decode frames with ffmpeg -ss for the scoreboard at goal t0+3 vs. t0-1 and red_card t0+6; read whistle share via sportscut.media.extract_audio (AC9).
+- Integration, `test_decoded_cues_survive_encoding`: decode frames with ffmpeg -ss for the scoreboard at goal t0+3 vs. t0-1 (render MAD <=20, before/after MAD >=10) and red_card t0+6; read whistle share via sportscut.media.extract_audio (AC9).
 - Integration, `test_build_is_idempotent` and `test_force_and_changed_labels_rebuild`: compare mtime_ns and bytes; in a separate tmp dir, delete one labels.json and check that it is rewritten and that match is re-encoded (AC10).
 - Integration, `test_eval_oracle_matches_all_labels` and `test_eval_all_other_baseline_shape`: monkeypatch `sportscut.detect.find_highlights` and call evaluate_dir (AC11).
 - Integration, `test_eval_cli_real_detector_json`: run main(['eval', dir, '--json']) with capsys, then check one line, the key set, per_match order and predictions > 0 (AC12).
