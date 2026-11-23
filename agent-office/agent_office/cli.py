@@ -364,6 +364,11 @@ def doctor_codex_provider(cfg) -> bool:
         return False
     print(f"ok      codex provider: {info.name} ({where})" + (f", base_url {info.base_url}" if info.base_url else ""))
     ok = True
+    ef = cfg.codex.env_file
+    if ef:
+        names = sorted(read_env_file(ef))
+        print(f"{'ok' if Path(ef).is_file() else 'note':<7} env file {ef}: "
+              + (f"gives {', '.join(names) or 'nothing'}" if Path(ef).is_file() else "not found"))
     if info.env_key:
         from_file = info.env_key in read_env_file(cfg.codex.env_file)
         if from_file or os.environ.get(info.env_key):

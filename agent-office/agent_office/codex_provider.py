@@ -44,6 +44,9 @@ def provider_info(env: Mapping[str, str] | None = None) -> ProviderInfo:
     except (OSError, tomllib.TOMLDecodeError) as e:
         return ProviderInfo(config_path=str(path), error=str(e))
     name = str(raw.get("model_provider") or "openai")
+    profile = (raw.get("profiles") or {}).get(str(raw.get("profile") or "")) or {}
+    if isinstance(profile, dict) and profile.get("model_provider"):
+        name = str(profile["model_provider"])  # `profile = "x"` + [profiles.x] model_provider wins
     prov = (raw.get("model_providers") or {}).get(name) or {}
     if not isinstance(prov, dict):
         prov = {}

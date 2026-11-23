@@ -372,8 +372,8 @@ class Office:
         self.store.save()
         self.store.event("agent_working", agent=agent_name, provider=provider, task_id=task_id, label=label,
                          sessions=len(agent.active))
-        self.echo(f"  [{agent_name}@{provider}] {label} ({task_id})...")
         log_path = self.store.log_path(task_id, f"{label}-{agent_name}")
+        self.echo(f"  [{agent_name}@{provider}] {label} ({task_id})... log {log_path}")
         try:
             with self._unlocked():
                 role = "write" if label == "dev" or label == "test" else "read"

@@ -163,3 +163,37 @@ def test_init_keeps_the_env_file_out_of_git(env):
     out = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=env.repo,
                          capture_output=True, text=True).stdout
     assert ".agent-office/.env" not in out
+
+
+# ---------------------------------------------------------------- follow-up: key still missing, run looked hung
+def test_provider_in_a_codex_profile_is_found(tmp_path, monkeypatch):
+    codex_home(tmp_path, monkeypatch, 'profile = "lb"\n\n[profiles.lb]\nmodel_provider = "codex-lb"\n\n'
+               + LB_CONFIG.split("\n\n", 1)[1])
+    info = provider_info()
+    assert info.name == "codex-lb" and info.env_key == "CODEX_LB_API_KEY"
+
+
+def test_call_log_says_where_the_env_came_from_without_the_value(env, tmp_path, monkeypatch):
+    codex_home(tmp_path, monkeypatch)
+    (env.repo / ".agent-office" / ".env").write_text("export CODEX_LB_API_KEY='sk-clb-secret'\n")
+    office = env.office()
+    office.add_request("Cut highlights")
+    env.run_all(office)
+    logs = sorted((env.repo / ".agent-office" / "logs").rglob("*-dev.log"))
+    text = logs[0].read_text()
+    assert "--- env:" in text and ".agent-office/.env" in text and "CODEX_LB_API_KEY" in text
+    assert "codex-lb needs CODEX_LB_API_KEY: set" in text and "sk-clb-secret" not in text
+    started = [ln for ln in env.lines if "[dev@codex]" in ln and "log " in ln]
+    assert started and "-dev.log" in started[0]  # the log path is shown when the call starts
+
+
+def test_codex_that_hangs_after_missing_env_is_stopped_at_once(env, tmp_path, monkeypatch):
+    import time
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "no-codex-config"))
+    env.script(codex_dev=[{"missing_env": "CODEX_LB_API_KEY", "hang": 60}])
+    office = env.office()
+    office.add_request("Cut highlights")
+    t0 = time.monotonic()
+    env.run_all(office)
+    assert time.monotonic() - t0 < 30
+    assert office.store.agents["dev"].rest_cause == "env"

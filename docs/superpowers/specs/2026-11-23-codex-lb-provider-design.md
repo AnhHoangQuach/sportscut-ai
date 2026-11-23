@@ -56,3 +56,19 @@ codex-lb proxy (`model_provider = "codex-lb"`, `env_key = "CODEX_LB_API_KEY"` in
 4. Codex's "Missing environment variable" output is classified the same way.
 5. `office doctor` shows provider, base_url, key status (FAIL + fix when missing) and server reachability.
 6. Tests never read the developer's real `~/.codex` (`CODEX_HOME` points to a temp dir).
+
+## Follow-up (same day): key still missing, run looked hung
+
+After the first fix the PO saw `[tester@codex] test (T-008)...` with no further output and a log
+with `Missing environment variable`. The office printed nothing while a CLI ran and wrote the log
+only at the end, so a long tester run and a stuck one looked the same, and nothing showed whether
+the key reached the call. Changes:
+
+- `CliAgent.run` streams stdout/stderr into the log as they arrive; the start line shows the log path.
+- The log header has `--- env: env_file <path> (exists|missing) gives <names>; provider <p> needs <key>: set|MISSING ---`.
+- A line matching codex's missing-variable error stops the CLI at once (exit 1 -> `env` rest).
+- `provider_info` honours `profile = "<name>"` with `[profiles.<name>] model_provider`.
+- `office doctor` prints the env file path and the variable names it gives.
+
+7. A CLI that prints the missing-variable error and keeps running is stopped within seconds.
+8. Every call log shows where the env came from and whether the provider key was set, without values.
