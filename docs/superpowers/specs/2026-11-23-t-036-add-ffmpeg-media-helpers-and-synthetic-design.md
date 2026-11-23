@@ -50,6 +50,7 @@ After foundation, create `sportscut/media.py`, `tests/conftest.py`, `tests/test_
 - T-036 (R-001): The synthetic clip is generated once per session in pytest's temp dir with lavfi sources and the built-in mpeg4/aac encoders (no libx264). Its layout is a contract for later detector tests: 6 s, 160x120@10fps, black 0-3 s / white 3-6 s (one scene change at 3.0 s), stereo 44.1 kHz seeded white noise at 0.02 with a x20 burst at 2-3 s.
 - T-036 (R-001): Fixture checks use windows away from edges (AAC smearing) and thresholds (RMS ratio >= 5, gray < 64 / > 192) instead of exact values, so they hold across ffmpeg versions.
 - T-036 (R-001): No media file is ever committed; generated media lives only in pytest temp dirs, and the existing `.gitignore` media patterns are kept as they are.
+- T-029: exception for the player-touch eval set — tests/fixtures/eval_player/build.py may write git-ignored clip.mp4 files inside tests/fixtures/eval_player/ for the eval command; pytest still builds only in temp dirs and no media is committed.
 
 ## Existing specs this task changes
 

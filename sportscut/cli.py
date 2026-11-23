@@ -4,6 +4,7 @@ import sys
 
 from sportscut import __version__
 from sportscut.detect import find_highlights
+from sportscut.eval_player import evaluate_dir
 from sportscut.media import MediaError
 
 
@@ -24,10 +25,22 @@ def main(argv: list[str] | None = None) -> int:
     detect_parser.add_argument("--min-len", type=float, default=10)
     detect_parser.add_argument("--max-len", type=float, default=30)
     detect_parser.add_argument("--json", action="store_true")
+    eval_player_parser = subparsers.add_parser("eval-player", help="evaluate player-touch detection")
+    eval_player_parser.add_argument("directory")
+    eval_player_parser.add_argument("--json", action="store_true")
 
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
+        return 0
+
+    if args.command == "eval-player":
+        try:
+            report = evaluate_dir(args.directory)
+        except (ValueError, OSError, MediaError) as exc:
+            print(f"sportscut eval-player: error: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(report) if args.json else json.dumps(report, indent=2))
         return 0
 
     try:
