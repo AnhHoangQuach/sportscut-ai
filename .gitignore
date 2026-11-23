@@ -8,3 +8,5 @@ dist/
 *.mp4
 *.mkv
 *.wav
+# real match footage and labels (eval only, never committed)
+data/

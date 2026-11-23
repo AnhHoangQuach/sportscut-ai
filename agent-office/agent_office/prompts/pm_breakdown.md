@@ -11,6 +11,16 @@ unclear. So:
   care about and you cannot infer it from the request or repo. Then return questions
   instead of tasks.
 
+Think before you split (if the Superpowers skill `brainstorming` is available, follow it; it
+is the same discipline):
+- Restate the PO's real goal and how we will know it is reached (a command, a metric).
+- Consider 2-3 approaches, pick the simplest that meets the goal (YAGNI), and say why in
+  the first task's brief.
+- When the request is about quality/accuracy, the FIRST task builds the measurement
+  (labelled fixtures + an eval command printing a JSON score) so later tasks improve a
+  number instead of guessing. Never plan "optimize X" without a way to measure X.
+- Each task is a vertical slice that leaves the product working, not a horizontal layer.
+
 Split the request into the smallest sensible set of tasks. Each task must:
 - be finishable in ONE small pull request (roughly < 400 changed lines),
 - be independently testable,

@@ -513,7 +513,8 @@ class Office:
         elif task.review_comments:
             mode = "This is a revision: address every blocker/major item under 'Review feedback' in TASK.md."
         elif task.test_output:
-            mode = "Tests failed last time: see 'Last failing test output' in TASK.md and fix the cause."
+            mode = ("Tests or the eval failed last time: see 'Last failing test output' in TASK.md. Debug it "
+                    "systematically: reproduce, find the root cause, add a test that captures it, then fix.")
         else:
             mode = "This is a fresh start on the task."
         res = self._call("codex", prompt("dev", task_id=task.id, mode=mode), path, task.id, "dev", task)
@@ -576,6 +577,49 @@ class Office:
                            timeout=1800)
         return p.returncode == 0, f"$ {self.cfg.test_cmd}\n(exit {p.returncode})\n{p.stdout[-6000:]}\n{p.stderr[-3000:]}"
 
+    def _run_eval(self, path: Path) -> tuple[float | None, str]:
+        """Run eval_cmd and read the metric from the last JSON object it prints."""
+        try:
+            p = subprocess.run(self.cfg.eval_cmd, shell=True, cwd=path, capture_output=True, text=True,
+                               timeout=3600)
+        except subprocess.TimeoutExpired:
+            return None, f"$ {self.cfg.eval_cmd}\n(timed out)"
+        out = f"$ {self.cfg.eval_cmd}\n(exit {p.returncode})\n{p.stdout[-3000:]}\n{p.stderr[-1500:]}"
+        if p.returncode != 0:
+            return None, out
+        for line in reversed(p.stdout.strip().splitlines()):
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(d, dict) and isinstance(d.get(self.cfg.eval_metric), (int, float)):
+                return float(d[self.cfg.eval_metric]), out
+        try:
+            d = extract_json(p.stdout)
+            return float(d[self.cfg.eval_metric]), out
+        except Exception:  # noqa: BLE001
+            return None, out + f"\n(no JSON with \"{self.cfg.eval_metric}\" in the output)"
+
+    def _eval_problem(self, task: Task, path: Path) -> str:
+        """Measure the task's branch; return why it is worse than the base branch ('' if fine)."""
+        if not self.cfg.eval_cmd:
+            return ""
+        with self._unlocked():
+            score, out = self._run_eval(path)
+        m = self.cfg.eval_metric
+        if score is None:
+            return f"eval command failed or printed no {m}:\n{out[-3000:]}"
+        task.eval_score = score
+        base = self.store.meta.get("eval_baseline")
+        self.store.event("eval", task_id=task.id, metric=m, score=score, baseline=base)
+        if base is None:
+            return ""
+        drop = (base - score) if self.cfg.eval_higher_is_better else (score - base)
+        if drop > self.cfg.eval_max_drop:
+            return (f"eval {m} got worse: {score:.4f} vs {base:.4f} on {self.cfg.base_branch} "
+                    f"(allowed drop {self.cfg.eval_max_drop}). Find what lowered it and fix it.\n{out[-2500:]}")
+        return ""
+
     def _test(self, task: Task) -> None:
         path = self._ensure_worktree(task)
         extra = f"The orchestrator will also run: `{self.cfg.test_cmd}`" if self.cfg.test_cmd else ""
@@ -588,10 +632,16 @@ class Office:
             cmd_pass, cmd_out = self._run_test_cmd(path)
         self._clear_checkpoint(task)
         if agent_pass and cmd_pass:
+            problem = self._eval_problem(task, path)
+            if problem:
+                cmd_pass, cmd_out = False, problem
+        if agent_pass and cmd_pass:
             task.test_output = ""
             report = path / wt.NOTES_DIR / "TEST_REPORT.md"
             agent_summary = report.read_text(encoding="utf-8")[-3000:] if report.exists() else res.text[-2000:]
-            (wt.notes_dir(path) / "TEST_SUMMARY.md").write_text(f"{agent_summary}\n\n{cmd_out[-2000:]}",
+            score = (f"\n\nEval {self.cfg.eval_metric}: {task.eval_score:.4f} (base branch: "
+                     f"{self.store.meta.get('eval_baseline', 'none yet')})" if task.eval_score is not None else "")
+            (wt.notes_dir(path) / "TEST_SUMMARY.md").write_text(f"{agent_summary}\n\n{cmd_out[-2000:]}{score}",
                                                                 encoding="utf-8")
             self._move(task, Stage.REVIEW, "tests pass")
             self.say("codex", "claude", f"{task.id} test pass, nhờ Claude review.", task.id, kind="handoff")
@@ -609,10 +659,12 @@ class Office:
         path = self._ensure_worktree(task)
         summary_file = path / wt.NOTES_DIR / "TEST_SUMMARY.md"
         test_summary = summary_file.read_text(encoding="utf-8") if summary_file.exists() else "(not recorded)"
+        notes_file = path / wt.NOTES_DIR / "DEV_NOTES.md"
+        dev_notes = notes_file.read_text(encoding="utf-8")[-6000:] if notes_file.exists() else "(none written)"
         rnd = task.review_round + 1
         res = self._call("claude", prompt(
             "review", task_id=task.id, round=rnd, max_rounds=MAX_REVIEW_ROUNDS, spec=task.spec,
-            acceptance_criteria=bullets(task.acceptance_criteria), test_summary=test_summary,
+            acceptance_criteria=bullets(task.acceptance_criteria), test_summary=test_summary, dev_notes=dev_notes,
             diff=wt.diff(path, task.base_ref) or "(empty diff)"), path, task.id, f"review{rnd}", task)
         if res is None:
             return
@@ -672,10 +724,15 @@ class Office:
             self.say("claude", "codex", f"{task.id} xung đột với {self.cfg.base_branch} (task khác vừa merge). "
                      "Codex merge lại và gỡ xung đột nhé.", task.id, kind="conflict")
             return
-        if auto and self.cfg.test_cmd and wt.git(path, "rev-parse", "HEAD") != before:
+        if auto and wt.git(path, "rev-parse", "HEAD") != before and (self.cfg.test_cmd or self.cfg.eval_cmd):
             # Other tasks merged meanwhile: make sure the combination still passes before merging.
-            with self._unlocked():
-                ok, out = self._run_test_cmd(path)
+            ok, out = True, ""
+            if self.cfg.test_cmd:
+                with self._unlocked():
+                    ok, out = self._run_test_cmd(path)
+            if ok:
+                out = self._eval_problem(task, path)
+                ok = not out
             if not ok:
                 task.test_output = out[-6000:]
                 self._move(task, Stage.DEV, f"tests fail after merging the latest {self.cfg.base_branch}")
@@ -704,6 +761,10 @@ class Office:
             self._block(task, f"could not merge: {e}")
             return
         self.store.event("pr_merged", task_id=task.id, url=task.pr_url, by="auto")
+        if task.eval_score is not None:
+            self.store.meta["eval_baseline"] = task.eval_score
+            self.store.meta.setdefault("eval_history", []).append(
+                {"task_id": task.id, "score": task.eval_score, "at": now_iso()})
         self._finish(task, "auto-merged after approval")
         self.say("claude", "po", f"Đã merge {task.id} '{task.title}' vào {self.cfg.base_branch}.", task.id,
                  kind="merged")
@@ -725,6 +786,8 @@ class Office:
             else:
                 is_merged = wt.pr_state(self.repo, t.pr_url) == "MERGED"
             if is_merged:
+                if t.eval_score is not None:
+                    self.store.meta["eval_baseline"] = t.eval_score
                 self._finish(t, "merged by PO")
                 merged.append(t.id)
         if merged:

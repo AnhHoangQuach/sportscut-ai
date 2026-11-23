@@ -37,6 +37,9 @@ def collect(store: Store, cfg: Config) -> dict[str, Any]:
         "done": len(done),
         "avg_review_rounds": round(sum(t.review_round for t in done) / len(done), 2) if done else 0,
         "events": counts,
+        "eval": {"metric": cfg.eval_metric, "enabled": bool(cfg.eval_cmd),
+                 "baseline": store.meta.get("eval_baseline"),
+                 "history": store.meta.get("eval_history", [])[-20:]},
     }
 
 
@@ -55,4 +58,8 @@ def render(st: dict[str, Any]) -> str:
     lines.append(f"Merged {e['pr_merged']} | avg review rounds {st['avg_review_rounds']} | conflicts "
                  f"{e['merge_conflict']} (resolved {e['conflict_resolved']}) | guardrail stops {e['guardrail']} | "
                  f"agent failures {e['agent_failed']}")
+    ev = st["eval"]
+    if ev["enabled"]:
+        hist = " → ".join(f"{h['score']:.3f}" for h in ev["history"][-8:]) or "no merges measured yet"
+        lines.append(f"Quality ({ev['metric']}): {hist}")
     return "\n".join(lines)

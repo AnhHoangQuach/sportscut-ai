@@ -26,7 +26,7 @@ Sửa `.agent-office/config.toml` cho repo này:
 [office]
 base_branch = "main"
 test_cmd = "python -m pytest -q tests"
-protected_paths = ["agent-office/"]   # agent không được sửa chính orchestrator
+protected_paths = ["agent-office/", "AGENTS.md", "CLAUDE.md"]   # agent không sửa orchestrator và quy tắc
 merge_mode = "auto"                   # review đạt + test pass thì tự merge vào main
 ```
 
@@ -41,5 +41,11 @@ office demo          # xem các agent phối hợp bằng agent mô phỏng, kh�
 
 Hoặc chỉ dùng terminal: `office request -f agent-office/examples/sportscut/po_request.md`
 rồi `office run --watch`.
+
+Khi MVP xong, giao yêu cầu thứ hai để tăng độ chính xác bằng số đo (F1 trên bộ nhãn):
+`office request -f agent-office/examples/sportscut/po_request_accuracy.md`. Quy tắc làm việc
+chung của các agent (TDD, đo trước tối ưu sau, có bằng chứng mới báo xong) ở [AGENTS.md](AGENTS.md).
+
+Tài liệu đầy đủ (kiến trúc multi-agent, code, văn phòng 3D, công nghệ SportsCut, áp dụng cho dự án khác): [docs/](docs/README.md).
 
 Chi tiết: [agent-office/README.md](agent-office/README.md).
