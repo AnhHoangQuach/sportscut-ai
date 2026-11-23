@@ -9,6 +9,8 @@ const status = document.querySelector("#status")
 const error = document.querySelector("#error")
 const jobTitle = document.querySelector("#job-title")
 const pathMatch = location.pathname.match(/^\/jobs\/([^/]+)\/?$/)
+save.disabled = true
+addSegment.disabled = true
 
 let jobId = null
 let duration = 0
@@ -166,6 +168,8 @@ async function loadJob() {
       return
     }
     acceptResponse(data)
+    save.disabled = false
+    addSegment.disabled = false
     jobTitle.textContent = data.source_name ?? data.source_url
     player.src = `/highlights/${encodeURIComponent(jobId)}/source`
     render()

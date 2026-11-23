@@ -170,3 +170,8 @@ Then these numbered steps: open `http://127.0.0.1:8000/`; choose a file or paste
 - test_preview_flow_end_to_end (uses `synthetic_video`, which depends on `require_ffmpeg`): the AC8 sequence, with clip durations checked by writing the download bytes to tmp_path and calling `media.probe_duration` (AC8).
 - tests/test_t009_acceptance.py (Tester, written independently from the ACs, not copied from the Developer's tests): re-check AC1–AC9 with its own fixtures, including a second PUT with an empty list after the edit (GET /jobs still 200, the highlights list empty) and confirmation that mutating `validateSegments` bounds (e.g. allowing end > duration) or removing the route makes the tests fail. AC9 is checked by reading README.md in a test. The Tester confirms the Node tests actually ran (not skipped) via `-rs`.
 - Regression: full `.venv/bin/python -m pytest -q` (the existing T-005/T-007/T-008 tests in test_api.py, test_web.py and test_t00x_acceptance.py stay green and unchanged).
+
+## Deviations
+
+- Review round 1 adds a startup guard not called out in the original plan: Save and Add remain disabled until a successful job response has passed `acceptResponse`. This prevents a failed or incomplete load from exposing an empty-list replacement action.
+- `.segment button { width: auto }` is an intentional extra selector beyond the CSS list because the existing global `button { width: 100% }` rule would otherwise stretch every preview-row button and defeat the specified flex-wrap layout.

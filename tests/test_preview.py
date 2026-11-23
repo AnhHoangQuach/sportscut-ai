@@ -226,6 +226,15 @@ def test_preview_js_contract():
     validate_at = source.index("T.validateSegments(segments, duration)", save_at)
     put_at = source.index("fetch(`/highlights/${encodeURIComponent(jobId)}/segments`", save_at)
     assert validate_at < put_at
+    load_at = source.index("async function loadJob()")
+    initial_disable_at = source.index(
+        "save.disabled = true\naddSegment.disabled = true"
+    )
+    accepted_at = source.index("acceptResponse(data)", load_at)
+    enable_at = source.index(
+        "save.disabled = false\n    addSegment.disabled = false", accepted_at
+    )
+    assert initial_disable_at < load_at < accepted_at < enable_at
     assert "http://" not in source and "https://" not in source
 
 

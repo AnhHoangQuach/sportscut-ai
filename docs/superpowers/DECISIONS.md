@@ -200,3 +200,4 @@ Newest last. Format: date, task (request): decision.
 - 2026-11-23 T-009 (R-002): T-009 (R-002): Node runs only in the tests, to execute timefmt.js. These tests skip with reason 'node is required on PATH' when node is absent, and the product needs no Node, npm or build step (T-008 AC10 still holds).
 - 2026-11-23 T-009 (R-002): T-009 (R-002): No pyproject change is needed, because the existing `web/*.html`/`web/*.js`/`web/*.css` package-data globs already ship the new files.
 - 2026-11-23 T-009 (R-002): T-009 (R-002): The task does not touch detection accuracy, so no eval/F1 gate applies.
+- 2026-11-24 T-009 (R-002): Review round 1 keeps Save and Add disabled until the initial job response passes client-side response validation. Any missing or invalid job id, failed request, non-OK response or invalid response body leaves them disabled so uninitialized state cannot replace the server's segments with an empty list.
