@@ -217,11 +217,12 @@ def test_t010_ac2_api_response_keys_unchanged(tmp_path: Path, monkeypatch) -> No
     from fastapi.testclient import TestClient
 
     import sportscut.api as api
-    from sportscut import pipeline
+    from sportscut import media, pipeline
 
     monkeypatch.setenv("SPORTSCUT_DATA_DIR", str(tmp_path))
     entry = {**_segment(1, 12, 0.9, "goal").to_dict(), "file": "clip_01.mp4"}
     monkeypatch.setattr(pipeline, "run", lambda *a, **k: [entry])
+    monkeypatch.setattr(media, "probe_duration", lambda _path: 20.0)
     response = TestClient(api.app).post("/highlights", files={"file": ("x.mp4", b"data")})
     assert response.status_code == 200
     (highlight,) = response.json()["highlights"]

@@ -56,3 +56,11 @@ Goal of R-002: a user opens a web page, uploads a video or pastes a YouTube link
 ## Existing specs this task changes
 
 - `docs/superpowers/specs/2026-11-23-t-005-expose-post-highlights-over-http-with-design.md`
+
+## Updated by T-007
+
+- The one-field `job.json` is replaced by the full atomic job manifest shared by
+  upload and URL jobs: source metadata, duration, version, and current segments.
+- URL POST responses use the same expanded canonical shape as uploads, and URL jobs
+  support the same job read, ranged source stream, and full-list segment edit
+  endpoints.

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from sportscut import pipeline, sources
+from sportscut import media, pipeline, sources
 from sportscut.api import app
 
 
@@ -205,12 +205,16 @@ def test_t006_acceptance_blank_url_is_an_upload(
 ):
     client, root = acceptance_client
     monkeypatch.setattr(pipeline, "run", lambda *_a, **_k: [])
+    monkeypatch.setattr(media, "probe_duration", lambda _path: 1.0)
     response = client.post(
         "/highlights", files={"file": ("short.mp4", b"x")}, data={"url": blank}
     )
     assert response.status_code == 200
     job = root / "jobs" / response.json()["job_id"]
-    assert json.loads((job / "job.json").read_text()) == {"source_url": None}
+    assert json.loads((job / "job.json").read_text()) == {
+        "source_name": "short.mp4", "source_url": None, "duration": 1.0,
+        "version": 0, "segments": [],
+    }
     assert client.get(f"/highlights/{job.name}/clips/job.json").status_code == 404
 
 
@@ -241,15 +245,21 @@ def test_t006_acceptance_url_job_layout_and_response(acceptance_client, monkeypa
 
     monkeypatch.setattr(sources, "download_youtube", download)
     monkeypatch.setattr(pipeline, "run", lambda *_a, **_k: [])
+    monkeypatch.setattr(media, "probe_duration", lambda _path: 12.0)
     url = "https://youtu.be/abc123"
     response = client.post("/highlights", data={"url": url})
     assert response.status_code == 200
-    assert set(response.json()) == {"job_id", "highlights"}
+    assert set(response.json()) == {
+        "job_id", "source_name", "source_url", "duration", "highlights"
+    }
     job = root / "jobs" / response.json()["job_id"]
     assert calls == [(url, job / "download")]
     assert (job / "input").read_bytes() == b"synthetic-video"
     assert not (job / "download").exists()
-    assert json.loads((job / "job.json").read_text()) == {"source_url": url}
+    assert json.loads((job / "job.json").read_text()) == {
+        "source_name": None, "source_url": url, "duration": 12.0,
+        "version": 0, "segments": [],
+    }
 
 
 @pytest.mark.parametrize("unexpected", [False, True])

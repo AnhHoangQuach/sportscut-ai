@@ -58,6 +58,30 @@ def test_export_clips_writes_manifest(synthetic_video, tmp_path):
     assert all((out / entry["file"]).is_file() for entry in manifest)
 
 
+def test_export_clips_version_suffix(synthetic_video, tmp_path):
+    out = tmp_path / "out"
+    segment = Segment(0.5, 2.0, None, "manual")
+
+    assert export_clips(
+        synthetic_video, [segment], out, version_suffix="_v1"
+    ) == [out / "clip_01_v1.mp4"]
+    assert json.loads((out / "highlights.json").read_text()) == [
+        {**segment.to_dict(), "file": "clip_01_v1.mp4"}
+    ]
+
+
+@pytest.mark.parametrize(
+    "suffix", ["v1", "_v0", "_v01", "_v-1", "../_v1", None, 1]
+)
+def test_export_clips_rejects_invalid_version_suffix(tmp_path, suffix):
+    out = tmp_path / "out"
+
+    with pytest.raises(ValueError, match="^invalid version suffix$"):
+        export_clips("missing.mp4", [], out, version_suffix=suffix)
+
+    assert not out.exists()
+
+
 def test_export_clips_empty_segments(synthetic_video, tmp_path):
     out = tmp_path / "out"
     assert export_clips(synthetic_video, [], out) == []

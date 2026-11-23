@@ -48,3 +48,11 @@ Add `sportscut/export.py` with `export_clips(video, segments, out_dir) -> list[P
 ## Existing specs this task changes
 
 - `docs/superpowers/specs/2026-11-23-t-036-add-ffmpeg-media-helpers-and-synthetic-design.md`
+
+## Updated by T-007
+
+- `export_clips` accepts a backward-compatible keyword-only `version_suffix`. The
+  empty default preserves `clip_NN.mp4`; edits accept only `_vN` for positive `N`
+  and produce `clip_NN_vN.mp4` names in both files and the manifest.
+- `Segment.score` may be `null` for manually edited segments. Detector-produced
+  segments and default export behavior remain unchanged.

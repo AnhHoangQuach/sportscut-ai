@@ -86,7 +86,7 @@ Mỗi pha chạm được lấy thêm 3 giây trước và 2 giây sau; các đo
 không có pha chạm thì chỉ có manifest. Việc phát hiện pha chạm vẫn là stub cho
 đến khi T-031..T-033 hoàn thành.
 
-## API HTTP (POST /highlights)
+## API HTTP
 
 Cài phần phụ thuộc API và chạy server cục bộ:
 
@@ -106,7 +106,8 @@ curl -F url=https://www.youtube.com/watch?v=VIDEO_ID \
 curl -o clip_01.mp4 "<clip_url>"
 ```
 
-Phản hồi có dạng `{"job_id":"...","highlights":[{"start":12,"end":24,
+Phản hồi có dạng `{"job_id":"...","source_name":"match.mp4","source_url":null,
+"duration":90,"highlights":[{"start":12,"end":24,
 "score":4.2,"reason":"audio peak z=4.2","clip_url":"http://127.0.0.1:8000/
 highlights/.../clips/clip_01.mp4"}]}`. `SPORTSCUT_DATA_DIR` chọn thư mục dữ liệu
 (mặc định `./sportscut-data`), còn `SPORTSCUT_MAX_UPLOAD_BYTES` đặt giới hạn
@@ -119,6 +120,26 @@ m.youtube.com hoặc youtu.be, dài tối đa 3 giờ; video được tải dư�
 đa 720p và 2 GiB. `file` và `url` loại trừ lẫn nhau. API trả mã 400 khi liên kết
 không hợp lệ hoặc tải thất bại. Người gửi liên kết chịu trách nhiệm bảo đảm mình
 có quyền sử dụng video đó.
+
+Đọc lại job và phát nguồn gốc có hỗ trợ HTTP Range (để tua trong thẻ `<video>`):
+
+```bash
+curl http://127.0.0.1:8000/highlights/JOB_ID
+curl -H 'Range: bytes=0-1048575' \
+  http://127.0.0.1:8000/highlights/JOB_ID/source -o source-part.mp4
+```
+
+Chỉnh thủ công bằng `PUT` với toàn bộ danh sách đoạn thay thế:
+
+```bash
+curl -X PUT -H 'Content-Type: application/json' \
+  -d '{"segments":[{"start":12.5,"end":24,"reason":"manual goal"}]}' \
+  http://127.0.0.1:8000/highlights/JOB_ID/segments
+```
+
+Mỗi lần `PUT` thay thế hoàn toàn danh sách cũ (danh sách rỗng cũng hợp lệ), nhận tối
+đa 50 đoạn và không có lịch sử hoàn tác. Clip mới dùng tên có phiên bản để trình
+duyệt không phát lại bản đã cache.
 
 Hiện việc xử lý diễn ra đồng bộ, chưa có xác thực, các thư mục job thành công
 không tự xóa, và server mặc định chỉ lắng nghe trên localhost.

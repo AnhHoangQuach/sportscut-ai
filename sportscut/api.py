@@ -1,16 +1,23 @@
 import json
 from importlib import resources
+import math
 import os
 from pathlib import Path
+import re
 import shutil
+import tempfile
+from typing import Annotated
 import uuid
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ConfigDict, Field
 
-from sportscut import pipeline, sources
+from sportscut import export, media, pipeline, sources
 from sportscut.media import MediaError
+from sportscut.models import Segment
 from sportscut.pipeline import PipelineError
 from sportscut.sources import SourceError
 
@@ -27,13 +34,190 @@ app = FastAPI(title="SportsCut")
 app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
 
 
+@app.exception_handler(RequestValidationError)
+def validation_error_response(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    errors = exc.errors()
+    for error in errors:
+        value = error.get("input")
+        if isinstance(value, float) and not math.isfinite(value):
+            error["input"] = None
+    return JSONResponse(status_code=422, content={"detail": errors})
+
+FiniteFloat = Annotated[float, Field(strict=True, allow_inf_nan=False)]
+
+
+class SegmentEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start: FiniteFloat
+    end: FiniteFloat
+    reason: str | None = None
+
+
+class SegmentEdits(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    segments: list[SegmentEdit] = Field(max_length=50)
+
+
 def _data_dir() -> Path:
     return Path(os.environ.get("SPORTSCUT_DATA_DIR", "sportscut-data")).resolve()
+
+
+class _JobNotFound(Exception):
+    pass
+
+
+def _job_dir(job_id: str) -> Path:
+    try:
+        if str(uuid.UUID(job_id)) != job_id:
+            raise ValueError
+    except (ValueError, AttributeError, TypeError):
+        raise _JobNotFound from None
+    return _data_dir() / "jobs" / job_id
+
+
+def _finite_number(value: object) -> bool:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def _validate_job(job: object) -> dict[str, object]:
+    if not isinstance(job, dict) or set(job) != {
+        "source_name", "source_url", "duration", "version", "segments"
+    }:
+        raise _JobNotFound
+    source_name, source_url = job["source_name"], job["source_url"]
+    if not (
+        (isinstance(source_name, str) and source_name and source_url is None)
+        or (source_name is None and isinstance(source_url, str) and source_url)
+    ):
+        raise _JobNotFound
+    duration, version, segments = job["duration"], job["version"], job["segments"]
+    if not _finite_number(duration) or duration < 0:
+        raise _JobNotFound
+    if not isinstance(version, int) or isinstance(version, bool) or version < 0:
+        raise _JobNotFound
+    if not isinstance(segments, list):
+        raise _JobNotFound
+    required = {"start", "end", "score", "reason", "file"}
+    for entry in segments:
+        if not isinstance(entry, dict) or set(entry) not in (required, required | {"event"}):
+            raise _JobNotFound
+        start, end, score = entry["start"], entry["end"], entry["score"]
+        name = entry["file"]
+        if not (
+            _finite_number(start) and _finite_number(end)
+            and 0 <= start < end <= duration
+            and (score is None or _finite_number(score))
+            and isinstance(entry["reason"], str)
+            and isinstance(name, str) and name not in ("", ".", "..")
+            and "/" not in name and "\\" not in name
+            and ("event" not in entry or isinstance(entry["event"], str))
+        ):
+            raise _JobNotFound
+    return job
+
+
+def _load_job(job_id: str) -> tuple[Path, dict[str, object]]:
+    job_dir = _job_dir(job_id)
+    try:
+        job = json.loads((job_dir / JOB_FILE).read_text(encoding="utf-8"))
+        return job_dir, _validate_job(job)
+    except (OSError, json.JSONDecodeError, UnicodeError, _JobNotFound):
+        raise _JobNotFound from None
+
+
+def _write_job(path: Path, job: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as output:
+            temporary = Path(output.name)
+            json.dump(job, output, indent=2)
+            output.write("\n")
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _job_response(
+    request: Request, job_id: str, job: dict[str, object]
+) -> dict[str, object]:
+    segments = job["segments"]
+    assert isinstance(segments, list)
+    return {
+        "job_id": job_id,
+        "source_name": job["source_name"],
+        "source_url": job["source_url"],
+        "duration": job["duration"],
+        "highlights": [
+            {
+                "start": entry["start"],
+                "end": entry["end"],
+                "score": entry["score"],
+                "reason": entry["reason"],
+                "clip_url": str(request.url_for(
+                    "get_clip", job_id=job_id, name=entry["file"]
+                )),
+            }
+            for entry in segments
+        ],
+    }
+
+
+def _file_chunks(path: Path, start: int, length: int):
+    with path.open("rb") as source:
+        source.seek(start)
+        remaining = length
+        while remaining:
+            chunk = source.read(min(CHUNK_BYTES, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+
+def _byte_range(value: str, total: int) -> tuple[int, int] | None:
+    match = re.fullmatch(r"bytes=(\d*)-(\d*)", value)
+    if match is None or (not match[1] and not match[2]):
+        return None
+    if not match[1]:
+        suffix = int(match[2])
+        if suffix == 0 or total == 0:
+            return None
+        return max(0, total - suffix), total - 1
+    start = int(match[1])
+    if start >= total:
+        return None
+    end = total - 1 if not match[2] else min(int(match[2]), total - 1)
+    if end < start:
+        return None
+    return start, end
 
 
 @app.get("/", include_in_schema=False)
 def get_web_app() -> FileResponse:
     return FileResponse(WEB_DIR.joinpath("index.html"), media_type="text/html")
+
+
+@app.get("/highlights/{job_id}")
+def get_highlights(request: Request, job_id: str) -> dict[str, object]:
+    try:
+        _, job = _load_job(job_id)
+    except _JobNotFound:
+        raise HTTPException(404, "not found") from None
+    return _job_response(request, job_id, job)
 
 
 @app.post("/highlights")
@@ -75,13 +259,18 @@ def create_highlights(
             downloaded = sources.download_youtube(url, job_dir / DOWNLOAD_DIR)
             os.replace(downloaded, input_path)
             shutil.rmtree(job_dir / DOWNLOAD_DIR, ignore_errors=True)
-        (job_dir / JOB_FILE).write_text(
-            json.dumps({"source_url": url}) + "\n", encoding="utf-8"
-        )
         entries = pipeline.run(
             input_path, job_dir / CLIPS_DIR,
             top=top, min_len=min_len, max_len=max_len,
         )
+        job: dict[str, object] = {
+            "source_name": (file.filename or "upload") if file is not None else None,
+            "source_url": url,
+            "duration": media.probe_duration(input_path),
+            "version": 0,
+            "segments": entries,
+        }
+        _write_job(job_dir / JOB_FILE, job)
     except SourceError as exc:
         shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(400, str(exc)) from exc
@@ -97,35 +286,106 @@ def create_highlights(
     except Exception:
         shutil.rmtree(job_dir, ignore_errors=True)
         raise
-    return {
-        "job_id": job_id,
-        "highlights": [
-            {
-                "start": entry["start"],
-                "end": entry["end"],
-                "score": entry["score"],
-                "reason": entry["reason"],
-                "clip_url": str(request.url_for(
-                    "get_clip", job_id=job_id, name=entry["file"]
-                )),
-            }
-            for entry in entries
-        ],
-    }
+    return _job_response(request, job_id, job)
+
+
+@app.get("/highlights/{job_id}/source")
+def get_source(request: Request, job_id: str):
+    try:
+        job_dir, _ = _load_job(job_id)
+        path = job_dir / INPUT_NAME
+        total = path.stat().st_size
+        if not path.is_file():
+            raise OSError
+    except (_JobNotFound, OSError):
+        raise HTTPException(404, "not found") from None
+
+    headers = {"Accept-Ranges": "bytes"}
+    requested = request.headers.get("range")
+    if requested is None:
+        headers["Content-Length"] = str(total)
+        return StreamingResponse(
+            _file_chunks(path, 0, total), media_type="video/mp4", headers=headers
+        )
+    selected = _byte_range(requested, total)
+    if selected is None:
+        return Response(
+            status_code=416,
+            headers={**headers, "Content-Range": f"bytes */{total}"},
+        )
+    start, end = selected
+    headers.update({
+        "Content-Range": f"bytes {start}-{end}/{total}",
+        "Content-Length": str(end - start + 1),
+    })
+    return StreamingResponse(
+        _file_chunks(path, start, end - start + 1), status_code=206,
+        media_type="video/mp4", headers=headers,
+    )
+
+
+@app.put("/highlights/{job_id}/segments")
+def put_segments(request: Request, job_id: str, edits: SegmentEdits):
+    try:
+        job_dir, job = _load_job(job_id)
+    except _JobNotFound:
+        raise HTTPException(404, "not found") from None
+    duration = job["duration"]
+    assert isinstance(duration, (int, float))
+    if any(not (0 <= item.start < item.end <= duration) for item in edits.segments):
+        raise HTTPException(422, "invalid segment bounds")
+    input_path = job_dir / INPUT_NAME
+    if not input_path.is_file():
+        raise HTTPException(404, "not found")
+    version = job["version"]
+    assert isinstance(version, int)
+    next_version = version + 1
+    suffix = f"_v{next_version}"
+    segments = [
+        Segment(item.start, item.end, None, item.reason or "manual")
+        for item in edits.segments
+    ]
+    clips_dir = job_dir / CLIPS_DIR
+    manifest_path = clips_dir / "highlights.json"
+    try:
+        previous_manifest = manifest_path.read_bytes()
+    except OSError:
+        previous_manifest = None
+    try:
+        export.export_clips(
+            input_path, segments, clips_dir, version_suffix=suffix
+        )
+        entries = json.loads(manifest_path.read_text(encoding="utf-8"))
+        new_job = {**job, "version": next_version, "segments": entries}
+        _validate_job(new_job)
+        _write_job(job_dir / JOB_FILE, new_job)
+    except Exception as exc:
+        for path in clips_dir.glob(f"clip_*{suffix}.mp4"):
+            path.unlink(missing_ok=True)
+        if previous_manifest is None:
+            manifest_path.unlink(missing_ok=True)
+        else:
+            manifest_path.write_bytes(previous_manifest)
+        if isinstance(exc, MediaError):
+            raise HTTPException(500, "processing failed") from exc
+        raise
+    current_files = {entry["file"] for entry in entries}
+    for entry in job["segments"]:
+        if entry["file"] not in current_files:
+            (clips_dir / entry["file"]).unlink(missing_ok=True)
+    return _job_response(request, job_id, new_job)
 
 
 @app.get("/highlights/{job_id}/clips/{name}", name="get_clip")
 def get_clip(job_id: str, name: str) -> FileResponse:
     try:
-        if str(uuid.UUID(job_id)) != job_id:
-            raise ValueError
-        clips_dir = _data_dir() / "jobs" / job_id / CLIPS_DIR
-        entries = json.loads((clips_dir / "highlights.json").read_text())
-        if name not in {entry["file"] for entry in entries}:
-            raise ValueError
+        job_dir, job = _load_job(job_id)
+        clips_dir = job_dir / CLIPS_DIR
+        if name not in {entry["file"] for entry in job["segments"]}:
+            raise _JobNotFound
         path = clips_dir / name
         if not path.is_file():
-            raise ValueError
-    except (ValueError, OSError, json.JSONDecodeError, KeyError, TypeError):
+            raise _JobNotFound
+    except (_JobNotFound, OSError, KeyError, TypeError):
         raise HTTPException(404, "not found") from None
     return FileResponse(path, media_type="video/mp4")
