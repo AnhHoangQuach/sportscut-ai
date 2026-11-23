@@ -85,3 +85,31 @@ Mỗi pha chạm được lấy thêm 3 giây trước và 2 giây sau; các đo
 `--merge-gap`. Thư mục đầu ra chứa `player_red_10.mp4` và `player.json`; nếu
 không có pha chạm thì chỉ có manifest. Việc phát hiện pha chạm vẫn là stub cho
 đến khi T-031..T-033 hoàn thành.
+
+## API HTTP (POST /highlights)
+
+Cài phần phụ thuộc API và chạy server cục bộ:
+
+```bash
+pip install -e '.[api]'
+sportscut serve --host 127.0.0.1 --port 8000
+```
+
+Gửi video và tải một clip từ URL trong kết quả:
+
+```bash
+curl -F file=@match.mp4 -F top=5 -F min_len=10 -F max_len=30 \
+  http://127.0.0.1:8000/highlights
+curl -o clip_01.mp4 "<clip_url>"
+```
+
+Phản hồi có dạng `{"job_id":"...","highlights":[{"start":12,"end":24,
+"score":4.2,"reason":"audio peak z=4.2","clip_url":"http://127.0.0.1:8000/
+highlights/.../clips/clip_01.mp4"}]}`. `SPORTSCUT_DATA_DIR` chọn thư mục dữ liệu
+(mặc định `./sportscut-data`), còn `SPORTSCUT_MAX_UPLOAD_BYTES` đặt giới hạn
+upload (mặc định 2 GiB). API dùng mã 400 cho video đầu vào không hợp lệ, 404 cho
+clip không tồn tại, 413 cho upload quá lớn, 422 cho tham số sai và 500 khi xử lý
+phía server thất bại.
+
+Hiện việc xử lý diễn ra đồng bộ, chưa có xác thực, các thư mục job thành công
+không tự xóa, và server mặc định chỉ lắng nghe trên localhost.

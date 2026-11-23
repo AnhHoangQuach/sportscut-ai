@@ -27,6 +27,7 @@ def test_no_args_prints_help_and_returns_zero(
     assert "usage: sportscut" in captured.out
     assert "detect" in captured.out
     assert "cut" in captured.out
+    assert "serve" in captured.out
     assert captured.err == ""
 
 
@@ -124,6 +125,34 @@ def test_cut_requires_out(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["cut", "x.mp4"])
     assert exc.value.code == 2
+
+
+def test_serve_defaults_call_uvicorn(monkeypatch):
+    import uvicorn
+    calls = []
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: calls.append((a, k)))
+    assert main(["serve"]) == 0
+    from sportscut.api import app
+    assert calls == [((app,), {"host": "127.0.0.1", "port": 8000})]
+
+
+def test_serve_custom_host_port(monkeypatch):
+    import uvicorn
+    calls = []
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: calls.append((a, k)))
+    assert main(["serve", "--host", "0.0.0.0", "--port", "9001"]) == 0
+    assert calls[0][1] == {"host": "0.0.0.0", "port": 9001}
+
+
+def test_serve_without_api_extra_exits_1(monkeypatch, capsys):
+    monkeypatch.setitem(sys.modules, "uvicorn", None)
+    assert main(["serve"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "sportscut: error: the API needs the [api] extra: "
+        "pip install 'sportscut[api]'\n"
+    )
 
 
 @pytest.mark.parametrize("kind", ["missing", "empty", "no_clip"])

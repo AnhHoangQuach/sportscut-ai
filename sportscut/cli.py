@@ -46,10 +46,27 @@ def main(argv: list[str] | None = None) -> int:
     player_parser.add_argument("--pre", type=float, default=3.0)
     player_parser.add_argument("--post", type=float, default=2.0)
     player_parser.add_argument("--merge-gap", type=float, default=4.0)
+    serve_parser = subparsers.add_parser("serve", help="serve the highlights HTTP API")
+    serve_parser.add_argument("--host", default="127.0.0.1")
+    serve_parser.add_argument("--port", type=int, default=8000)
 
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
+        return 0
+
+    if args.command == "serve":
+        try:
+            import uvicorn
+            from sportscut.api import app
+        except ImportError:
+            print(
+                "sportscut: error: the API needs the [api] extra: "
+                "pip install 'sportscut[api]'",
+                file=sys.stderr,
+            )
+            return 1
+        uvicorn.run(app, host=args.host, port=args.port)
         return 0
 
     if args.command == "player":
