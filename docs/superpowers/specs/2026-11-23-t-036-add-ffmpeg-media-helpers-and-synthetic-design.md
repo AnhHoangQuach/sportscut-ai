@@ -54,3 +54,7 @@ After foundation, create `sportscut/media.py`, `tests/conftest.py`, `tests/test_
 ## Existing specs this task changes
 
 - (none)
+
+Updated by T-003: `sportscut.media` also owns frame-accurate clip cutting through
+`cut_clip`, re-encoding video as H.264 and audio as AAC so callers never invoke
+ffmpeg directly.
