@@ -14,6 +14,7 @@
 | `office status` / `board` / `show T-003` | Xem trạng thái, Kanban, chi tiết task |
 | `office answer T-003 "..."` / `office answer R-001 "..."` | Trả lời câu hỏi của Claude |
 | `office wake codex` | Cho agent làm lại ngay (bỏ qua giờ nghỉ) |
+| `office retry-github` | Sau khi sửa `gh` trên máy: kiểm tra GitHub ngay, nếu ổn thì chạy lại ngay mọi PR / merge đang chờ (bị chặn vì GitHub, đang lùi lịch vì mạng, hay Tech Lead cũ bảo "chờ 60 phút"). Chạy được cả khi office đang chạy |
 | `office stats [--json]` | Lượt gọi, quota, xung đột, rào chắn, lịch sử điểm eval |
 | `office sync` | Nhận biết PR đã được merge tay |
 
@@ -23,11 +24,11 @@
 |---|---|---|
 | `0 step(s) done` | Chưa có yêu cầu nào | `office request ...` rồi chạy lại |
 | Văn phòng 3D đứng yên | Runner chưa chạy, hoặc agent đều đang nghỉ / chờ PO | Bấm "Bắt đầu"; xem khung "Cần anh trả lời"; `office status` để thấy lý do chờ |
-| Agent "nghỉ" liên tục | Hết quota thật, hoặc CLI lỗi lặp lại (chưa đăng nhập, sai lệnh) | Xem `.agent-office/logs/<task>/...log`; `office doctor --live` |
+| Agent "nghỉ" liên tục / "sleeping 14 min" dù còn quota | Dòng `Waiting on:` dưới thông báo ngủ ghi rõ: `quota: ...` (CLI thật sự báo hết quota, kèm câu CLI in ra) hay `CLI failed repeatedly, not quota: ...` (CLI lỗi 2 lần liền: chưa đăng nhập, sandbox, mạng, sai lệnh; nghỉ 15/30/60 phút), hoặc một task chờ (`Tech Lead decision`, `GitHub network retry n/4`) | Mở file `log ...` được ghi trong dòng đó (`.agent-office/logs/<task>/NNN-<bước>-<agent>.log`), đọc phần `--- stderr ---`; sửa lỗi rồi `office wake codex` (hoặc `claude`) để làm ngay. Một lần chạy thành công (exit 0) không bao giờ bị coi là hết quota |
 | Task `blocked` | Chỉ còn một lý do: câu hỏi **nghiệp vụ** cho PO (Tech Lead đã lọc). Vướng kỹ thuật (rào chắn, hết lượt test/review/xung đột, thiếu thư viện) do Tech Lead tự xử lý, task hiện nhãn "Tech Lead xử lý" | `office show T-xxx` xem câu hỏi; trả lời bằng `office answer`. Task bị "gác lại" thì xem dòng `Tech Lead` trong `docs/superpowers/DECISIONS.md` |
 | Task `blocked` vì thiếu thư viện/tool | Đã thử `dep_retries` lần mà vẫn thiếu; `setup_cmd` lỗi; tool hệ thống (ffmpeg) chưa có | Xem mục `ENVIRONMENT` trong log dev; sửa `setup_cmd` hoặc cài tool trên máy; `office answer T-xxx "đã cài"` (xem [2.7](02-quota-song-song-rao-chan.md#27-agent-tự-cài-dependency-khi-thiếu)) |
 | "Another `office run` is already working" | Đã có runner khác | Dừng runner kia (nút "Dừng" hoặc Ctrl+C); file `runner.pid` cũ tự bị bỏ qua nếu tiến trình đã chết |
-| Task `blocked` "environment problem for the user", tin "Cần anh sửa trên máy" | Duyệt xong nhưng `git push` / `gh pr create` / `gh pr merge` bị GitHub từ chối: `gh` chưa đăng nhập hoặc token hết hạn, tài khoản `gh` không có quyền ghi repo (đăng nhập nhầm tài khoản), `GH_TOKEN` cũ ghi đè, hoặc mất mạng lâu | Chạy `office doctor` (xem [9.1](#91-office-không-tạo-được-pr--merge)), làm theo dòng `->`; office tự kiểm tra lại mỗi 5 phút và tạo PR / merge tiếp, không cần `office answer` |
+| Task `blocked` "environment problem for the user", tin "Cần anh sửa trên máy" | Duyệt xong nhưng `git push` / `gh pr create` / `gh pr merge` bị GitHub từ chối: `gh` chưa đăng nhập hoặc token hết hạn, tài khoản `gh` không có quyền ghi repo (đăng nhập nhầm tài khoản), `GH_TOKEN` cũ ghi đè, hoặc mất mạng lâu | Chạy `office doctor` (xem [9.1](#91-office-không-tạo-được-pr--merge)), làm theo dòng `->`; office tự kiểm tra lại mỗi 5 phút; muốn chạy ngay thì `office retry-github` |
 | Merge thất bại "uncommitted changes on main" | Có thay đổi chưa commit ở repo chính | Commit hoặc stash ở repo chính |
 | Eval làm task quay vòng mãi | Chỉ số dao động ngẫu nhiên | Đặt `max_drop` nhỏ (ví dụ 0.01), cố định seed trong eval |
 
@@ -61,6 +62,7 @@ gh auth setup-git                    # git push dùng cùng đăng nhập với 
 unset GH_TOKEN GITHUB_TOKEN          # nếu biến cũ ghi đè đăng nhập
 gh api repos/<owner>/<repo> --jq .permissions   # cần push: true
 office doctor                        # phần "GitHub" phải toàn ok
+office retry-github                  # chạy lại PR / merge ngay, không chờ 5 phút
 ```
 
 Đừng chạy `office run` từ bên trong một phiên Claude Code / Codex (sandbox chặn mạng và

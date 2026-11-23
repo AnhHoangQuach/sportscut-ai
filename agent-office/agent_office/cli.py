@@ -117,9 +117,7 @@ def cmd_run(args) -> int:
                     plan = next_step(office.store, office.clock(), office.cfg.merge_mode == "auto")
                     if plan.wait_until and not args.no_wait:
                         delay = max(5.0, (plan.wait_until - datetime.now(timezone.utc)).total_seconds())
-                        print(f"Nothing to do while agents rest; sleeping {int(delay // 60)} min until "
-                              f"{plan.wait_until.astimezone().strftime('%H:%M')} (Ctrl+C to stop, state is saved).",
-                              flush=True)
+                        print(sleep_message(plan), flush=True)
                         _nap(office, min(delay, args.poll_max))
                         continue
                     if args.watch:
@@ -140,9 +138,7 @@ def cmd_run(args) -> int:
             plan = next_step(office.store, office.clock(), office.cfg.merge_mode == "auto")
             if plan.wait_until and not args.no_wait:
                 delay = max(5.0, (plan.wait_until - datetime.now(timezone.utc)).total_seconds())
-                print(f"Nothing to do while agents rest; sleeping {int(delay // 60)} min until "
-                      f"{plan.wait_until.astimezone().strftime('%H:%M')} (Ctrl+C to stop, state is saved).",
-                      flush=True)
+                print(sleep_message(plan), flush=True)
                 _nap(office, min(delay, args.poll_max))
                 continue
             if args.watch:
@@ -252,6 +248,12 @@ def cmd_triage(args) -> int:
     return 0
 
 
+def cmd_retry_github(args) -> int:
+    for line in _office(args).submit({"cmd": "retry_github"}):
+        print(line)
+    return 0
+
+
 def cmd_wake(args) -> int:
     for line in _office(args).submit({"cmd": "wake", "agent": args.agent}):
         print(line)
@@ -319,6 +321,17 @@ def cmd_stats(args) -> int:
     st = stats.collect(store, load_config(store.dir))
     print(json.dumps(st, indent=2, ensure_ascii=False) if args.json else stats.render(st))
     return 0
+
+
+def sleep_message(plan, now: datetime | None = None) -> str:
+    """Why the office sleeps: every agent rest (quota or failing CLI, with its log) and task wait."""
+    now = now or datetime.now(timezone.utc)
+    mins = max(0, int((plan.wait_until - now).total_seconds() // 60)) if plan.wait_until else 0
+    lines = [f"Nothing can run now; sleeping {mins} min until "
+             f"{plan.wait_until.astimezone().strftime('%H:%M') if plan.wait_until else '?'} "
+             "(Ctrl+C to stop, state is saved). Waiting on:"]
+    lines += [f"  - {r}" for r in (plan.waiting_on or ["(no reason recorded)"])]
+    return "\n".join(lines)
 
 
 def cmd_sync(args) -> int:
@@ -405,6 +418,8 @@ def main(argv: list[str] | None = None) -> int:
     a.set_defaults(fn=cmd_answer)
     tr = sub.add_parser("triage", help="hand blocks that wait for the PO but are technical to the Tech Lead")
     tr.set_defaults(fn=cmd_triage)
+    sub.add_parser("retry-github", help="after fixing gh: check GitHub now and retry waiting PRs/merges"
+                   ).set_defaults(fn=cmd_retry_github)
     w = sub.add_parser("wake", help="mark a resting agent available now")
     w.add_argument("agent", choices=["claude", "codex"])
     w.set_defaults(fn=cmd_wake)

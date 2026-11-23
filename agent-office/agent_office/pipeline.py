@@ -96,6 +96,19 @@ def _minutes(value: object) -> int:
     return min(24 * 60, max(5, m or 30))
 
 
+def _error_line(res: AgentResult | None) -> str:
+    """The last non-empty line the CLI printed on stderr (else stdout): what a person should read."""
+    if res is None:
+        return "no output"
+    if res.timed_out:
+        return "timed out"
+    for stream in (res.stderr, res.stdout):
+        line = next((ln.strip() for ln in reversed(stream.splitlines()) if ln.strip()), "")
+        if line:
+            return line[:300]
+    return f"exit {res.exit_code}, no output"
+
+
 def prompt(name: str, **vars: object) -> str:
     text = resources.files("agent_office.prompts").joinpath(f"{name}.md").read_text(encoding="utf-8")
     return Template(text).safe_substitute({k: str(v) for k, v in vars.items()})
@@ -172,6 +185,8 @@ class Office:
                     results.append(f"{t.id} back to {t.stage.value}")
                 elif kind == "triage":
                     results += self.triage() or ["nothing waits for the PO except business questions"]
+                elif kind == "retry_github":
+                    results += self.retry_github()
                 elif kind == "wake":
                     self.wake(str(c["agent"]))
                     results.append(f"{c['agent']} marked available")
@@ -402,15 +417,24 @@ class Office:
         a.failures = 0
         a.last_error = hit.matched
         a.rest_cause = "budget" if budget else cause
+        a.rest_detail = hit.matched if cause == "quota" or budget else _error_line(res)
+        a.rest_log = res.log_path if res else ""
+        at = until.astimezone().strftime('%H:%M')
+        log = f" Log: {a.rest_log}" if a.rest_log else ""
         if budget:
             self.say(agent_name, "all", f"Mình dùng hết ngân sách hôm nay ({hit.matched}), mai làm tiếp.",
                      kind="rest")
+        elif cause == "failure":
+            self.say(agent_name, "all", f"CLI {agent_name} lỗi liên tiếp (không phải hết quota): {a.rest_detail}. "
+                     f"Nghỉ tới {at} rồi thử lại.{log}", task.id if task else "", kind="rest")
         else:
-            self.say(agent_name, "all", f"Mình hết quota rồi, nghỉ tới {until.astimezone().strftime('%H:%M')}. "
-                     "Việc đang dở đã lưu checkpoint.", task.id if task else "", kind="rest")
+            self.say(agent_name, "all", f"Mình hết quota rồi ({hit.matched}), nghỉ tới {at}. "
+                     f"Việc đang dở đã lưu checkpoint.{log}", task.id if task else "", kind="rest")
         self.store.event("agent_resting", agent=agent_name, until=a.rest_until, reset_known=known,
-                         matched=hit.matched)
-        self.echo(f"  [{agent_name}] usage limit ({hit.matched!r}); resting until {a.rest_until}")
+                         matched=hit.matched, cause=a.rest_cause, detail=a.rest_detail[:300], log=a.rest_log)
+        what = "usage limit" if cause == "quota" and not budget else ("daily budget" if budget else "CLI failing")
+        self.echo(f"  [{agent_name}] {what} ({a.rest_detail[:160]!r}); resting until {a.rest_until}"
+                  + (f"; see {a.rest_log}" if a.rest_log else ""))
         if task is not None:
             self._checkpoint(task, label, f"{agent_name} usage limit: {hit.matched}", res)
 
@@ -428,7 +452,7 @@ class Office:
                 return
         a.status = AgentStatus.IDLE
         a.rest_until = ""
-        a.rest_cause = ""
+        a.rest_cause = a.rest_detail = a.rest_log = ""
         a.reset_known = False
         a.backoff_level = 0
         self.store.event("agent_awake", agent=agent_name)
@@ -1035,6 +1059,23 @@ class Office:
                 self.say("claude", "po", f"GitHub đã ổn, office tạo PR / merge tiếp: {', '.join(moved)}.", kind="env")
                 self.store.save()
             return moved
+
+    def retry_github(self) -> list[str]:
+        """PO command after fixing gh on the machine: check GitHub now and, if it passes, run every
+        task waiting on GitHub (environment block, network backoff, old Tech Lead `wait`) right away."""
+        checks = self.github_preflight(self.repo, self.cfg.remote)
+        bad = github.problems(checks)
+        if bad:
+            return [f"GitHub chưa ổn: [{c.name}] {c.detail} -> {c.hint}" for c in bad]
+        out = [f"{t} back to pr" for t in self.recheck_environment(force=True)]
+        with self.lock:
+            for t in self.store.tasks.values():
+                if t.stage == Stage.PR and t.retry_at:
+                    t.retry_at, t.net_retries = "", 0
+                    self.store.event("github_retry_now", task_id=t.id)
+                    out.append(f"{t.id}: PR / merge retried now")
+            self.store.save()
+        return out or ["GitHub ổn; không có task nào đang chờ GitHub"]
 
     def _finish(self, task: Task, note: str) -> None:
         self._move(task, Stage.DONE, note)

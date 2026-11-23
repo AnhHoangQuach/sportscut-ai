@@ -36,6 +36,9 @@ WEAK_PATTERNS: list[re.Pattern[str]] = [
     ]
 ]
 
+# How much of the end of a failed run's stdout / stderr is searched for a limit message.
+TAIL_CHARS = 2000
+
 # Safety margin added to any reset time we parse.
 RESET_MARGIN = timedelta(minutes=1)
 
@@ -51,8 +54,14 @@ class LimitHit:
 
 def detect(agent: str, stdout: str, stderr: str, exit_code: int | None,
            now: datetime | None = None) -> LimitHit | None:
-    """Return a LimitHit if the CLI output says the usage limit was reached."""
-    text = f"{stdout}\n{stderr}"
+    """Return a LimitHit if the CLI output says the usage limit was reached.
+
+    A run that exited 0 did its work, so it is never a limit, whatever its output quotes (agents
+    read code, logs and docs that contain these phrases). A failed run is searched only at the
+    end of stdout and stderr, where the CLI prints its own error."""
+    if exit_code == 0:
+        return None
+    text = f"{stdout[-TAIL_CHARS:]}\n{stderr[-TAIL_CHARS:]}"
     pats = STRONG_PATTERNS + (WEAK_PATTERNS if exit_code not in (0, None) else [])
     for pat in pats:
         m = pat.search(text)
