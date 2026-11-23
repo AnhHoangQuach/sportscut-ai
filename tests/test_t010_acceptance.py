@@ -238,6 +238,28 @@ def test_t010_ac4_broken_json_and_non_string_type_name_path(tmp_path: Path) -> N
         assert str(path) in str(caught.value)
 
 
+@pytest.mark.parametrize("raw", [b"\xff\xfe\x00[", b'[{"start":1,"end":2,"type":"g\xe9al"}]'])
+def test_t010_ac4_non_utf8_json_names_path(tmp_path: Path, raw: bytes) -> None:
+    path = tmp_path / "labels.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError) as caught:
+        load_labels(path)
+    assert str(path) in str(caught.value)
+
+
+def test_t010_ac4_ac11_non_utf8_json_cli_exit_2(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(detect, "find_highlights", lambda _: pytest.fail("detection ran"))
+    case = tmp_path / "m1"
+    case.mkdir()
+    (case / "v.mp4").touch()
+    (case / "labels.json").write_bytes(b"\x80\x81 not utf-8")
+    assert main(["eval", str(tmp_path), "--json"]) == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err.startswith("sportscut eval: error: ")
+    assert str(case / "labels.json") in output.err
+
+
 def test_t010_ac5_padded_cells_and_header_only_first(tmp_path: Path) -> None:
     path = tmp_path / "labels.csv"
     path.write_text(" 01:00 , 01:10.25 ,  Red_Card \n")
