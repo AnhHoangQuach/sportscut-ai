@@ -29,6 +29,9 @@ def test_acceptance_public_models_reject_edge_values_and_serialize() -> None:
         "confidence": 0.8, "bbox": [1, 2, 16, 32],
     }
     assert json.loads(json.dumps(value)) == value
+    for confidence in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError, match="confidence"):
+            Touch(1.5, None, None, confidence, None)
 
 
 def test_acceptance_empty_labels_and_inclusive_maximum_matching(tmp_path: Path) -> None:
