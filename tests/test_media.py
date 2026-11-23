@@ -5,6 +5,7 @@ import pytest
 from sportscut.media import (
     MediaError,
     SAMPLE_RATE,
+    concat_clips,
     cut_clip,
     extract_audio,
     find_tool,
@@ -12,6 +13,34 @@ from sportscut.media import (
     probe_duration,
     require_ffmpeg,
 )
+
+def test_concat_clips_empty_raises_value_error(tmp_path):
+    with pytest.raises(ValueError, match="^no clips to concatenate$"):
+        concat_clips([], tmp_path / "out.mp4")
+
+def test_concat_clips_missing_clip(monkeypatch, tmp_path):
+    missing = tmp_path / "missing.mp4"
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(MediaError) as exc:
+        concat_clips([missing], tmp_path / "out.mp4")
+    assert str(exc.value) == f"media file not found: {missing}"
+
+def test_concat_clips_bad_file(require_ffmpeg, tmp_path):
+    bad = tmp_path / "bad.mp4"
+    bad.write_text("not a video")
+    with pytest.raises(MediaError, match="^" + re.escape(f"ffmpeg failed for {tmp_path / 'out.mp4'}: ") + ".+"):
+        concat_clips([bad], tmp_path / "out.mp4")
+
+def test_concat_clips_joins_in_order(synthetic_video, tmp_path):
+    first = cut_clip(synthetic_video, 0.5, 1.5, tmp_path / "a.mp4")
+    second = cut_clip(synthetic_video, 4.0, 5.0, tmp_path / "it's.mp4")
+    dest = tmp_path / "joined.mp4"
+
+    assert concat_clips([first, second], dest) == dest
+    assert probe_duration(dest) == pytest.approx(2.0, abs=0.5)
+    assert _gray_mean(dest, 0.3) < 64
+    assert _gray_mean(dest, 1.5) > 192
+    assert list(tmp_path.glob("*.txt")) == []
 
 def _video_only(tmp_path: Path) -> Path:
     path = tmp_path / "video_only.mp4"
