@@ -92,6 +92,7 @@ Cài phần phụ thuộc API và chạy server cục bộ:
 
 ```bash
 pip install -e '.[api]'
+pip install -e '.[api,youtube]'
 sportscut serve --host 127.0.0.1 --port 8000
 ```
 
@@ -99,6 +100,8 @@ Gửi video và tải một clip từ URL trong kết quả:
 
 ```bash
 curl -F file=@match.mp4 -F top=5 -F min_len=10 -F max_len=30 \
+  http://127.0.0.1:8000/highlights
+curl -F url=https://www.youtube.com/watch?v=VIDEO_ID \
   http://127.0.0.1:8000/highlights
 curl -o clip_01.mp4 "<clip_url>"
 ```
@@ -110,6 +113,12 @@ highlights/.../clips/clip_01.mp4"}]}`. `SPORTSCUT_DATA_DIR` chọn thư mục d�
 upload (mặc định 2 GiB). API dùng mã 400 cho video đầu vào không hợp lệ, 404 cho
 clip không tồn tại, 413 cho upload quá lớn, 422 cho tham số sai và 500 khi xử lý
 phía server thất bại.
+
+Liên kết chỉ được phép trỏ tới một video trên youtube.com, www.youtube.com,
+m.youtube.com hoặc youtu.be, dài tối đa 3 giờ; video được tải dưới dạng MP4 tối
+đa 720p và 2 GiB. `file` và `url` loại trừ lẫn nhau. API trả mã 400 khi liên kết
+không hợp lệ hoặc tải thất bại. Người gửi liên kết chịu trách nhiệm bảo đảm mình
+có quyền sử dụng video đó.
 
 Hiện việc xử lý diễn ra đồng bộ, chưa có xác thực, các thư mục job thành công
 không tự xóa, và server mặc định chỉ lắng nghe trên localhost.
