@@ -8,6 +8,9 @@ Ask only when the business is unclear."
 
 - No code path moves a task or request to `blocked` (waiting for the PO) for a technical reason.
   `blocked` means one thing: a business question the Tech Lead could not answer.
+  Exception (2026-11-23, [github-pr-environment](2026-11-23-github-pr-environment-design.md)): a
+  GitHub login/permission/network problem on the user's machine blocks as "environment problem for
+  the user" with the fix, and resumes by itself once `office doctor`'s GitHub checks pass.
 - Every former escalation is handled by Claude as Tech Lead, decided and logged in `DECISIONS.md`.
 - Parallel tasks that change the same files do not run at the same time.
 - Measured by the fake-agent suite: `cd agent-office && python -m pytest -q`

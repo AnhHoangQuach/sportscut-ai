@@ -5,6 +5,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from . import github
+
 # Orchestrator notes for agents (TASK.md, CHECKPOINT.md, REVIEW.md) live here inside each
 # worktree and are never committed.
 NOTES_DIR = ".office"
@@ -106,29 +108,33 @@ def discard_branch(repo: Path, path: Path, branch: str, delete: bool = False) ->
 
 
 def push_and_open_pr(wt: Path, remote: str, branch: str, base: str, title: str, body: str) -> str:
-    """Push the task branch and open a PR with gh. Returns the PR URL."""
+    """Push the task branch and open a PR with gh, from the office process (the user's login and
+    network, never an agent sandbox). Returns the PR URL."""
     git(wt, "push", "-u", remote, branch)
     if not shutil.which("gh"):
         raise GitError("gh CLI not found; branch pushed, open the PR manually")
-    p = subprocess.run(
-        ["gh", "pr", "create", "--base", base, "--head", branch, "--title", title, "--body-file", "-"],
-        cwd=wt, input=body, capture_output=True, text=True,
-    )
+    repo_args = _repo_args(wt, remote)
+    p = github.run_gh(["pr", "create", *repo_args, "--base", base, "--head", branch, "--title", title,
+                       "--body-file", "-"], wt, input=body)
     if p.returncode != 0:
         if "already exists" in p.stderr:
-            v = subprocess.run(["gh", "pr", "view", branch, "--json", "url", "-q", ".url"],
-                               cwd=wt, capture_output=True, text=True)
+            v = github.run_gh(["pr", "view", branch, *repo_args, "--json", "url", "-q", ".url"], wt)
             return v.stdout.strip()
-        raise GitError(f"gh pr create failed: {p.stderr.strip()}")
+        raise GitError(f"gh pr create failed: {p.stderr.strip() or p.stdout.strip()}")
     return p.stdout.strip().splitlines()[-1]
+
+
+def _repo_args(cwd: Path, remote: str) -> list[str]:
+    """`-R owner/name` from the remote, so gh never guesses the repo (forks, several remotes)."""
+    slug = github.repo_slug(cwd, remote)
+    return ["-R", slug] if slug else []
 
 
 def pr_state(wt_or_repo: Path, url: str) -> str:
     """MERGED / OPEN / CLOSED, or '' if unknown."""
     if not shutil.which("gh"):
         return ""
-    p = subprocess.run(["gh", "pr", "view", url, "--json", "state", "-q", ".state"],
-                       cwd=wt_or_repo, capture_output=True, text=True)
+    p = github.run_gh(["pr", "view", url, "--json", "state", "-q", ".state"], wt_or_repo, timeout=60)
     return p.stdout.strip() if p.returncode == 0 else ""
 
 
@@ -160,8 +166,7 @@ def merge_pr(repo: Path, url: str, remote: str, base: str) -> None:
     """Squash-merge a GitHub PR, then bring the local base branch up to date."""
     if not shutil.which("gh"):
         raise GitError("gh CLI not found; cannot merge the PR")
-    p = subprocess.run(["gh", "pr", "merge", url, "--squash", "--delete-branch"],
-                       cwd=repo, capture_output=True, text=True)
+    p = github.run_gh(["pr", "merge", url, "--squash", "--delete-branch"], repo)
     if p.returncode != 0 and pr_state(repo, url) != "MERGED":
         raise GitError(f"gh pr merge failed: {p.stderr.strip() or p.stdout.strip()}")
     git(repo, "fetch", remote, base)

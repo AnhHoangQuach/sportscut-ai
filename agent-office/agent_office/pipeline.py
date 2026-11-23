@@ -13,7 +13,7 @@ from pathlib import Path
 from string import Template
 from typing import Callable
 
-from . import specdocs
+from . import github, specdocs
 from . import worktree as wt
 from .agents import AgentResult, ClaudeAgent, CliAgent, CodexAgent, extract_json, subscription_env
 from .config import Config, load_config
@@ -62,6 +62,11 @@ TL_KINDS = {
 TL_ACTIONS = ("retry", "restart", "split", "wait", "drop")
 REQUEST_PAUSE_MIN = 60  # request-level Tech Lead out of rounds: pause, then try again
 BUSINESS_MARK = "business question for the PO"  # blocked_reason / note of a Tech-Lead-screened question
+# blocked_reason of a task whose PR/merge failed because of the user's machine (gh login, repo
+# permission, network): only the user can fix it, so it is reported, not guessed at by the Tech Lead.
+ENV_MARK = "environment problem for the user"
+NET_BACKOFF_MIN = (2, 5, 10, 15)  # short retries for a network error before it is reported
+ENV_RECHECK_MIN = 5               # how often a GitHub preflight checks whether the user fixed it
 
 # Reasons a pre-Tech-Lead office wrote when it blocked a task, mapped to the Tech Lead kind.
 LEGACY_KINDS = [
@@ -124,6 +129,8 @@ class Office:
         self.lock = threading.RLock()
         self.inflight: dict[str, str | None] = {}  # target id -> agent running it
         self._triaged = False  # old PO-waiting blocks re-classified once per office start
+        self.github_preflight = github.preflight  # replaceable in tests
+        self._env_checked_at: datetime | None = None
 
     @contextmanager
     def _unlocked(self):
@@ -187,7 +194,7 @@ class Office:
         screened stay with the PO. Returns one line per item moved."""
         out = []
         for t in sorted(self.store.tasks.values(), key=lambda t: t.id):
-            if t.stage != Stage.BLOCKED or t.blocked_reason.startswith(BUSINESS_MARK):
+            if t.stage != Stage.BLOCKED or t.blocked_reason.startswith((BUSINESS_MARK, ENV_MARK)):
                 continue
             kind, reason = legacy_kind(t), t.blocked_reason or "blocked (no reason recorded)"
             back = Stage(t.blocked_from) if t.blocked_from in {"spec", "dev", "test", "review", "pr"} else Stage.DEV
@@ -235,6 +242,7 @@ class Office:
     # ------------------------------------------------------------------ main step
     def step(self) -> Step | None:
         """Run the single highest-priority step to completion (sequential mode)."""
+        self.recheck_environment()
         with self.lock:
             self._triage_once()
             self.drain_inbox()
@@ -255,6 +263,7 @@ class Office:
 
     def dispatch(self, pool: Executor) -> list[Future]:
         """Start every step that fits in the free agent sessions. Returns the new futures."""
+        self.recheck_environment()
         with self.lock:
             self._triage_once()
             self.drain_inbox()
@@ -957,7 +966,7 @@ class Office:
                     return
                 wt.merge_pr(self.repo, task.pr_url, self.cfg.remote, self.cfg.base_branch)
         except wt.GitError as e:
-            self._escalate(task, "merge_failed", f"could not merge: {e}")
+            self._github_failed(task, str(e))
             return
         self.store.event("pr_merged", task_id=task.id, url=task.pr_url, by="auto")
         if task.eval_score is not None:
@@ -967,6 +976,65 @@ class Office:
         self._finish(task, "auto-merged after approval")
         self.say("claude", "po", f"Đã merge {task.id} '{task.title}' vào {self.cfg.base_branch}.", task.id,
                  kind="merged")
+
+    # ------------------------------------------------------------------ GitHub environment
+    def _github_failed(self, task: Task, error: str) -> None:
+        """A push / PR / merge failed. Login, permission and lasting network problems are the
+        user's machine: report them with the exact fix. Anything else goes to the Tech Lead."""
+        kind = github.classify(error)
+        if kind == "other":
+            task.net_retries = 0
+            self._escalate(task, "merge_failed", f"could not merge: {error}")
+            return
+        if kind == "network" and task.net_retries < len(NET_BACKOFF_MIN):
+            minutes = NET_BACKOFF_MIN[task.net_retries]
+            task.net_retries += 1
+            task.retry_at = (self.clock() + timedelta(minutes=minutes)).isoformat(timespec="seconds")
+            self.store.event("github_retry", task_id=task.id, issue=kind, minutes=minutes,
+                             attempt=task.net_retries, error=error[:300])
+            self.echo(f"{task.id}: GitHub network error, retrying in {minutes} min")
+            return
+        with self._unlocked():
+            checks = self.github_preflight(self.repo, self.cfg.remote)
+        bad = github.problems(checks)
+        text = github.report(checks) if bad else f"lỗi từ GitHub: {error[:300]}"
+        task.retry_at, task.tl_issue, task.tl_kind = "", "", ""
+        self._block(task, f"{ENV_MARK}: {kind}: {text}"[:1500])
+        self._env_checked_at = self.clock()
+        self.store.event("env_problem", task_id=task.id, issue=kind, error=error[:500],
+                         checks=[{"name": c.name, "ok": c.ok, "detail": c.detail} for c in checks])
+        self.say("claude", "po", f"Cần anh sửa trên máy (không phải lỗi code): {task.id} đã được duyệt nhưng "
+                 f"office không tạo/merge được PR vì {kind}. {text} Chạy `office doctor` để kiểm tra lại; "
+                 f"khi ổn, office tự tạo PR và merge tiếp (kiểm tra lại mỗi {ENV_RECHECK_MIN} phút).",
+                 task.id, kind="env")
+        self.echo(f"{task.id}: GitHub {kind} problem on this machine -> reported to the PO")
+
+    def recheck_environment(self, force: bool = False) -> list[str]:
+        """Tasks waiting for the user to fix GitHub go back to the PR step once the preflight passes."""
+        with self.lock:
+            waiting = [t for t in self.store.tasks.values()
+                       if t.stage == Stage.BLOCKED and t.blocked_reason.startswith(ENV_MARK)]
+            now = self.clock()
+            if not waiting or (not force and self._env_checked_at is not None
+                               and now - self._env_checked_at < timedelta(minutes=ENV_RECHECK_MIN)):
+                return []
+            self._env_checked_at = now
+        checks = self.github_preflight(self.repo, self.cfg.remote)
+        if github.problems(checks):
+            return []
+        with self.lock:
+            moved = []
+            for t in waiting:
+                if t.stage != Stage.BLOCKED:
+                    continue
+                t.blocked_reason, t.net_retries = "", 0
+                self._move(t, Stage.PR, "GitHub OK again")
+                self.store.event("env_fixed", task_id=t.id)
+                moved.append(t.id)
+            if moved:
+                self.say("claude", "po", f"GitHub đã ổn, office tạo PR / merge tiếp: {', '.join(moved)}.", kind="env")
+                self.store.save()
+            return moved
 
     def _finish(self, task: Task, note: str) -> None:
         self._move(task, Stage.DONE, note)
