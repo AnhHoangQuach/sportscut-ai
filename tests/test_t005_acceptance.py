@@ -228,12 +228,27 @@ def test_acceptance_ac13_documentation_and_ignore_contract():
     for text in ("pip install -e '.[api]'", "sportscut serve", "curl -F file=@", "/highlights", "curl -o", "SPORTSCUT_DATA_DIR", "SPORTSCUT_MAX_UPLOAD_BYTES"):
         assert text in readme
     assert "sportscut-data/" in Path(".gitignore").read_text().splitlines()
+    implementation_commit = subprocess.run(
+        ["git", "log", "-1", "--format=%H", "--", "sportscut/api.py"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
     numstat = subprocess.run(
-        ["git", "show", "--numstat", "--format=", "HEAD"],
+        ["git", "show", "--numstat", "--format=", implementation_commit],
         check=True,
         capture_output=True,
         text=True,
     ).stdout.splitlines()
+    allowed = {
+        ".gitignore", "README.md", "pyproject.toml", "sportscut/api.py",
+        "sportscut/cli.py", "tests/test_api.py", "tests/test_cli.py",
+    }
+    changed_paths = {line.split("\t", 2)[2] for line in numstat}
+    assert changed_paths <= allowed, (
+        f"AC13 allows only the listed implementation files, got "
+        f"{sorted(changed_paths - allowed)}"
+    )
     changed_lines = sum(int(added) + int(deleted) for added, deleted, _ in
                         (line.split("\t", 2) for line in numstat))
     assert changed_lines < 400, f"AC13 requires <400 changed lines, got {changed_lines}"
