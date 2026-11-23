@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import subprocess
 import sys
 
@@ -24,6 +25,7 @@ def test_no_args_prints_help_and_returns_zero(
 
     captured = capsys.readouterr()
     assert "usage: sportscut" in captured.out
+    assert "detect" in captured.out
     assert captured.err == ""
 
 
@@ -39,3 +41,44 @@ def test_module_entry_point() -> None:
     assert result.returncode == 0
     assert result.stdout == "sportscut 0.1.0\n"
     assert result.stderr == ""
+
+
+def test_detect_json(burst_video, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["detect", str(burst_video), "--json"]) == 0
+    captured = capsys.readouterr()
+    assert len(captured.out.splitlines()) == 1
+    items = json.loads(captured.out)
+    assert len(items) == 3
+    assert all(set(item) == {"start", "end", "score", "reason"} for item in items)
+    assert captured.err == ""
+
+
+def test_detect_passes_options(burst_video, capsys: pytest.CaptureFixture[str]) -> None:
+    args = ["detect", str(burst_video), "--top", "1", "--min-len", "4", "--max-len", "6", "--json"]
+    assert main(args) == 0
+    item = json.loads(capsys.readouterr().out)[0]
+    assert item["end"] - item["start"] == pytest.approx(6, abs=0.01)
+
+
+def test_detect_text_output(burst_video, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["detect", str(burst_video)]) == 0
+    captured = capsys.readouterr()
+    assert len(captured.out.splitlines()) == 3
+    assert all(len(line.split("\t")) == 4 for line in captured.out.splitlines())
+    assert captured.err == ""
+
+
+def test_detect_missing_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = tmp_path / "missing.mp4"
+    assert main(["detect", str(path), "--json"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"sportscut: error: media file not found: {path}\n"
+
+
+def test_detect_invalid_options(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = tmp_path / "missing.mp4"
+    assert main(["detect", str(path), "--min-len", "20", "--max-len", "10"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "min_len must be <= max_len" in captured.err
