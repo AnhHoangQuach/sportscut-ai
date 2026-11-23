@@ -13,6 +13,11 @@ your report must come from a command you ran in this session.
 3. If tests fail because of a real bug, fix the code (smallest fix) and re-run.
 4. Write `.office/TEST_REPORT.md`: each AC -> test name -> pass/fail, plus the command used.
 
+A missing package or tool is not a blocker: install it into the project environment
+(`python -m pip install <pkg>` uses `.venv/` when it exists), declare it in the project's
+dependency file, and re-run. No `sudo`, nothing outside this directory. Only after 2 attempts
+at installing it still fail, report `RESULT: FAIL` with the exact command and error line.
+
 Do NOT commit or push. Do not change scope.
 $extra
 

@@ -20,7 +20,8 @@ class ClaudeAgent(CliAgent):
         if self.cfg.model:
             cmd += ["--model", self.cfg.model]
         if not extra.get("probe"):
-            cmd += ["--allowedTools", *READ_ONLY_TOOLS]
+            cmd += ["--allowedTools", *READ_ONLY_TOOLS,
+                    *(f"Bash({c.strip()}:*)" for c in self.cfg.allowed_commands if c.strip())]
         return cmd + list(self.cfg.extra_args)
 
     def parse(self, res: AgentResult, extra: dict[str, Any]) -> None:

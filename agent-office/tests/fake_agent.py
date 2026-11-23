@@ -47,7 +47,8 @@ def main() -> int:
     cwd = Path(args[args.index("-C") + 1]) if "-C" in args else Path.cwd()
     with open(str(scen_path) + ".calls", "a") as f:
         f.write(json.dumps({"agent": agent, "kind": kind, "cwd": str(cwd), "prompt": prompt,
-                            "has_api_key": any(k in os.environ for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"))}) + "\n")
+                            "has_api_key": any(k in os.environ for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY")),
+                            "args": args, "path0": os.environ.get("PATH", "").split(os.pathsep)[0]}) + "\n")
 
     if resp.get("write"):
         (cwd / resp["write"]).write_text(resp.get("text", "# partial work\n"))

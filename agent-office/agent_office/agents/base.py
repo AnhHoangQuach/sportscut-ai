@@ -21,9 +21,16 @@ API_KEY_VARS = (
 )
 
 
-def subscription_env() -> dict[str, str]:
+def subscription_env(cwd: Path | None = None) -> dict[str, str]:
+    """Child env without API keys. A `.venv/` in cwd (made by setup_cmd) goes first on PATH."""
     env = {k: v for k, v in os.environ.items() if k not in API_KEY_VARS}
     env.setdefault("NO_COLOR", "1")
+    venv = Path(cwd) / ".venv" if cwd else None
+    if venv is not None:
+        bindir = venv / ("Scripts" if os.name == "nt" else "bin")
+        if bindir.is_dir():
+            env["VIRTUAL_ENV"] = str(venv)
+            env["PATH"] = str(bindir) + os.pathsep + env.get("PATH", "")
     return env
 
 
@@ -63,7 +70,7 @@ class CliAgent:
         cmd = self.build_cmd(Path(cwd), extra)
         try:
             p = subprocess.run(
-                cmd, input=prompt, cwd=cwd, env=subscription_env(), capture_output=True,
+                cmd, input=prompt, cwd=cwd, env=subscription_env(Path(cwd)), capture_output=True,
                 text=True, timeout=self.cfg.timeout_sec,
             )
             res = AgentResult(self.name, p.returncode, p.stdout, p.stderr)
