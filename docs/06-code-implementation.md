@@ -35,6 +35,7 @@ flowchart TD
 | `agents/claude.py`, `codex.py` | Dựng lệnh và đọc đầu ra từng CLI | `build_cmd()`, `parse()` |
 | `agents/sim.py` | Agent giả để demo và test | `SimAgent` |
 | `limits.py` | Nhận diện hết quota, tính giờ nghỉ | `detect()`, `rest_until()` |
+| `specdocs.py` | Ghi spec, plan, mục lục, nhật ký quyết định vào `docs/superpowers/` của worktree; tạo phần ngữ cảnh spec cho prompt | `write_task_docs`, `context`, `design_path`, `plan_path` |
 | `worktree.py` | Mọi lệnh git | `ensure_worktree`, `commit_all`, `update_from_base`, `start_merge`, `conflict_markers`, `merge_local`, `merge_pr`, `added_lines` |
 | `stats.py` | Thống kê | `collect()`, `render()` |
 | `prompts/*.md` | Hướng dẫn cho từng vai (template `$biến`) | `prompt(name, **vars)` |

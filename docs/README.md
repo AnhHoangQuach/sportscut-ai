@@ -7,7 +7,7 @@ giao việc cho nhau, văn phòng 3D để quan sát, và công nghệ cắt hig
 |---|---|---|
 | 1 | [Kiến trúc multi-agent và cách giao việc](01-multi-agent.md) | Hiểu Claude và Codex phối hợp thế nào từ yêu cầu tới merge |
 | 2 | [Quota, chạy song song, rào chắn](02-quota-song-song-rao-chan.md) | Chạy bằng gói thuê bao, tăng tốc, giữ an toàn |
-| 3 | [Kỷ luật kỹ thuật và cổng chất lượng](03-ky-luat-ky-thuat.md) | Superpowers, TDD, bằng chứng, eval |
+| 3 | [Kỷ luật kỹ thuật và cổng chất lượng](03-ky-luat-ky-thuat.md) | Superpowers, TDD, bằng chứng, eval, spec lưu trong repo |
 | 4 | [Văn phòng 3D và dashboard](04-van-phong-3d.md) | Kiến trúc realtime, rendering, demo |
 | 5 | [Công nghệ cắt highlight SportsCut](05-sportscut.md) | Tín hiệu nhận diện highlight, đo độ chính xác |
 | 6 | [Code đã implement thế nào](06-code-implementation.md) | Module, luồng dữ liệu, test, điểm mở rộng |

@@ -13,6 +13,7 @@ from pathlib import Path
 from string import Template
 from typing import Callable
 
+from . import specdocs
 from . import worktree as wt
 from .agents import AgentResult, ClaudeAgent, CliAgent, CodexAgent, extract_json
 from .config import Config, load_config
@@ -372,7 +373,8 @@ class Office:
         return created
 
     def _breakdown(self, req: Request) -> None:
-        res = self._call("claude", prompt("pm_breakdown", request=self._request_text(req), request_id=req.id),
+        res = self._call("claude", prompt("pm_breakdown", request=self._request_text(req), request_id=req.id,
+                                         specs=specdocs.context(self.repo)),
                          self.repo, req.id, "breakdown")
         if res is None:
             return
@@ -389,6 +391,7 @@ class Office:
                      kind="question")
             self._block_request(req, "PM needs answers before planning", questions)
             return
+        req.design = str(d.get("design", "")).strip() or req.design
         created = self._add_tasks(req, items)
         req.status = "planned"
         self.say("claude", "po", f"Em tách {req.id} thành {len(created)} task: "
@@ -399,7 +402,8 @@ class Office:
         listing = "\n".join(f"- {t.id} {t.title}: {t.brief}" for t in done) or "- (none)"
         rnd = req.goal_rounds + 1
         res = self._call("claude", prompt("pm_goal", request=self._request_text(req), request_id=req.id,
-                                          done_tasks=listing, round=rnd, max_rounds=self.cfg.max_goal_rounds),
+                                          done_tasks=listing, round=rnd, max_rounds=self.cfg.max_goal_rounds,
+                                          specs=specdocs.context(self.repo)),
                          self.repo, req.id, f"goal{rnd}")
         if res is None:
             return
@@ -438,7 +442,8 @@ class Office:
         req = self.store.requests.get(task.request_id)
         po = f"## Product Owner answer to an earlier question\n\n{task.po_answer}" if task.po_answer else ""
         res = self._call("claude", prompt("pm_spec", request=self._request_text(req) if req else "", task_id=task.id,
-                                          title=task.title, brief=task.brief, po_answer=po),
+                                          title=task.title, brief=task.brief, po_answer=po,
+                                          specs=specdocs.context(self.repo)),
                          self.repo, task.id, "spec", task)
         if res is None:
             return
@@ -456,6 +461,8 @@ class Office:
             task.acceptance_criteria = [str(x) for x in d.get("acceptance_criteria", [])]
             task.test_plan = [str(x) for x in d.get("test_plan", [])]
             task.out_of_scope = [str(x) for x in d.get("out_of_scope", [])]
+            task.decisions = [str(x) for x in d.get("decisions", [])]
+            task.related_specs = [str(x) for x in d.get("related_specs", [])]
         except Exception as e:  # noqa: BLE001
             self._block(task, f"spec output not parseable: {e}")
             return
@@ -472,13 +479,19 @@ class Office:
             task.worktree, task.branch, task.base_ref = str(path), branch, base
             self.store.event("worktree_ready", task_id=task.id, path=str(path), branch=branch)
         self._write_task_md(task, path)
+        specdocs.write_task_docs(path, task, self.store.requests.get(task.request_id))
         return path
 
     def _write_task_md(self, task: Task, path: Path) -> None:
         parts = [f"# {task.id}: {task.title}\n\n{task.brief}\n", f"## Spec\n\n{task.spec}\n",
                  f"## Acceptance criteria\n\n{bullets(task.acceptance_criteria)}\n",
                  f"## Test plan\n\n{bullets(task.test_plan)}\n",
-                 f"## Out of scope\n\n{bullets(task.out_of_scope)}\n"]
+                 f"## Out of scope\n\n{bullets(task.out_of_scope)}\n",
+                 f"## Persistent spec (committed with your change)\n\n"
+                 f"- design: `{specdocs.design_path(task)}`\n- plan: `{specdocs.plan_path(task)}`\n"
+                 f"- decisions: `{specdocs.SPECS_DIR}/DECISIONS.md`, index: `{specdocs.SPECS_DIR}/INDEX.md`\n"
+                 f"- existing specs you must keep true (update them if behaviour changes):\n"
+                 f"{bullets(task.related_specs)}\n"]
         if task.po_answer:
             parts.append(f"## Product Owner answer\n\n{task.po_answer}\n")
         if task.review_comments:
@@ -665,6 +678,8 @@ class Office:
         res = self._call("claude", prompt(
             "review", task_id=task.id, round=rnd, max_rounds=MAX_REVIEW_ROUNDS, spec=task.spec,
             acceptance_criteria=bullets(task.acceptance_criteria), test_summary=test_summary, dev_notes=dev_notes,
+            specs=specdocs.context(path), spec_files=bullets([specdocs.design_path(task), specdocs.plan_path(task)]),
+            related_specs=bullets(task.related_specs),
             diff=wt.diff(path, task.base_ref) or "(empty diff)"), path, task.id, f"review{rnd}", task)
         if res is None:
             return

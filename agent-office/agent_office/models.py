@@ -66,6 +66,8 @@ class Task:
     acceptance_criteria: list[str] = field(default_factory=list)
     test_plan: list[str] = field(default_factory=list)
     out_of_scope: list[str] = field(default_factory=list)
+    decisions: list[str] = field(default_factory=list)       # logged in docs/superpowers/DECISIONS.md
+    related_specs: list[str] = field(default_factory=list)   # existing spec files this task must update
     branch: str = ""
     worktree: str = ""
     base_ref: str = ""
@@ -163,3 +165,4 @@ class Request:
     po_answers: list[str] = field(default_factory=list)
     questions: list[str] = field(default_factory=list)
     summary: str = ""
+    design: str = ""              # breakdown's goal/approaches/choice, committed as a design spec

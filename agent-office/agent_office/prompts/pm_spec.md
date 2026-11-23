@@ -13,6 +13,15 @@ $brief
 
 $po_answer
 
+## Existing specs and decisions (`docs/superpowers/`, committed in the repo)
+
+$specs
+
+Earlier requests left these specs, plans and decisions for you. Read the ones related to this
+work (open the linked files) before you decide anything. Follow them; if this work changes or
+reverses one, say so explicitly and list the spec files under `related_specs`
+(the plan must include the step that updates them).
+
 ## How to write it (Superpowers `writing-plans` discipline, if available follow that skill)
 - The spec is an implementation plan a developer with no context can follow: exact files
   to create/change, function signatures, data formats, and an ordered list of small steps.
@@ -31,13 +40,17 @@ $po_answer
 
 ## Output
 
-Reply with ONLY one JSON object, no prose. Either:
+Reply with ONLY one JSON object, no prose. The orchestrator commits it with the code as
+`docs/superpowers/specs/<date>-<task>-<topic>-design.md` (goal, ACs, decisions) and
+`docs/superpowers/plans/<date>-<task>-<topic>.md` (spec + test plan). Either:
 
 ```json
 {"spec": "markdown spec: context, design, files to touch, interfaces, assumptions",
  "acceptance_criteria": ["AC1 ...", "AC2 ..."],
  "test_plan": ["test ...", "test ..."],
- "out_of_scope": ["..."]}
+ "out_of_scope": ["..."],
+ "decisions": ["each design decision or assumption a later change must respect"],
+ "related_specs": ["docs/superpowers/specs/... existing spec this task changes"]}
 ```
 
 or, only when truly blocked on the PO:

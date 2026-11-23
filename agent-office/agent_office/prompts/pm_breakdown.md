@@ -28,16 +28,26 @@ Split the request into the smallest sensible set of tasks. Each task must:
 
 Prefer 2-8 tasks. Put foundations (project setup, shared modules) first.
 
+## Existing specs and decisions (`docs/superpowers/`, committed in the repo)
+
+$specs
+
+Earlier requests left these specs, plans and decisions for you. Read the ones related to this
+work (open the linked files) before you decide anything. Follow them; if this work changes or
+reverses one, say so explicitly in the brief of the task that changes it ("changes spec X: ...").
+
 ## Product Owner request ($request_id)
 
 $request
 
 ## Output
 
-Reply with ONLY one JSON object, no prose. Either:
+Reply with ONLY one JSON object, no prose. `design` is committed to the repo as
+`docs/superpowers/specs/<date>-<request>-design.md` so later agents know why. Either:
 
 ```json
-{"tasks": [{"key": "1", "title": "short imperative title", "brief": "2-5 sentences: what and why, plus assumptions", "depends_on": []}]}
+{"design": "goal and how we will know it is reached; 2-3 approaches considered; the one chosen and why",
+ "tasks": [{"key": "1", "title": "short imperative title", "brief": "2-5 sentences: what and why, plus assumptions", "depends_on": []}]}
 ```
 
 or, only when truly blocked on the PO:

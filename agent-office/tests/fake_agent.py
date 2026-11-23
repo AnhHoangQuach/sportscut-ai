@@ -73,7 +73,7 @@ def main() -> int:
                 {"key": "2", "title": "Audio excitement score", "brief": "Score audio.", "depends_on": ["1"]},
             ]})
         elif kind == "spec":
-            out = "Here is the spec:\n```json\n" + json.dumps({
+            out = "Here is the spec:\n```json\n" + json.dumps(resp.get("spec") or {
                 "spec": "Add module.", "acceptance_criteria": ["AC1 works"], "test_plan": ["test_ac1"],
                 "out_of_scope": []}) + "\n```"
         elif kind == "review":
