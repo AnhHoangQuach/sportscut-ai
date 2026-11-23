@@ -211,3 +211,23 @@ def test_prompts_keep_technical_questions_away_from_the_po():
 
 def test_default_config_gives_the_tech_lead_three_rounds(env):
     assert load_config(env.repo / ".agent-office").tech_lead_rounds == 3
+
+
+def test_shared_files_hold_a_task_only_while_the_other_one_codes(env):
+    """Decision: tasks on the same files never *code* at the same time. Once the first one has
+    left `dev` (testing, review, PR) the next one may start; a later merge conflict is resolved
+    by the Developer on the next dev round."""
+    office = env.office()
+    st = office.store
+    st.tasks = {t.id: t for t in (
+        _task("T-001", Stage.TEST, ["sportscut/cli.py"], worktree="/wt/T-001"),
+        _task("T-002", Stage.REVIEW, ["sportscut/cli.py"], worktree="/wt/T-002"),
+        _task("T-003", Stage.DEV, ["sportscut/cli.py"]),
+        _task("T-004", Stage.DEV, ["sportscut/cli.py"]))}
+    assert file_conflict(st, st.tasks["T-003"]) == ("", [])
+    plan = plan_steps(st, env.now, False, slots={"pm": 1, "lead": 1, "dev": 3, "tester": 1})
+    assert [s.target for s in plan.steps if s.agent == "dev"] == ["T-003"]
+    assert any("T-004 waits for T-003: both change sportscut/cli.py" in w for w in plan.waiting_on)
+    # a task sent back to dev (merge conflict, failed tests) holds its files again
+    st.tasks["T-001"].stage = Stage.DEV
+    assert file_conflict(st, st.tasks["T-003"])[0] == "T-001"

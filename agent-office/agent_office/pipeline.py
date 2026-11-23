@@ -144,6 +144,7 @@ class Office:
         self.lock = threading.RLock()
         self.inflight: dict[str, str | None] = {}  # target id -> agent running it
         self._triaged = False  # old PO-waiting blocks re-classified once per office start
+        self._idle_seen: dict[str, tuple | None] = {}  # role -> last idle report (no repeats)
         self.github_preflight = github.preflight  # replaceable in tests
         self._env_checked_at: datetime | None = None
 
@@ -294,7 +295,23 @@ class Office:
             if started:
                 self.store.event("dispatch", steps=[f"{s.kind}:{s.target}" for s in plan.steps],
                                  running=sorted(self.inflight))
+            self._report_idle(plan.waiting_on or [])
             return started
+
+    def _report_idle(self, waiting_on: list[str]) -> None:
+        """Say once (event + console) why sessions of a multi-session role stay idle."""
+        free = self.free_slots()
+        for role, idle in free.items():
+            sessions = self.cfg.parallel.get(role, 1)
+            key = (idle, tuple(waiting_on)) if idle > 0 and sessions > 1 else None
+            if key == self._idle_seen.get(role):
+                continue
+            self._idle_seen[role] = key
+            if key is None:
+                continue
+            self.store.event("slots_idle", role=role, idle=idle, sessions=sessions, waiting_on=waiting_on[:20])
+            why = "; ".join(waiting_on[:6]) or "no task is ready for this role"
+            self.echo(f"  {role}: {idle}/{sessions} sessions idle; waiting: {why}")
 
     def _run_inflight(self, s: Step) -> Step:
         try:
