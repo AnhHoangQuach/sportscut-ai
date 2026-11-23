@@ -192,6 +192,13 @@ task được gác lại (`dropped`, không merge) và PO nhận một **báo c�
 sẽ lên task mới cho phần còn thiếu. Ở cấp yêu cầu (không thể gác lại), hết lượt thì **tạm dừng 60
 phút** rồi thử lại. Giới hạn hệ thống (quota, `max_calls_per_day`) vẫn là nghỉ và tự làm lại.
 
+**State cũ (trước khi có Tech Lead).** Mỗi lần office khởi động (bước đầu tiên của `office run`,
+nút "Bắt đầu" trên dashboard) và khi chạy `office triage`, hàm `triage()` quét các task/yêu cầu đang
+`blocked` chờ PO. Cái nào **chưa** được Tech Lead lọc (lý do không bắt đầu bằng
+`business question for the PO`) được trả về đúng stage cũ và giao Tech Lead với `tl_kind` đoán từ lý
+do (`tests still failing` → `tests_failing`, `PM needs answers` → `questions`, ...). Câu nghiệp vụ đã lọc
+vẫn chờ PO; yêu cầu bị chặn vì hết `max_goal_rounds` được đóng kèm báo cáo.
+
 **Ghi quyết định.** Mỗi quyết định thêm một dòng `Tech Lead (<kind>): ...` vào `task.decisions` (hoặc
 `req.decisions`), được ghi vào `docs/superpowers/DECISIONS.md` ở lần commit kế tiếp (ghi thêm dòng còn
 thiếu, không ghi đè).

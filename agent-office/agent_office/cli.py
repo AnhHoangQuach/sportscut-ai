@@ -243,6 +243,14 @@ def cmd_answer(args) -> int:
     return 0
 
 
+def cmd_triage(args) -> int:
+    office = _office(args)
+    for line in office.submit({"cmd": "triage"}):
+        print(line)
+    print("Tech Lead picks these up on the next step (`office run`).")
+    return 0
+
+
 def cmd_wake(args) -> int:
     for line in _office(args).submit({"cmd": "wake", "agent": args.agent}):
         print(line)
@@ -386,6 +394,8 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("id")
     a.add_argument("text", nargs="*")
     a.set_defaults(fn=cmd_answer)
+    tr = sub.add_parser("triage", help="hand blocks that wait for the PO but are technical to the Tech Lead")
+    tr.set_defaults(fn=cmd_triage)
     w = sub.add_parser("wake", help="mark a resting agent available now")
     w.add_argument("agent", choices=["claude", "codex"])
     w.set_defaults(fn=cmd_wake)

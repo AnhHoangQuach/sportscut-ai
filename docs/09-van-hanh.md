@@ -7,6 +7,7 @@
 | `office init` | Tạo `.agent-office/`, `AGENTS.md`, `CLAUDE.md` |
 | `office doctor [--live]` | Kiểm tra git, gh, claude, codex, quy tắc, plugin Superpowers; `--live` thử đăng nhập |
 | `office request "..."` / `-f file.md` | Thêm yêu cầu PO |
+| `office triage` | Giao lại cho Tech Lead mọi task/yêu cầu đang chờ PO vì lý do kỹ thuật (tự chạy mỗi lần office khởi động) |
 | `office run [--watch] [--sequential] [--once] [--no-wait]` | Chạy văn phòng; `--watch` chạy mãi, chờ việc mới |
 | `office dashboard [--page office]` | Mở dashboard (hoặc thẳng văn phòng 3D) tại `http://127.0.0.1:8765` |
 | `office demo` | Văn phòng mô phỏng, không tốn quota |

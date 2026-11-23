@@ -47,6 +47,7 @@ office status                       # agent + task
 office board                        # kanban theo stage
 office show T-001                   # spec, AC, lịch sử, đường dẫn log
 office answer T-002 "Dùng ffmpeg, bỏ qua GPU"   # trả lời task (hoặc yêu cầu R-xxx) bị blocked
+office triage                                  # việc chờ PO mà là kỹ thuật -> giao Tech Lead
 office sync                         # đánh dấu done các task đã merge (run cũng tự gọi)
 office wake codex                   # bắt agent làm việc lại ngay
 ```
