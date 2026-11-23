@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from html.parser import HTMLParser
-import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tomllib
 
 from fastapi.testclient import TestClient
 
@@ -43,6 +43,11 @@ class _PageParser(HTMLParser):
         assert len(matches) == 1, f"expected one <{tag}> with {expected}, found {len(matches)}"
         return matches[0]
 
+    def one_element(self, **expected: str) -> dict[str, str | None]:
+        matches = [attrs for _, attrs in self.tags if all(attrs.get(k) == v for k, v in expected.items())]
+        assert len(matches) == 1, f"expected one element with {expected}, found {len(matches)}"
+        return matches[0]
+
 
 def _page() -> tuple[str, _PageParser]:
     response = TestClient(app).get("/")
@@ -66,10 +71,19 @@ def test_acceptance_upload_page_has_complete_accessible_vietnamese_form() -> Non
         "min_len": "number",
         "max_len": "number",
     }
+    vietnamese_label_terms = {
+        "file": ("tệp", "video"),
+        "url": ("liên kết", "youtube"),
+        "top": ("số", "đoạn"),
+        "min_len": ("thời lượng", "tối thiểu"),
+        "max_len": ("thời lượng", "tối đa"),
+    }
     for name, input_type in expected.items():
         control = page.one("input", id=name, name=name, type=input_type)
         assert "required" not in control
-        assert page.labels.get(name), f"missing associated label for {name}"
+        label = page.labels.get(name, "").lower()
+        assert label, f"missing associated label for {name}"
+        assert all(term in label for term in vietnamese_label_terms[name]), label
     assert page.one("input", id="file").get("accept") == "video/*"
     assert page.one("input", id="top").get("min") == "1"
     assert page.one("input", id="top").get("step") == "1"
@@ -78,11 +92,13 @@ def test_acceptance_upload_page_has_complete_accessible_vietnamese_form() -> Non
         assert page.one("input", id=name).get("step") == "any"
 
     normalized = " ".join(html.split()).lower()
-    assert "một" in normalized and "tệp" in normalized and "youtube" in normalized
+    assert "chỉ chọn một trong hai" in normalized
+    assert "tệp video" in normalized and "liên kết youtube" in normalized
     page.one("button", id="submit")
-    assert "hidden" in page.one("div", id="busy", role="status")
-    error = page.one("div", id="error", role="alert")
+    assert "hidden" in page.one_element(id="busy", role="status")
+    error = page.one_element(id="error", role="alert")
     assert "hidden" in error and error.get("aria-live") == "assertive"
+    assert "đang xử lý" in normalized
 
 
 def test_acceptance_page_uses_only_local_declared_assets() -> None:
@@ -112,28 +128,76 @@ def test_acceptance_frontend_submission_and_response_contract() -> None:
     source = TestClient(app).get("/static/app.js").text
     compact = re.sub(r"\s+", " ", source)
 
+    assert 'addEventListener("submit"' in source or "addEventListener('submit'" in source
+    assert "preventDefault()" in source
+    assert re.search(r"files\s*\[\s*0\s*\]", source)
+    assert re.search(r"urlInput\.value\.trim\(\)", source)
     assert "Hãy chọn một tệp video hoặc nhập một liên kết YouTube." in source
-    assert re.search(r"if\s*\(\s*\(.*file.*&&.*url.*\)\s*\|\|\s*\(\s*!.*file.*&&\s*!.*url", compact)
+    source_check = re.search(
+        r"if\s*\(\s*\(.*?file.*?&&.*?url.*?\)\s*\|\|\s*"
+        r"\(\s*!.*?file.*?&&\s*!.*?url.*?\)\s*\)\s*\{.*?return\s*;?\s*\}",
+        compact,
+    )
+    assert source_check
+    assert source_check.start() < source.index("new FormData()") < source.index("fetch(")
     assert "new FormData()" in source
     assert re.search(r"if\s*\(\s*file\s*\).*append\(\s*[\"']file[\"']", compact)
     assert re.search(r"else.*append\(\s*[\"']url[\"']", compact)
     assert ".trim()" in source
     for field in ("top", "min_len", "max_len"):
+        assert re.search(rf"#{field}[^\n]*\.value\.trim\(\)", source)
         assert re.search(rf"if\s*\([^)]*{field}[^)]*\).*append\(\s*[\"']{field}[\"']", compact)
 
     assert re.search(r"fetch\(\s*[\"']/highlights[\"']\s*,", source)
     assert re.search(r"method\s*:\s*[\"']POST[\"']", source)
     assert re.search(r"body\s*:\s*formData", source)
     assert not re.search(r"content-type", source, re.IGNORECASE)
-    assert "aria-busy" in source and ".disabled = true" in source
-    assert "finally" in source and ".disabled = false" in source
+    fetch_at = source.index("fetch(")
+    assert source.index(".disabled = true") < fetch_at
+    assert source.index('setAttribute("aria-busy", "true")') < fetch_at
+    assert source.index("busy.hidden = false") < fetch_at
+    finally_at = source.index("finally")
+    assert source.index(".disabled = false") > finally_at
     assert "removeAttribute(\"aria-busy\")" in source or "removeAttribute('aria-busy')" in source
+    assert source.index("busy.hidden = true") > finally_at
+    assert "await response.json()" in source
     assert "detail" in source and ".msg" in source and ".join(\"; \")" in source
     assert "Lỗi ${response.status}:" in source
     assert "Không thể xử lý video." in source
     assert "Không thể kết nối hoặc phản hồi từ máy chủ không hợp lệ." in source
-    assert re.search(r"typeof\s+.*job_id.*===\s*[\"']string[\"']", compact)
+    assert re.search(r"typeof\s+data\.job_id\s*!==\s*[\"']string[\"']", compact)
+    assert re.search(r"!\s*data\.job_id", source)
     assert "window.location.assign(`/jobs/${encodeURIComponent(data.job_id)}`)" in source
+
+
+def test_acceptance_non_ok_json_without_detail_keeps_status_and_fallback() -> None:
+    source = TestClient(app).get("/static/app.js").text
+    compact = re.sub(r"\s+", " ", source)
+
+    assert "Không thể xử lý video." in source
+    assert "Lỗi ${response.status}:" in source
+    null_safe_detail_access = (
+        "data?.detail" in source
+        or re.search(r"data\s*&&\s*(?:typeof\s+)?data\.detail", compact)
+        or re.search(r"data\s*!={1,2}\s*null.*?data\.detail", compact)
+        or re.search(r"if\s*\(\s*!data\s*\).*?else.*?data\.detail", compact)
+    )
+    assert null_safe_detail_access, (
+        "a non-OK response containing valid JSON null must not throw while reading detail"
+    )
+
+
+def test_acceptance_packaging_is_declared_without_a_frontend_build_or_dependency() -> None:
+    project = Path(__file__).resolve().parents[1]
+    configuration = tomllib.loads((project / "pyproject.toml").read_text(encoding="utf-8"))
+    assert configuration["tool"]["setuptools"]["package-data"]["sportscut"] == [
+        "web/*.html",
+        "web/*.js",
+        "web/*.css",
+    ]
+    assert configuration["project"]["dependencies"] == ["numpy>=1.26"]
+    assert not (project / "sportscut" / "web" / "__init__.py").exists()
+    assert not (project / "package.json").exists()
 
 
 def test_acceptance_built_wheel_contains_all_web_resources(tmp_path: Path) -> None:
@@ -157,31 +221,23 @@ def test_acceptance_built_wheel_contains_all_web_resources(tmp_path: Path) -> No
         capture_output=True,
         text=True,
     )
-    probe = """
+    probe = f"""
+import sys
+sys.path.insert(0, {str(target)!r})
 from importlib import resources
+from pathlib import Path
+import sportscut
+assert Path(sportscut.__file__).resolve().is_relative_to(Path({str(target)!r}).resolve())
 for name in ('index.html', 'app.js', 'style.css'):
     item = resources.files('sportscut').joinpath('web', name)
     assert item.is_file(), name
     assert item.read_text(encoding='utf-8').strip(), name
 """
-    environment = os.environ.copy()
-    environment["PYTHONPATH"] = str(target)
     completed = subprocess.run(
         [sys.executable, "-I", "-c", probe],
         check=False,
         cwd=tmp_path,
-        env=environment,
         capture_output=True,
         text=True,
     )
-    # -I deliberately ignores PYTHONPATH, so insert the isolated target explicitly.
-    if completed.returncode != 0:
-        isolated_probe = f"import sys; sys.path.insert(0, {str(target)!r});" + probe
-        completed = subprocess.run(
-            [sys.executable, "-I", "-c", isolated_probe],
-            check=False,
-            cwd=tmp_path,
-            capture_output=True,
-            text=True,
-        )
     assert completed.returncode == 0, completed.stderr
