@@ -14,3 +14,13 @@ Newest last. Format: date, task (request): decision.
 - 2026-11-23 Tech Lead: `tech_lead_rounds = 3` per task, then the task is dropped with a report to the PO and the goal check re-plans; requests pause 60 min instead; the goal-check cap closes the request with a report
 - 2026-11-23 Tech Lead: specs list `files`; tasks that change the same files never code at the same time (already-coding or lower id first)
 - 2026-11-23 Tech Lead: on every office start (and `office triage`) tasks/requests blocked for the PO without the Tech Lead's business mark are handed back to the Tech Lead; an old goal-round-cap block closes the request with a report
+- 2026-11-23 T-035 (R-001): T-035 is the package/model/CLI foundation split from the oversized T-001 attempt; T-036 owns all ffmpeg media work and depends on this task.
+- 2026-11-23 T-035 (R-001): Use setuptools and dynamic package versioning with `sportscut.__version__` as the single source of version 0.1.0.
+- 2026-11-23 T-035 (R-001): Keep NumPy as a runtime dependency in the foundation because dependent T-036 requires it for audio arrays; pytest is available only through the `dev` extra.
+- 2026-11-23 T-035 (R-001): Configure root pytest with `testpaths = ['tests']` and `pythonpath = ['.']` so fresh worktrees import product code while excluding the separate `agent-office/tests` suite.
+- 2026-11-23 T-035 (R-001): The console script and `python -m sportscut` share `sportscut.cli.main`; no-argument invocation prints help and succeeds.
+- 2026-11-23 T-035 (R-001): `Segment` is a frozen dataclass; it validates only temporal bounds, permits unbounded scores, and converts output fields to native JSON-safe primitives in `to_dict()`.
+- 2026-11-23 T-035 (R-001): Genuine red-before-green evidence must be preserved separately for CLI and model behavior; existing implementation from the discarded T-001 attempt must not be copied into the branch before those failing runs.
+- 2026-11-23 T-035 (R-001): Offline verification uses a worktree-local gitignored virtual environment, `--no-build-isolation`, and `--no-index`; no files under the protected Agent Office project are modified.
+- 2026-11-23 T-035 (R-001): Only concise task-specific design, plan, index, and decision records are added; persistent infrastructure already on the base is preserved rather than recreated.
+- 2026-11-23 R-001: Tech Lead: T-001 'Scaffold the sportscut package with an ffmpeg media layer and synthetic test fixtures' not merged: split into T-035, T-036: 2026-11-23 T-001 (R-001): split the oversized 740-line attempt into a package/model/CLI foundation and a dependent ffmpeg-media slice, both rebuilt test-first from the latest base; persistent-spec infrastructure remains required and must not be deleted, while genuine red-bef
