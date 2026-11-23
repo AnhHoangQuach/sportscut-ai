@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sportscut"
+dynamic = ["version"]
+description = "Find highlights in sports videos and export clips"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+sportscut = "sportscut.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "sportscut.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["sportscut*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
