@@ -1,5 +1,6 @@
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 import numpy as np
 SAMPLE_RATE = 16_000
@@ -82,3 +83,39 @@ def cut_clip(path: str | Path, start: float, end: float, dest: str | Path) -> Pa
         detail = _failure_detail(result.stderr, result.returncode)
         raise MediaError(f"ffmpeg failed for {path}: {detail}")
     return Path(dest)
+
+def concat_clips(clips: list[str | Path], dest: str | Path) -> Path:
+    if not clips:
+        raise ValueError("no clips to concatenate")
+    for clip in clips:
+        if not Path(clip).is_file():
+            raise MediaError(f"media file not found: {clip}")
+
+    ffmpeg = find_tool("ffmpeg")
+    destination = Path(dest)
+    list_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".txt",
+            dir=destination.parent,
+            delete=False,
+            encoding="utf-8",
+        ) as list_file:
+            list_path = Path(list_file.name)
+            for clip in clips:
+                escaped = str(Path(clip).resolve()).replace("'", "'\\''")
+                list_file.write(f"file '{escaped}'\n")
+        args = [
+            ffmpeg, "-v", "error", "-nostdin", "-y", "-f", "concat",
+            "-safe", "0", "-i", str(list_path), "-c", "copy", "-movflags",
+            "+faststart", str(destination),
+        ]
+        result = subprocess.run(args, capture_output=True, check=False)
+        if result.returncode:
+            detail = _failure_detail(result.stderr, result.returncode)
+            raise MediaError(f"ffmpeg failed for {dest}: {detail}")
+        return destination
+    finally:
+        if list_path is not None:
+            list_path.unlink(missing_ok=True)

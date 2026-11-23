@@ -73,3 +73,15 @@ Baseline đo trong T-029:
 
 Mục tiêu tiếp theo: `touch_f1_any ≥ 0.9` (T-031), `team_accuracy ≥ 0.95`
 (T-032), và `F1 ≥ 0.85` (T-033).
+
+## Theo dõi cầu thủ: xuất video tổng hợp (player)
+
+```bash
+python -m sportscut player match.mp4 --team red --number 10 --out reel
+```
+
+Mỗi pha chạm được lấy thêm 3 giây trước và 2 giây sau; các đoạn cách nhau dưới
+4 giây được gộp. Có thể đổi các giá trị mặc định bằng `--pre`, `--post` và
+`--merge-gap`. Thư mục đầu ra chứa `player_red_10.mp4` và `player.json`; nếu
+không có pha chạm thì chỉ có manifest. Việc phát hiện pha chạm vẫn là stub cho
+đến khi T-031..T-033 hoàn thành.

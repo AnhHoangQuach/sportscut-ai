@@ -8,6 +8,8 @@ from sportscut.detect import find_highlights
 from sportscut.eval_player import evaluate_dir
 from sportscut.media import MediaError
 from sportscut.pipeline import PipelineError, run
+from sportscut.player import PlayerQuery
+from sportscut.reel import MANIFEST_NAME, make_player_reel
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,10 +38,43 @@ def main(argv: list[str] | None = None) -> int:
     eval_player_parser = subparsers.add_parser("eval-player", help="evaluate player-touch detection")
     eval_player_parser.add_argument("directory")
     eval_player_parser.add_argument("--json", action="store_true")
+    player_parser = subparsers.add_parser("player", help="export a reel of one player's touches")
+    player_parser.add_argument("video")
+    player_parser.add_argument("--team", required=True)
+    player_parser.add_argument("--number", required=True, type=int)
+    player_parser.add_argument("--out", required=True)
+    player_parser.add_argument("--pre", type=float, default=3.0)
+    player_parser.add_argument("--post", type=float, default=2.0)
+    player_parser.add_argument("--merge-gap", type=float, default=4.0)
 
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
+        return 0
+
+    if args.command == "player":
+        try:
+            query = PlayerQuery(args.team, args.number)
+            manifest = make_player_reel(
+                args.video, query, args.out, args.pre, args.post, args.merge_gap
+            )
+        except ValueError as exc:
+            print(f"sportscut player: error: {exc}", file=sys.stderr)
+            return 2
+        except (MediaError, OSError) as exc:
+            print(f"sportscut player: error: {exc}", file=sys.stderr)
+            return 1
+        if manifest["reel"]:
+            print(
+                f"wrote {Path(args.out) / manifest['reel']}: "
+                f"{len(manifest['touches'])} touches in {len(manifest['clips'])} clips, "
+                f"{manifest['total_duration']:.1f} s"
+            )
+        else:
+            print(
+                f"no touches found for {query.team} {query.number}; "
+                f"wrote {Path(args.out) / MANIFEST_NAME}"
+            )
         return 0
 
     if args.command == "eval-player":
