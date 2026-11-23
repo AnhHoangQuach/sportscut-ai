@@ -82,6 +82,10 @@ class CliAgent:
         """Name of a variable the CLI needs but will not get ("" = none known)."""
         return ""
 
+    def server_problem(self) -> str:
+        """Why the CLI's own model server cannot be reached right now ("" = fine or unknown)."""
+        return ""
+
     def env_summary(self, env: dict[str, str]) -> str:
         """Where the extra variables came from, names only (never values): written to every call log."""
         path = getattr(self.cfg, "env_file", "") or ""

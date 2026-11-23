@@ -6,7 +6,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from agent_office.dashboard.server import create_app  # noqa: E402
-from agent_office.models import Stage  # noqa: E402
+from agent_office.models import AgentStatus, Stage  # noqa: E402
 
 
 @pytest.fixture
@@ -87,3 +87,17 @@ def test_waiting_list_explains_idle_sessions_while_a_task_runs(client):
     w = c.get("/api/state").json()["waiting_on"]
     assert any("T-002 waits for T-001 to be merged" in x for x in w)
     assert not any(x.startswith("T-001") for x in w)  # being coded: not waiting
+
+
+def test_state_says_who_covers_a_role_resting_on_a_server_error(client):
+    c, env = client
+    office = env.office()
+    for role in ("dev", "tester"):
+        a = office.store.agents[role]
+        a.status, a.rest_until, a.rest_cause = AgentStatus.RESTING, "2099-01-01T00:00:00+00:00", "upstream"
+    office.store.save()
+    agents = {a["name"]: a for a in c.get("/api/state").json()["agents"]}
+    assert agents["dev"]["covered_by"] == "pm" and agents["tester"]["covered_by"] == "lead"
+    assert agents["pm"]["covered_by"] == ""
+    js = c.get("/static/app.js").text
+    assert "upstream" in js and "covered_by" in js

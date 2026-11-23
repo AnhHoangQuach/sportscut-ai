@@ -83,6 +83,9 @@ network = true
 [limits]
 # Rest ladder used when the CLI does not say when the limit resets.
 backoff_minutes = [15, 30, 60]
+# Rest ladder for a transient server error (502/503/504, connection refused, e.g. codex-lb down):
+# retry soon, the last value repeats. The other CLI covers the work meanwhile.
+upstream_retry_minutes = [1, 2, 5]
 
 [parallel]
 # How many sessions of each role may run at the same time. Each task has its own worktree,
@@ -145,6 +148,7 @@ class Config:
     claude: AgentConfig = field(default_factory=lambda: AgentConfig(cmd="claude"))
     codex: AgentConfig = field(default_factory=lambda: AgentConfig(cmd="codex", timeout_sec=3600))
     backoff_minutes: list[int] = field(default_factory=lambda: [15, 30, 60])
+    upstream_retry_minutes: list[int] = field(default_factory=lambda: [1, 2, 5])
     roles: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_PROVIDER))
     parallel: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_PARALLEL))
     max_calls_per_day: dict[str, int] = field(default_factory=lambda: {"claude": 0, "codex": 0})
@@ -216,6 +220,7 @@ def load_config(office_dir: Path) -> Config:
         claude=claude,
         codex=codex,
         backoff_minutes=list(raw.get("limits", {}).get("backoff_minutes", [15, 30, 60])) or [15, 30, 60],
+        upstream_retry_minutes=list(raw.get("limits", {}).get("upstream_retry_minutes", [1, 2, 5])) or [1, 2, 5],
         roles=roles,
         parallel=_parallel(par, roles),
         max_calls_per_day={n: max(0, int(caps.get(n, 0))) for n in PROVIDERS},

@@ -9,10 +9,10 @@ một gói thuê bao (xem 1.11).
 | Vai (agent) | Chạy trên | Được làm gì | Không được làm gì |
 |---|---|---|---|
 | Product Owner | Hoang | Đưa yêu cầu, trả lời câu hỏi nghiệp vụ, đặt mục tiêu chất lượng | Không cần đọc code |
-| Product Manager (`pm`) | Claude; `dev` (Codex) tiếp quản khi Claude hết quota | Tách yêu cầu thành task, viết spec + acceptance criteria (AC), kiểm tra mục tiêu cuối | Không sửa file |
-| Tech Lead / Reviewer (`lead`) | Claude; `tester` (Codex) tiếp quản khi Claude hết quota | Review diff theo spec, approve hoặc yêu cầu sửa; quyết mọi blocker kỹ thuật, lọc câu hỏi (chỉ câu nghiệp vụ tới PO) | Không sửa file |
-| Developer (`dev`) | Codex; `pm` (Claude) tiếp quản khi Codex hết quota | Code + unit test (TDD) theo spec trong worktree riêng của task | Không commit/push/đổi nhánh; không xóa, skip hay làm yếu test của Tester |
-| Tester (`tester`) | Codex; `lead` (Claude) tiếp quản khi Codex hết quota | Tự viết test chấp nhận từ AC (không dựa vào test của Dev), kiểm tra test của Dev có thể fail, chạy toàn bộ, báo lỗi về Dev | Không sửa code sản phẩm, không đổi phạm vi |
+| Product Manager (`pm`) | Claude; `dev` (Codex) tiếp quản khi Claude nghỉ | Tách yêu cầu thành task, viết spec + acceptance criteria (AC), kiểm tra mục tiêu cuối | Không sửa file |
+| Tech Lead / Reviewer (`lead`) | Claude; `tester` (Codex) tiếp quản khi Claude nghỉ | Review diff theo spec, approve hoặc yêu cầu sửa; quyết mọi blocker kỹ thuật, lọc câu hỏi (chỉ câu nghiệp vụ tới PO) | Không sửa file |
+| Developer (`dev`) | Codex; `pm` (Claude) tiếp quản khi Codex nghỉ (hết quota, máy chủ lỗi, CLI lỗi) | Code + unit test (TDD) theo spec trong worktree riêng của task | Không commit/push/đổi nhánh; không xóa, skip hay làm yếu test của Tester |
+| Tester (`tester`) | Codex; `lead` (Claude) tiếp quản khi Codex nghỉ (hết quota, máy chủ lỗi, CLI lỗi) | Tự viết test chấp nhận từ AC (không dựa vào test của Dev), kiểm tra test của Dev có thể fail, chạy toàn bộ, báo lỗi về Dev | Không sửa code sản phẩm, không đổi phạm vi |
 | Orchestrator | Chương trình `office` (Python) | Lập lịch, gọi agent, commit, chạy test, merge, lưu trạng thái | Không tự "nghĩ": mọi quyết định nội dung là của agent |
 
 Vì sao hai hãng khác nhau: Claude mạnh ở đọc hiểu, lập kế hoạch, review; Codex mạnh ở viết và sửa

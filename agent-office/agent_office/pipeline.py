@@ -14,13 +14,13 @@ from string import Template
 from typing import Callable
 
 from . import github, specdocs
-from .codex_provider import missing_env_var
+from .codex_provider import missing_env_var, provider_info
 from . import worktree as wt
 from .agents import AgentResult, ClaudeAgent, CliAgent, CodexAgent, extract_json, subscription_env
 from .config import Config, load_config
-from .limits import LimitHit, detect, rest_until
-from .models import (MAX_CONFLICT_ROUNDS, MAX_REVIEW_ROUNDS, MAX_TEST_ATTEMPTS, STAGE_AGENT, STEP_ROLE, AgentStatus,
-                     Request, Stage, Task, now_iso)
+from .limits import LimitHit, detect, rest_until, transient_error
+from .models import (FAILOVER, MAX_CONFLICT_ROUNDS, MAX_REVIEW_ROUNDS, MAX_TEST_ATTEMPTS, STAGE_AGENT, STEP_ROLE,
+                     AgentStatus, Request, Stage, Task, now_iso)
 from .scheduler import Step, next_step, plan_steps
 from .store import Store
 
@@ -410,6 +410,13 @@ class Office:
         if missing:
             self._env_rest(agent_name, missing, task, label, res)
             return None
+        blip = "" if res.ok else transient_error(res.stdout, res.stderr, res.exit_code)
+        if blip:  # 502/503/504 or connection refused (e.g. codex-lb): retry in minutes, other CLI covers
+            agent.last_error = blip
+            self.store.event("agent_failed", agent=agent_name, provider=provider, task_id=task_id,
+                             exit_code=res.exit_code, timed_out=res.timed_out, log=res.log_path, upstream=blip[:200])
+            self._rest(agent_name, LimitHit(provider, blip, None), task, label, res, cause="upstream")
+            return None
         if not res.ok:
             agent.failures += 1
             agent.last_error = (res.stderr or res.stdout)[-500:] or f"exit {res.exit_code}"
@@ -440,14 +447,18 @@ class Office:
             if task is not None:
                 self._checkpoint(task, label, f"{agent_name} usage limit: {hit.matched}", res)
             return
-        until, known = rest_until(hit.reset_at, a.backoff_level, self.cfg.backoff_minutes, self.clock())
+        ladder = self.cfg.upstream_retry_minutes if cause == "upstream" else self.cfg.backoff_minutes
+        if cause == "upstream" and a.rest_cause != "upstream":
+            a.backoff_level = 0  # a fresh outage starts at the bottom of the fast ladder
+        repeat = cause == "upstream" and a.rest_cause == "upstream"
+        until, known = rest_until(hit.reset_at, a.backoff_level, ladder, self.clock())
         if budget:
             until, known = hit.reset_at, True
         a.rests_total += 1
         if not budget:
             a.limits_today += 1
         level = a.backoff_level + (0 if known else 1)
-        detail = hit.matched if cause == "quota" or budget else _error_line(res)
+        detail = hit.matched if cause in ("quota", "upstream") or budget else _error_line(res)
         for m in mates:
             m.status = AgentStatus.RESTING
             m.rest_until = until.isoformat(timespec="seconds")
@@ -465,6 +476,12 @@ class Office:
         if budget:
             self.say(agent_name, "all", f"{provider} dùng hết ngân sách hôm nay ({hit.matched}), mai làm tiếp."
                      + together, kind="rest")
+        elif cause == "upstream":
+            if not repeat:  # one message per outage, not one per retry
+                cover = self._cover_text(provider)
+                self.say(agent_name, "all", f"Máy chủ {self._server_name(provider)} lỗi tạm thời ({detail[:120]}), "
+                         f"không phải hết quota. Office tự thử lại sau 1, 2, 5 phút.{cover}{together}{log}",
+                         task.id if task else "", kind="rest")
         elif cause == "failure":
             self.say(agent_name, "all", f"CLI {provider} lỗi liên tiếp (không phải hết quota): {a.rest_detail}. "
                      f"Nghỉ tới {at} rồi thử lại.{together}{log}", task.id if task else "", kind="rest")
@@ -474,7 +491,8 @@ class Office:
         self.store.event("agent_resting", agent=agent_name, provider=provider, roles=[m.name for m in mates],
                          until=a.rest_until, reset_known=known, matched=hit.matched, cause=a.rest_cause,
                          detail=a.rest_detail[:300], log=a.rest_log)
-        what = "usage limit" if cause == "quota" and not budget else ("daily budget" if budget else "CLI failing")
+        what = ("daily budget" if budget else "usage limit" if cause == "quota" else
+                "server error, retrying soon" if cause == "upstream" else "CLI failing")
         self.echo(f"  [{provider}: {names}] {what} ({a.rest_detail[:160]!r}); resting until {a.rest_until}"
                   + (f"; see {a.rest_log}" if a.rest_log else ""))
         if task is not None:
@@ -529,6 +547,12 @@ class Office:
                      kind="awake")
             self.echo(f"  [{provider}] environment fixed, back to work")
             return
+        cause = first.rest_cause
+        if cause == "upstream":
+            down = self.agents[provider].server_problem()
+            if down:  # codex-lb still refuses connections: re-check later without spending a probe
+                self._rest(first.name, LimitHit(provider, down, None), None, "wake", None, cause="upstream")
+                return
         if not first.reset_known:
             # Rest length was a guess: spend one tiny prompt to check before real work.
             self.echo(f"  [{provider}] probing after rest...")
@@ -536,14 +560,37 @@ class Office:
             with self._unlocked():
                 res = self.agents[provider].run(prompt("probe"), self.repo, log_path, probe=True)
             if res.limit is not None or res.exit_code != 0:
-                self._rest(first.name, res.limit or LimitHit(provider, "probe failed", None), None,
-                           "probe", res, cause="quota" if res.limit is not None else "failure")
+                blip = transient_error(res.stdout, res.stderr, res.exit_code)
+                hit = res.limit or LimitHit(provider, blip or "probe failed", None)
+                self._rest(first.name, hit, None, "probe", res,
+                           cause="quota" if res.limit is not None else "upstream" if blip else "failure")
                 return
         self._clear_rest(provider)
-        self.store.event("agent_awake", agent=first.name, provider=provider, roles=[m.name for m in mates])
-        self.say(first.name, "all", f"{provider} có quota lại rồi, {', '.join(m.name for m in mates)} làm tiếp nhé.",
+        names = ", ".join(m.name for m in mates)
+        self.store.event("agent_awake", agent=first.name, provider=provider, roles=[m.name for m in mates],
+                         cause=cause)
+        back = {"upstream": f"máy chủ {self._server_name(provider)} chạy lại rồi",
+                "failure": f"CLI {provider} chạy lại rồi", "budget": f"{provider} có ngân sách ngày mới"}
+        self.say(first.name, "all", f"{back.get(cause, f'{provider} có quota lại rồi')}, {names} làm tiếp nhé.",
                  kind="awake")
         self.echo(f"  [{provider}] back to work")
+
+    def _server_name(self, provider: str) -> str:
+        if provider == "codex":
+            info = provider_info()
+            if info.name != "openai":
+                return f"{info.name}" + (f" ({info.base_url})" if info.base_url else "")
+        return provider
+
+    def _cover_text(self, provider: str) -> str:
+        """Who takes the resting CLI's work meanwhile (failover pairs)."""
+        pairs = [(m.name, FAILOVER.get(m.name, "")) for m in self.store.roles_of(provider)]
+        pairs = [(r, o) for r, o in pairs if o in self.store.agents
+                 and self.store.agents[o].provider != provider and self.store.agents[o].status != AgentStatus.RESTING]
+        if not pairs:
+            return ""
+        return " Trong lúc chờ: " + ", ".join(f"{o} ({self.store.agents[o].provider}) làm thay {r}"
+                                              for r, o in pairs) + "."
 
     def _clear_rest(self, provider: str) -> list[str]:
         mates = self.store.roles_of(provider)
