@@ -10,3 +10,4 @@ dist/
 *.wav
 # real match footage and labels (eval only, never committed)
 data/
+sportscut-data/
