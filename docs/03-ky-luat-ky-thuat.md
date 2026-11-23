@@ -77,3 +77,40 @@ flowchart LR
 
 Đây là cùng ý tưởng với "eval-driven development" trong phát triển ứng dụng LLM: không tối ưu thứ
 không đo được, và không merge thứ làm số đo xấu đi.
+
+## 3.5 Spec, plan và quyết định được lưu trong repo
+
+Trước đây spec, tiêu chí nghiệm thu (AC) và các quyết định chỉ nằm trong `.agent-office/state.json`
+và `.office/TASK.md` của worktree. Cả hai đều bị git bỏ qua, worktree bị xóa sau khi merge, nên yêu
+cầu sau không biết yêu cầu trước đã quyết định gì. Giờ orchestrator ghi chúng vào repo theo đường
+dẫn của Superpowers và **commit cùng code của task** (cùng PR, được review cùng, merge cùng):
+
+| File | Nội dung | Ai tạo |
+|---|---|---|
+| `docs/superpowers/specs/YYYY-MM-DD-r-xxx-<chủ đề>-design.md` | Thiết kế của cả yêu cầu: mục tiêu, các hướng đã cân nhắc, hướng chọn và lý do | Claude chia việc (trường `design`) |
+| `docs/superpowers/specs/YYYY-MM-DD-t-xxx-<chủ đề>-design.md` | Task làm gì, AC, ngoài phạm vi, quyết định, spec cũ bị thay đổi | Claude viết spec |
+| `docs/superpowers/plans/YYYY-MM-DD-t-xxx-<chủ đề>.md` | Các bước triển khai và kế hoạch test; Codex thêm mục `## Deviations` nếu làm khác plan | Claude viết spec, Codex bổ sung |
+| `docs/superpowers/INDEX.md` | Mục lục tính năng: mỗi task một dòng, link tới design và plan | Orchestrator |
+| `docs/superpowers/DECISIONS.md` | Nhật ký quyết định: ngày, task, yêu cầu, quyết định | Orchestrator (từ trường `decisions`) |
+
+Cách các vai dùng chúng:
+
+```mermaid
+flowchart LR
+  D[(docs/superpowers<br/>INDEX + DECISIONS + specs)] -->|chèn vào prompt| B[Claude chia việc]
+  D -->|chèn vào prompt| S[Claude viết spec<br/>khai related_specs]
+  S -->|design + plan| W[worktree của task]
+  W --> X[Codex code<br/>đọc spec, sửa spec cũ nếu đổi hành vi]
+  X --> R[Claude review<br/>chặn nếu code trái spec mà không cập nhật]
+  R --> M[merge: spec lên main cùng code] --> D
+```
+
+- Mọi prompt PM (chia việc, viết spec, kiểm tra mục tiêu) và review đều nhận nội dung `INDEX.md` +
+  `DECISIONS.md`. Prompt dev chỉ tới các file đó qua mục "Persistent spec" trong `.office/TASK.md`.
+- Nếu task thay đổi hành vi đã mô tả trong spec cũ, PM ghi spec đó vào `related_specs`, Codex cập
+  nhật nó (`Updated by T-xxx: ...`), reviewer coi spec bị bỏ quên hoặc mâu thuẫn là `blocker`.
+- `INDEX.md` và `DECISIONS.md` chỉ được thêm dòng và dùng `merge=union` trong `.gitattributes`,
+  nên nhiều task song song không bao giờ xung đột ở hai file này.
+- File spec chỉ được ghi lần đầu: chỉnh sửa sau đó của Codex hay task khác được giữ nguyên.
+- `docs/superpowers/` không tính vào giới hạn `max_diff_lines`.
+- Tất cả do orchestrator làm, nên có hiệu lực kể cả khi chưa cài plugin Superpowers.

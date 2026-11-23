@@ -14,6 +14,16 @@ $acceptance_criteria
 
 $test_summary
 
+## Specs and decisions (`docs/superpowers/`)
+
+This task's spec files: 
+$spec_files
+
+Existing specs this task said it changes:
+$related_specs
+
+$specs
+
 ## Diff (base...HEAD)
 
 ```diff
@@ -31,8 +41,11 @@ $dev_notes
 - Look for real bugs: edge cases (empty input, silence, very short/long video), error
   handling, resource leaks (temp files, subprocesses), performance against stated limits.
 - If an eval score is given and it dropped, that is a `blocker`.
-- `changes` ONLY for: an acceptance criterion not met, a bug, a security problem, or a
-  missing test for an AC. Everything else is a `nit` and must not block approval.
+- Specs are part of the change: if the diff contradicts an existing spec or decision in
+  `docs/superpowers/` without updating it (or changes behaviour an existing spec describes and
+  leaves that spec stale), that is a `blocker`. Open the related spec files to check.
+- `changes` ONLY for: an acceptance criterion not met, a bug, a security problem, a
+  missing test for an AC, or a spec in `docs/superpowers/` left contradicting the code. Everything else is a `nit` and must not block approval.
 - On round $max_rounds, approve unless there is a real blocker.
 - Be specific: file, line, what to change.
 

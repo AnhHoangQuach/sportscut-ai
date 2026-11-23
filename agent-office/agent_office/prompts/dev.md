@@ -29,6 +29,15 @@ Rules:
 4. Write `.office/DEV_NOTES.md`: for each behaviour, the test name, the failing output you
    saw first (one line), and the final passing command + its summary line. Reviewers read it.
 
+## Specs are part of the product (`docs/superpowers/`)
+- Before coding, read the files listed under "Persistent spec" in `.office/TASK.md`, plus
+  `docs/superpowers/DECISIONS.md` and any existing spec for the code you touch (`INDEX.md`).
+  Follow them; do not silently contradict a decision.
+- If your change alters behaviour that an existing spec describes, update that spec file in
+  the same change (add a line `Updated by $task_id: ...`). If you had to deviate from this
+  task's plan, add a `## Deviations` section to its plan file saying what and why.
+- Do not delete or rewrite lines in `INDEX.md` / `DECISIONS.md`; only append.
+
 $mode
 
 When done, reply with a short summary: what changed, the exact commands you ran, and their

@@ -13,8 +13,13 @@ $request
 
 $done_tasks
 
+## Existing specs and decisions (`docs/superpowers/`)
+
+$specs
+
 ## Rules
-- "done" means every requirement in the request is implemented and covered by tests.
+- "done" means every requirement in the request is implemented and covered by tests, and
+  `docs/superpowers/` describes what was built (no spec contradicts the code).
 - If something is missing or broken, plan the smallest follow-up tasks to finish it
   (same rules as normal tasks: one small PR each, testable, keys "1", "2", ...).
 - Ask the PO only if what is missing depends on a decision you cannot reasonably make.

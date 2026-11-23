@@ -106,6 +106,7 @@ Claude chỉ hỏi khi thật sự thiếu thông tin; câu hỏi hiện ở das
 - [ ] `office doctor --live` ra `ok` cho git, claude, codex (và gh nếu dùng PR)
 - [ ] `AGENTS.md` đã điền "Project specifics" và đã commit
 - [ ] `test_cmd` chạy xanh trên nhánh chính
+- [ ] `docs/superpowers/` (README, INDEX.md, DECISIONS.md) và `.gitattributes` với `merge=union` đã commit; ghi sẵn các quyết định gốc của PO vào `DECISIONS.md` (task đầu tiên cũng tự tạo nếu thiếu)
 - [ ] `protected_paths` gồm file quy tắc, CI, hạ tầng
 - [ ] `.agent-office/` trong `.gitignore`
 - [ ] (tùy chọn) plugin Superpowers cho Claude, `office doctor` báo `installed`

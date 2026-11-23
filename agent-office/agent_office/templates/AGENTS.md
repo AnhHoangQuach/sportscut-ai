@@ -22,6 +22,11 @@ the same practices in every prompt, so they apply even without any plugin instal
 6. **Review for real problems.** Blocking = unmet acceptance criterion, bug, security issue,
    missing test for an AC, or a lower eval score. Style is a nit.
 7. **YAGNI / DRY.** No options, layers or abstractions the acceptance criteria do not need.
+8. **Specs live in the repo.** Every request and task leaves its design, plan and decisions in
+   `docs/superpowers/` (`INDEX.md` feature index, `DECISIONS.md` decision log, `specs/`, `plans/`).
+   Read the related ones before planning, coding or reviewing. A change that alters described
+   behaviour updates that spec in the same PR; a change that contradicts a spec or decision
+   without updating it is rejected in review. `INDEX.md` and `DECISIONS.md` are append-only.
 
 ## Safety
 - Never commit secrets, API keys, tokens, `.env` files or large media (videos stay out of git).

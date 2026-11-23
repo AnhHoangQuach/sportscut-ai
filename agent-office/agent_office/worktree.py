@@ -211,9 +211,11 @@ def added_lines(wt: Path, base_sha: str) -> list[tuple[str, str]]:
     return lines
 
 
-def changed_line_count(wt: Path, base_sha: str) -> int:
+def changed_line_count(wt: Path, base_sha: str, exclude: str = "docs/superpowers") -> int:
+    """Changed lines, not counting the spec docs the orchestrator writes for every task."""
     total = 0
-    for row in git(wt, "diff", "--numstat", f"{base_sha}...HEAD", check=False).splitlines():
+    for row in git(wt, "diff", "--numstat", f"{base_sha}...HEAD", "--", ".", f":(exclude){exclude}",
+                   check=False).splitlines():
         parts = row.split("\t")
         if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
             total += int(parts[0]) + int(parts[1])
