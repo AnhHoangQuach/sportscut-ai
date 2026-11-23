@@ -199,3 +199,24 @@ def test_stats_api(auto_env):
     st = c.get("/api/stats").json()
     assert st["agents"]["dev"]["max_sessions"] == 2 and st["done"] == 0
     assert c.get("/api/state").json()["config"]["parallel"] == {"pm": 1, "lead": 1, "dev": 2, "tester": 1}
+
+
+def test_dispatch_says_why_dev_sessions_stay_idle(auto_env):
+    env = auto_env
+    set_cfg(env, ("dev = 2", "dev = 3"))
+    office = env.office()
+    office.add_request("Cut highlights")
+    env.script(claude_breakdown=[{"result": json.dumps({"tasks": [
+        {"key": "1", "title": "Task 1", "brief": "x", "depends_on": []},
+        {"key": "2", "title": "Task 2", "brief": "x", "depends_on": ["1"]}]})}])
+    office.step()
+    office.store.tasks["T-001"].stage = Stage.DEV
+    office.inflight["T-001"] = "dev"  # T-001 is being coded
+    office.dispatch(ThreadPoolExecutor(max_workers=1))
+    idle = [e for e in events(env.repo) if e["event"] == "slots_idle"]
+    assert idle and idle[-1]["role"] == "dev" and idle[-1]["idle"] == 2 and idle[-1]["sessions"] == 3
+    assert any("T-002 waits for T-001 to be merged" in w for w in idle[-1]["waiting_on"])
+    assert any("dev: 2/3 sessions idle" in line and "T-002 waits for T-001" in line for line in env.lines)
+    # the same reasons are not repeated on every dispatch
+    office.dispatch(ThreadPoolExecutor(max_workers=1))
+    assert len([e for e in events(env.repo) if e["event"] == "slots_idle"]) == len(idle)
