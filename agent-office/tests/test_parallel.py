@@ -99,6 +99,25 @@ def test_plan_steps_claude_takes_codex_role_during_quota_rest(auto_env):
     assert (step.target, step.agent) == (task.id, "pm")  # a Claude role covers the Developer
 
 
+def test_plan_steps_claude_takes_codex_role_while_codex_cli_keeps_failing(auto_env):
+    # e.g. codex-lb answers "502 ... account is unavailable; retry later": Codex is unusable for
+    # now just like out of quota, so Claude covers its work temporarily.
+    office = auto_env.office()
+    req = office.add_request("Cut highlights")
+    req.status = "planned"
+    office._add_tasks(req, [{"key": "1", "title": "Cut", "brief": "x"}])
+    task = office.store.tasks[req.task_ids[0]]
+    task.stage = Stage.DEV
+    for role in ("dev", "tester"):
+        codex = office.store.agents[role]
+        codex.status = AgentStatus.RESTING
+        codex.rest_until = "2026-11-22T14:00:00+00:00"
+        codex.rest_cause = "failure"
+
+    step = plan_steps(office.store, auto_env.now, True).steps[0]
+    assert (step.target, step.agent) == (task.id, "pm")
+
+
 def test_plan_steps_waits_when_both_agents_are_out_of_quota(auto_env):
     office = auto_env.office()
     office.add_request("Cut highlights")
@@ -220,3 +239,46 @@ def test_dispatch_says_why_dev_sessions_stay_idle(auto_env):
     # the same reasons are not repeated on every dispatch
     office.dispatch(ThreadPoolExecutor(max_workers=1))
     assert len([e for e in events(env.repo) if e["event"] == "slots_idle"]) == len(idle)
+
+
+def test_claude_covers_other_tasks_but_not_the_one_codex_left_half_done(auto_env):
+    office = auto_env.office()
+    req = office.add_request("Cut highlights")
+    req.status = "planned"
+    office._add_tasks(req, [{"key": "1", "title": "Cut", "brief": "x"},
+                            {"key": "2", "title": "Export", "brief": "y"},
+                            {"key": "3", "title": "Score", "brief": "z"}])
+    half, fresh, legacy = (office.store.tasks[t] for t in req.task_ids)
+    for t in (half, fresh, legacy):
+        t.stage = Stage.DEV
+    half.checkpoint = {"stage": "dev", "label": "dev", "reason": "dev failed", "provider": "codex"}
+    legacy.checkpoint = {"stage": "dev", "label": "dev", "reason": "dev failed"}  # saved before provider was recorded
+    for role in ("dev", "tester"):
+        codex = office.store.agents[role]
+        codex.status = AgentStatus.RESTING
+        codex.rest_until = "2026-11-22T14:00:00+00:00"
+        codex.rest_cause = "failure"
+
+    plan = plan_steps(office.store, auto_env.now, True)
+    assert [(s.target, s.agent) for s in plan.steps if s.kind == "task"] == [(fresh.id, "pm")]
+    for t in (half, legacy):
+        why = next(r for r in plan.waiting_on if r.startswith(t.id))
+        assert "codex" in why and "interrupted" in why
+
+
+def test_claude_resumes_its_own_checkpoint_while_codex_still_rests(auto_env):
+    office = auto_env.office()
+    req = office.add_request("Cut highlights")
+    req.status = "planned"
+    office._add_tasks(req, [{"key": "1", "title": "Cut", "brief": "x"}])
+    task = office.store.tasks[req.task_ids[0]]
+    task.stage = Stage.DEV
+    task.checkpoint = {"stage": "dev", "label": "dev", "reason": "pm usage limit", "provider": "claude"}
+    for role in ("dev", "tester"):
+        codex = office.store.agents[role]
+        codex.status = AgentStatus.RESTING
+        codex.rest_until = "2026-11-22T14:00:00+00:00"
+        codex.rest_cause = "quota"
+
+    step = plan_steps(office.store, auto_env.now, True).steps[0]
+    assert (step.target, step.agent) == (task.id, "pm")
