@@ -223,5 +223,12 @@ sportscut serve
 7. Nhấn "Thêm đoạn tại thời điểm hiện tại" để thêm một đoạn 10 giây.
 8. Nhấn "Lưu" để cắt lại toàn bộ clip. Mỗi lần lưu thay thế cả danh sách, không
    có hoàn tác và các liên kết clip cũ sẽ ngừng hoạt động.
+9. Trên form tải lên, có thể chọn các ô sự kiện như "Bàn thắng" để chỉ xuất
+   những sự kiện đó; bỏ trống để giữ mọi sự kiện.
+10. Trong trang xem trước, mỗi đoạn có một huy hiệu sự kiện bằng tiếng Việt.
+11. Dùng các chip sự kiện, "Tất cả", "Chỉ bàn thắng" hoặc "Top 5 pha hay" để
+    chọn các hàng cần xem.
+12. Các bộ lọc chỉ ẩn hàng: "Lưu" vẫn lưu tất cả đoạn, còn liên kết clip chỉ
+    hiện cho những hàng đang được hiển thị.
 
 Trang trả về lỗi 404 nếu `JOB_ID` không tồn tại.

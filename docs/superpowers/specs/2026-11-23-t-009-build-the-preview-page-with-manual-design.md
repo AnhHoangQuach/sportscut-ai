@@ -56,3 +56,13 @@ Add `GET /jobs/{job_id}`, which serves `preview.html`; its JS loads `GET /highli
 ## Existing specs this task changes
 
 - (none)
+
+## Updated by T-016
+
+- Save sends `{start, end, reason, event}` for every segment, amending AC7 and
+  the earlier decision that it sends only `{start, end, reason}`.
+- `filters.js` loads between `timefmt.js` and `preview.js`; the AC3 script order
+  remains otherwise unchanged.
+- The preview shows event badges plus event filter chips and the `Tất cả`,
+  `Chỉ bàn thắng`, and `Top 5 pha hay` presets. Filtering is view-only, so Save
+  still validates and sends the complete segment list.
