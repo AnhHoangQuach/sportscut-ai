@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 from . import github
 from .agents.base import API_KEY_VARS, subscription_env
-from .codex_provider import codex_home, provider_info, read_env_file
+from .codex_provider import codex_home, port_problem, provider_info, read_env_file
 from .config import load_config, write_default_config
 from .models import PROVIDERS, ROLES, ROLE_TITLE, AgentStatus, Stage
 from .scheduler import next_step
@@ -343,18 +343,6 @@ def cmd_sync(args) -> int:
     return 0
 
 
-def _port_open(url: str, timeout: float = 3.0) -> str:
-    """"" when the host:port of url accepts a TCP connection, else the error."""
-    u = urlparse(url)
-    if not u.hostname:
-        return "no host in base_url"
-    try:
-        socket.create_connection((u.hostname, u.port or (443 if u.scheme == "https" else 80)), timeout=timeout).close()
-        return ""
-    except OSError as e:
-        return str(e) or e.__class__.__name__
-
-
 def doctor_codex_provider(cfg) -> bool:
     """The model provider `codex exec` will use (~/.codex/config.toml), its key and its server."""
     info = provider_info()
@@ -381,7 +369,7 @@ def doctor_codex_provider(cfg) -> bool:
             print(f"        -> add `{info.env_key}=<key>` to .agent-office/.env ({cfg.codex.env_file}; git ignores it)"
                   f" or export it in the shell that runs `office run` / `office dashboard`")
     if info.base_url:
-        err = _port_open(info.base_url)
+        err = port_problem(info.base_url)
         print(f"{'ok' if not err else 'FAIL':<7} codex server {info.base_url}: " + ("reachable" if not err else err))
         if err:
             ok = False

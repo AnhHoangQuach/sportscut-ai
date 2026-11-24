@@ -34,15 +34,24 @@ flowchart TD
 - Quota là của **gói thuê bao (CLI)**, không phải của vai. Bốn vai là bốn agent riêng, nhưng `pm` và
   `lead` cùng dùng Claude, `dev` và `tester` cùng dùng Codex: một vai chạm giới hạn thì **mọi vai trên
   CLI đó nghỉ cùng giờ** (sự kiện `agent_resting` có `provider` và `roles`), một probe đánh thức tất cả.
-  Hai CLI nghỉ **độc lập**. Nếu chỉ một CLI hết quota/ngân sách ngày, vai trên CLI kia tiếp quản theo
+  Hai CLI nghỉ **độc lập**. Nếu chỉ một CLI nghỉ (vì bất kỳ lý do nào: hết quota, ngân sách ngày, thiếu
+  biến môi trường, máy chủ lỗi tạm thời, CLI lỗi lặp lại), vai trên CLI kia tiếp quản theo
   cặp `pm` ↔ `dev`, `lead` ↔ `tester`: Codex làm PM/review bằng sandbox chỉ đọc; Claude làm dev/test
   bằng quyền ghi trong worktree. Nếu cả hai cùng nghỉ thì office chờ mốc thức sớm nhất.
-- Khi cả hai còn quota, phân vai cũ không đổi. Agent đang bận/hết session hoặc lỗi CLI lặp lại
-  không kích hoạt tiếp quản. Mỗi lần đổi vai ghi event `agent_failover` và được đếm trong stats.
+- Khi cả hai CLI đều làm được, phân vai cũ không đổi. Agent đang bận/hết session không kích hoạt
+  tiếp quản. Mỗi lần đổi vai ghi event `agent_failover` (có `reason`) và được đếm trong stats.
+  Dashboard ghi trên thẻ vai đang nghỉ "→ PM @claude đang làm thay" để PO biết việc không đứng.
 - Khi không còn gì để làm, `office run` ngủ tới lúc agent sớm nhất thức dậy, và tỉnh sớm nếu có
   lệnh mới trong inbox.
 - Hai lần thất bại không rõ lý do liên tiếp của cùng một CLI (dù từ hai vai khác nhau) thì CLI nghỉ
   với lý do `failure` (thang 15 → 30 → 60 phút), không gọi là hết quota.
+- **Máy chủ lỗi tạm thời** (lý do `upstream`): lần chạy lỗi mà cuối output là 502/503/504, "Bad
+  Gateway", "connection refused/reset", "error sending request"... (ví dụ codex-lb trên :2455 bị
+  sập hoặc tài khoản phía sau nó lỗi). Mẫu nằm ở `TRANSIENT_PATTERNS` trong `limits.py`. Chỉ cần
+  **một** lần là CLI nghỉ, nhưng theo thang nhanh `upstream_retry_minutes = [1, 2, 5]` (giá trị cuối
+  lặp lại), không phải 15 → 30 → 60. Trước khi tốn probe, office thử kết nối TCP tới `base_url` của
+  provider Codex (codex-lb); chưa mở cổng thì nghỉ tiếp, không gọi Codex. PO chỉ nhận **một** tin cho
+  mỗi đợt lỗi (kèm ai đang làm thay); khi chạy lại, dashboard ghi "làm tiếp (máy chủ chạy lại)".
 - `max_calls_per_day` tính theo CLI: cộng lượt của mọi vai trên CLI đó.
 - Giao diện hiện "Zzz" và giờ thức dậy trên bàn của từng vai; PO có thể bấm "Làm lại ngay"
   (`office wake codex` hoặc `office wake tester`: cả hai đánh thức mọi vai trên Codex).

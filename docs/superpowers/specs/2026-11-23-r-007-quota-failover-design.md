@@ -10,7 +10,7 @@ Keep the office moving when exactly one subscription is quota-limited, without c
 - Claude quota/daily budget rest: Codex runs Claude steps with a read-only sandbox.
 - Codex quota/daily budget rest: Claude runs dev/test with write tools only in the task worktree.
 - Both resting: dispatch no work and wait for the earliest reset.
-- Busy sessions and repeated CLI failures do not trigger failover.
+- Busy sessions do not trigger failover (repeated CLI failures and server errors do since 2026-11-23, see the note at the end).
 - Interrupted work is checkpointed before the replacement agent resumes it.
 - `agent_failover` records the preferred agent, replacement, step and reason.
 
@@ -28,3 +28,5 @@ The fake-agent suite covers both failover directions, both-available and both-re
 
 
 Updated 2026-11-23 (separate agent roles): agents are now roles on a CLI; failover pairs `pm ↔ dev`, `lead ↔ tester` and happens only while the preferred role's CLI is quota/budget-resting. `agent_failover` also records `preferred_provider` and `provider`. See `specs/2026-11-23-separate-agent-roles-design.md`.
+
+Updated 2026-11-23 (upstream retry): failover now happens for every rest cause, including server errors (`upstream`) and repeated CLI failures. See `specs/2026-11-23-upstream-retry-design.md`.
