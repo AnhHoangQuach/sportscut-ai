@@ -94,6 +94,31 @@ Baseline đo trong T-029:
 Mục tiêu tiếp theo: `touch_f1_any ≥ 0.9` (T-031), `team_accuracy ≥ 0.95`
 (T-032), và `F1 ≥ 0.85` (T-033).
 
+## Highlight theo sự kiện: đo độ chính xác (eval)
+
+Tạo bộ video tổng hợp và chạy phép đo:
+
+```bash
+python tests/fixtures/eval/build.py && python -m sportscut eval tests/fixtures/eval --json
+```
+
+Mỗi trận có dạng `<thư-mục>/<trận>/{video.mp4,labels.json}`. Nhãn là danh sách
+JSON, ví dụ `[{"start":18.0,"end":30.0,"type":"goal"}]`.
+
+- `goal`: tiếng reo kéo dài, tỷ số thay đổi và có đoạn phát lại.
+- `save`: tiếng reo tăng nhanh trong 2–3 giây, tỷ số không đổi.
+- `red_card`: tiếng còi 3 kHz, khoảng dừng yên lặng và cảnh cận màu đỏ.
+- `controversy`: tiếng còi, khoảng dừng dài có tiếng la ó trầm và đoạn phát lại.
+- `distractor`: tiếng cổ động không có sự kiện, nhãn hay thay đổi tỷ số.
+
+Baseline đo trong T-011 (mọi đoạn đều là `other`):
+
+```json
+{"f1": 0.8421, "precision": 0.7273, "recall": 1.0, "event_accuracy": 0.0, "per_event": {"goal": {"precision": null, "recall": 0.0, "f1": null}, "save": {"precision": null, "recall": 0.0, "f1": null}, "red_card": {"precision": null, "recall": 0.0, "f1": null}, "controversy": {"precision": null, "recall": 0.0, "f1": null}, "other": {"precision": 0.0, "recall": null, "f1": null}}, "precision_at_5": 0.8889, "per_match": [{"match": "cards", "labels": 4, "predictions": 7, "f1": 0.7273, "precision": 0.5714, "recall": 1.0, "event_accuracy": 0.0, "precision_at_5": 0.8}, {"match": "controversy", "labels": 3, "predictions": 3, "f1": 1.0, "precision": 1.0, "recall": 1.0, "event_accuracy": 0.0, "precision_at_5": 1.0}, {"match": "goals_saves", "labels": 4, "predictions": 6, "f1": 0.8, "precision": 0.6667, "recall": 1.0, "event_accuracy": 0.0, "precision_at_5": 0.8}, {"match": "mixed", "labels": 5, "predictions": 6, "f1": 0.9091, "precision": 0.8333, "recall": 1.0, "event_accuracy": 0.0, "precision_at_5": 1.0}]}
+```
+
+Mục tiêu tiếp theo: recall mỗi sự kiện ≥ 0.9, recall bàn thắng ≥ 0.95, F1 không giảm.
+
 ## Theo dõi cầu thủ: xuất video tổng hợp (player)
 
 ```bash

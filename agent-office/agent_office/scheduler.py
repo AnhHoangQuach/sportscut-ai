@@ -59,19 +59,30 @@ def agent_available(store: Store, name: str | None, now: datetime) -> bool:
 
 
 def assigned_agent(store: Store, preferred: str, now: datetime) -> str:
-    """Use a role on the other subscription only while the preferred role's CLI rests for quota, budget or a missing env var.
+    """Use a role on the other subscription only while the preferred role's CLI rests (quota, budget,
+    a missing env var, or a CLI that keeps failing, e.g. codex-lb answering 502): the other CLI covers
+    its work temporarily, until the resting CLI passes its wake probe.
 
     Busy/session limits are handled separately by ``take`` and never cause failover.
     An expired rest is also not bypassed: the preferred CLI must pass its wake probe first.
     """
     agent = store.agents[preferred]
-    if agent.status != AgentStatus.RESTING or agent.rest_cause not in ("quota", "budget", "env"):
+    if agent.status != AgentStatus.RESTING:
         return preferred
     for name in [FAILOVER.get(preferred, ""), *store.agents]:
         other = store.agents.get(name)
         if other is not None and other.provider != agent.provider and other.status != AgentStatus.RESTING:
             return other.name
     return preferred
+
+
+def session_owner(store: Store, task: Task, preferred: str) -> str:
+    """CLI whose interrupted session this task holds ("" = none). Only that CLI resumes it; the
+    other CLI covers other tasks meanwhile. Old checkpoints without a provider were the preferred role's."""
+    cp = task.checkpoint
+    if not cp or cp.get("stage") != task.stage.value:
+        return ""
+    return cp.get("provider") or store.agents[preferred].provider
 
 
 def deps_done(store: Store, task: Task) -> bool:
@@ -238,6 +249,12 @@ def plan_steps(store: Store, now: datetime | None = None, auto_merge: bool = Fal
                 continue
             preferred = None if stage == Stage.TODO else STAGE_AGENT[stage]  # todo -> spec is bookkeeping
             agent = assigned_agent(store, preferred, now) if preferred else None
+            if agent and agent != preferred:
+                owner = session_owner(store, t, preferred)
+                if owner and owner != store.agents[agent].provider:
+                    reasons.append(f"{t.id} ({stage.value}) waits for {owner}: its interrupted session is "
+                                   f"{owner}'s, so {agent} covers other tasks instead")
+                    continue
             if not take(Step("task", t.id, agent)):
                 reasons.append(f"{t.id} ({stage.value}) waits for {agent}")
 

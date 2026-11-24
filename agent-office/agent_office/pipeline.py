@@ -420,7 +420,7 @@ class Office:
                 self._rest(agent_name, LimitHit(provider, "repeated failures", None), task, label, res,
                            cause="failure")
             elif task is not None:
-                self._checkpoint(task, label, f"{agent_name} failed (exit {res.exit_code})", res)
+                self._checkpoint(task, label, f"{agent_name} failed (exit {res.exit_code})", res, provider)
             return None
         for m in mates:  # the CLI works again: failures count per CLI, across its roles
             m.failures = 0
@@ -438,7 +438,7 @@ class Office:
         if a.status == AgentStatus.RESTING and a.rest_until and datetime.fromisoformat(a.rest_until) > self.clock():
             # A parallel session on the same CLI already hit the limit: just save this task's progress.
             if task is not None:
-                self._checkpoint(task, label, f"{agent_name} usage limit: {hit.matched}", res)
+                self._checkpoint(task, label, f"{agent_name} usage limit: {hit.matched}", res, provider)
             return
         until, known = rest_until(hit.reset_at, a.backoff_level, self.cfg.backoff_minutes, self.clock())
         if budget:
@@ -478,7 +478,7 @@ class Office:
         self.echo(f"  [{provider}: {names}] {what} ({a.rest_detail[:160]!r}); resting until {a.rest_until}"
                   + (f"; see {a.rest_log}" if a.rest_log else ""))
         if task is not None:
-            self._checkpoint(task, label, f"{agent_name} usage limit: {hit.matched}", res)
+            self._checkpoint(task, label, f"{agent_name} usage limit: {hit.matched}", res, provider)
 
     def _env_rest(self, agent_name: str, var: str, task: Task | None, label: str,
                   res: AgentResult | None) -> None:
@@ -508,7 +508,7 @@ class Office:
             self.echo(f"  [{provider}] missing environment variable {var}: reported to the PO, re-checking "
                       f"every {ENV_RECHECK_MIN} min")
         if task is not None:
-            self._checkpoint(task, label, f"{agent_name} missing environment variable {var}", res)
+            self._checkpoint(task, label, f"{agent_name} missing environment variable {var}", res, provider)
 
     def _wake(self, provider: str) -> None:
         """One probe for the CLI; when it answers, every role on it works again."""
@@ -555,8 +555,9 @@ class Office:
         return [m.name for m in mates]
 
     # ------------------------------------------------------------------ checkpoint
-    def _checkpoint(self, task: Task, label: str, reason: str, res: AgentResult | None) -> None:
-        cp = {"stage": task.stage.value, "label": label, "reason": reason, "at": now_iso(),
+    def _checkpoint(self, task: Task, label: str, reason: str, res: AgentResult | None, provider: str) -> None:
+        """Save the interrupted step. `provider` owns the session: only that CLI resumes it."""
+        cp = {"stage": task.stage.value, "label": label, "reason": reason, "at": now_iso(), "provider": provider,
               "session_id": res.session_id if res else "", "log": res.log_path if res else "",
               "log_tail": res.tail(1500) if res else ""}
         task.checkpoint = cp

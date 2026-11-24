@@ -1,0 +1,22 @@
+[
+ {
+  "start": 18.0,
+  "end": 30.0,
+  "type": "goal"
+ },
+ {
+  "start": 51.0,
+  "end": 59.0,
+  "type": "save"
+ },
+ {
+  "start": 98.0,
+  "end": 110.0,
+  "type": "goal"
+ },
+ {
+  "start": 136.0,
+  "end": 144.0,
+  "type": "save"
+ }
+]
