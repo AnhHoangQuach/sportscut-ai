@@ -207,6 +207,15 @@ xung đột thì Codex gỡ, quá 2 lần thì Tech Lead quyết (thường làm
 - Khi bị ngắt: commit WIP trong worktree, ghi `.office/CHECKPOINT.md`, task giữ nguyên stage.
   Lần sau Codex nhận prompt "RESUMING" và làm tiếp.
 - Mỗi agent nghỉ độc lập: Codex nghỉ thì Claude vẫn viết spec/review task khác.
+- **Làm thay tạm thời (failover):** khi một CLI nghỉ (hết quota, hết ngân sách ngày, thiếu biến
+  môi trường, hoặc lỗi liên tiếp như codex-lb trả `502 account is unavailable`), vai bên CLI kia
+  làm thay: Claude `pm` ↔ Codex `dev`, Claude `lead` ↔ Codex `tester` (vai đó bận thì vai rảnh
+  khác trên CLI kia nhận). Quyền theo bước: Claude được Edit/Write/Bash khi làm thay Developer/
+  Tester, Codex chỉ đọc khi làm thay PM/Tech Lead. CLI gốc qua được probe thì nhận lại việc;
+  mỗi lần làm thay có event `agent_failover`. Cả hai CLI cùng nghỉ thì office ngủ chờ.
+- Task đang làm dở (có checkpoint) thuộc về phiên của CLI đã làm nó (`checkpoint.provider`): CLI kia
+  **không** nhận task đó mà làm task khác; task đó chờ CLI gốc quay lại và RESUMING. Checkpoint cũ
+  chưa ghi `provider` được coi là của vai gốc của bước đó.
 
 ## Bảo vệ đường dẫn
 

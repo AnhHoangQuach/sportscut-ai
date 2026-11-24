@@ -5,12 +5,21 @@ from pathlib import Path
 
 from sportscut import __version__
 from sportscut import evaluate
+from sportscut.commentary import eval_meta
 from sportscut.detect import find_highlights
 from sportscut.eval_player import evaluate_dir
 from sportscut.media import MediaError
 from sportscut.pipeline import PipelineError, run
 from sportscut.player import PlayerQuery
+from sportscut.ranking import parse_events
 from sportscut.reel import MANIFEST_NAME, make_player_reel
+
+
+def _events_arg(text: str) -> tuple[str, ...]:
+    try:
+        return parse_events(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,12 +45,23 @@ def main(argv: list[str] | None = None) -> int:
     cut_parser.add_argument("--top", type=int, default=10)
     cut_parser.add_argument("--min-len", type=float, default=10)
     cut_parser.add_argument("--max-len", type=float, default=30)
+    cut_parser.add_argument(
+        "--events",
+        type=_events_arg,
+        default=None,
+        help="comma-separated events to keep: goal,save,red_card,controversy,other",
+    )
     eval_player_parser = subparsers.add_parser("eval-player", help="evaluate player-touch detection")
     eval_player_parser.add_argument("directory")
     eval_player_parser.add_argument("--json", action="store_true")
     eval_parser = subparsers.add_parser("eval", help="evaluate highlight detection")
     eval_parser.add_argument("directory", metavar="DIRECTORY")
     eval_parser.add_argument("--json", action="store_true")
+    eval_meta_parser = subparsers.add_parser(
+        "eval-meta", help="evaluate clip titles, captions and hashtags"
+    )
+    eval_meta_parser.add_argument("directory", metavar="DIRECTORY")
+    eval_meta_parser.add_argument("--json", action="store_true")
     player_parser = subparsers.add_parser("player", help="export a reel of one player's touches")
     player_parser.add_argument("video")
     player_parser.add_argument("--team", required=True)
@@ -116,11 +136,21 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report) if args.json else json.dumps(report, indent=2))
         return 0
 
+    if args.command == "eval-meta":
+        try:
+            report = eval_meta.evaluate_meta_dir(args.directory)
+        except (ValueError, OSError) as exc:
+            print(f"sportscut eval-meta: error: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(report) if args.json else json.dumps(report, indent=2))
+        return 0
+
     if args.command == "cut":
         try:
             entries = run(
                 args.video, args.out, top=args.top,
                 min_len=args.min_len, max_len=args.max_len,
+                events=args.events,
             )
         except (PipelineError, MediaError) as exc:
             print(f"sportscut: error: {exc}", file=sys.stderr)

@@ -7,6 +7,7 @@ import pytest
 
 from sportscut import detect
 from sportscut.cli import main
+from sportscut.events import scoreboard
 from sportscut.evaluate import (
     LABEL_TYPES,
     Label,
@@ -30,9 +31,9 @@ def test_t010_ac1_segment_public_contract() -> None:
     default = Segment(1, 3.5, 0.8, "crowd noise")
     assert default.to_dict() == {
         "start": 1.0, "end": 3.5, "score": 0.8,
-        "reason": "crowd noise", "event": "other",
+        "reason": "crowd noise", "event": "other", "event_confidence": 0.0,
     }
-    assert list(default.to_dict()) == ["start", "end", "score", "reason", "event"]
+    assert list(default.to_dict()) == ["start", "end", "score", "reason", "event", "event_confidence"]
     assert _segment(0, 1, event="goal").to_dict()["event"] == "goal"
     numpy_event = _segment(0, 1, event=np.str_("save")).to_dict()["event"]
     assert numpy_event == "save" and type(numpy_event) is str
@@ -49,19 +50,19 @@ def test_t010_ac2_detect_and_pipeline_public_shapes(
     assert cli_output.err == "" and cli_output.out.count("\n") == 1
     cli_segments = json.loads(cli_output.out)
     assert cli_segments and all(
-        set(item) == {"start", "end", "score", "reason", "event"}
+        set(item) == {"start", "end", "score", "reason", "event", "event_confidence"}
         and item["event"] == "other"
         for item in cli_segments
     )
 
     segments = detect.find_highlights(burst_video)
-    assert segments and all(set(item.to_dict()) == {"start", "end", "score", "reason", "event"} for item in segments)
+    assert segments and all(set(item.to_dict()) == {"start", "end", "score", "reason", "event", "event_confidence"} for item in segments)
     assert all(item.event == "other" for item in segments)
 
     from sportscut.pipeline import run
 
     manifest = run(burst_video, tmp_path / "clips")
-    assert manifest and all(set(item) == {"start", "end", "score", "reason", "event", "file"} for item in manifest)
+    assert manifest and all(set(item) == {"start", "end", "score", "reason", "event", "event_confidence", "file"} for item in manifest)
     assert all(item["event"] == "other" for item in manifest)
 
 
@@ -212,7 +213,7 @@ def test_t010_ac11_cli_error_and_help(tmp_path: Path, capsys) -> None:
     assert "DIRECTORY" in help_output and "--json" in help_output
 
 
-def test_t010_ac2_api_response_keys_unchanged(tmp_path: Path, monkeypatch) -> None:
+def test_t010_ac2_api_response_keys(tmp_path: Path, monkeypatch) -> None:
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
 
@@ -226,7 +227,7 @@ def test_t010_ac2_api_response_keys_unchanged(tmp_path: Path, monkeypatch) -> No
     response = TestClient(api.app).post("/highlights", files={"file": ("x.mp4", b"data")})
     assert response.status_code == 200
     (highlight,) = response.json()["highlights"]
-    assert set(highlight) == {"start", "end", "score", "reason", "clip_url"}
+    assert set(highlight) == {"start", "end", "score", "reason", "event", "event_confidence", "clip_url"}
 
 
 def test_t010_ac4_broken_json_and_non_string_type_name_path(tmp_path: Path) -> None:
@@ -305,6 +306,7 @@ def test_t010_ac9_sums_cases_in_sorted_order(tmp_path: Path, monkeypatch) -> Non
         return by_case[Path(video).parent.name]
 
     monkeypatch.setattr(detect, "find_highlights", fake)
+    monkeypatch.setattr(scoreboard, "tag_goals", lambda video, segments, **kw: list(segments))
     report = evaluate_dir(tmp_path)
     assert calls == ["a", "b", "c"]
     # totals: tp=2 (a:1, b:1), fp=1, fn=2 -> p=0.6667, r=0.5

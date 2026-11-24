@@ -23,6 +23,19 @@
           <label for="top">Số đoạn tối đa (không bắt buộc)</label>
           <input id="top" name="top" type="number" min="1" step="1">
         </div>
+        <fieldset id="events">
+          <legend>Chỉ lấy sự kiện (không bắt buộc)</legend>
+          <input id="event-goal" name="events" type="checkbox" value="goal">
+          <label for="event-goal">Bàn thắng</label>
+          <input id="event-save" name="events" type="checkbox" value="save">
+          <label for="event-save">Cứu thua</label>
+          <input id="event-red_card" name="events" type="checkbox" value="red_card">
+          <label for="event-red_card">Thẻ đỏ</label>
+          <input id="event-controversy" name="events" type="checkbox" value="controversy">
+          <label for="event-controversy">Tranh cãi</label>
+          <input id="event-other" name="events" type="checkbox" value="other">
+          <label for="event-other">Khác</label>
+        </fieldset>
         <div>
           <label for="min_len">Thời lượng tối thiểu, giây (không bắt buộc)</label>
           <input id="min_len" name="min_len" type="number" min="0.1" step="any">

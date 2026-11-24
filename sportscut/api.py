@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
-from typing import Annotated
+from typing import Annotated, Literal
 import uuid
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -20,6 +20,7 @@ from sportscut import export, media, pipeline, sources
 from sportscut.media import MediaError
 from sportscut.models import Segment
 from sportscut.pipeline import PipelineError
+from sportscut.ranking import parse_events
 from sportscut.sources import SourceError
 
 
@@ -61,6 +62,7 @@ class SegmentEdit(BaseModel):
     start: FiniteFloat
     end: FiniteFloat
     reason: str | None = None
+    event: Literal["goal", "save", "red_card", "controversy", "other"] | None = None
 
 
 class SegmentEdits(BaseModel):
@@ -114,8 +116,13 @@ def _validate_job(job: object) -> dict[str, object]:
     if not isinstance(segments, list):
         raise _JobNotFound
     required = {"start", "end", "score", "reason", "file"}
+    optional = {"event", "event_confidence"}
     for entry in segments:
-        if not isinstance(entry, dict) or set(entry) not in (required, required | {"event"}):
+        if (
+            not isinstance(entry, dict)
+            or not required <= set(entry)
+            or not set(entry) - required <= optional
+        ):
             raise _JobNotFound
         start, end, score = entry["start"], entry["end"], entry["score"]
         name = entry["file"]
@@ -127,6 +134,11 @@ def _validate_job(job: object) -> dict[str, object]:
             and isinstance(name, str) and name not in ("", ".", "..")
             and "/" not in name and "\\" not in name
             and ("event" not in entry or isinstance(entry["event"], str))
+            and (
+                "event_confidence" not in entry
+                or _finite_number(entry["event_confidence"])
+                and 0 <= entry["event_confidence"] <= 1
+            )
         ):
             raise _JobNotFound
     return job
@@ -158,29 +170,55 @@ def _write_job(path: Path, job: dict[str, object]) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def _highlights(
+    request: Request, job_id: str, entries: list[dict]
+) -> list[dict]:
+    return [
+        {
+            "start": entry["start"],
+            "end": entry["end"],
+            "score": entry["score"],
+            "reason": entry["reason"],
+            "event": entry.get("event", "other"),
+            "event_confidence": entry.get("event_confidence", 0.0),
+            "clip_url": str(request.url_for(
+                "get_clip", job_id=job_id, name=entry["file"]
+            )),
+        }
+        for entry in entries
+    ]
+
+
 def _job_response(
-    request: Request, job_id: str, job: dict[str, object]
+    request: Request, job_id: str, job: dict[str, object],
+    entries: list[dict] | None = None,
 ) -> dict[str, object]:
-    segments = job["segments"]
-    assert isinstance(segments, list)
+    if entries is None:
+        entries = job["segments"]
+        assert isinstance(entries, list)
     return {
         "job_id": job_id,
         "source_name": job["source_name"],
         "source_url": job["source_url"],
         "duration": job["duration"],
-        "highlights": [
-            {
-                "start": entry["start"],
-                "end": entry["end"],
-                "score": entry["score"],
-                "reason": entry["reason"],
-                "clip_url": str(request.url_for(
-                    "get_clip", job_id=job_id, name=entry["file"]
-                )),
-            }
-            for entry in segments
-        ],
+        "highlights": _highlights(request, job_id, entries),
     }
+
+
+def _manifest(job_id: str) -> list[dict]:
+    try:
+        job_dir = _job_dir(job_id)
+        entries = json.loads(
+            (job_dir / CLIPS_DIR / "highlights.json").read_text(encoding="utf-8")
+        )
+        if not isinstance(entries, list) or any(
+            not isinstance(entry, dict) or not isinstance(entry.get("file"), str)
+            for entry in entries
+        ):
+            raise _JobNotFound
+        return entries
+    except (OSError, json.JSONDecodeError, UnicodeError, _JobNotFound):
+        raise HTTPException(404, "not found") from None
 
 
 def _file_chunks(path: Path, start: int, length: int):
@@ -218,13 +256,51 @@ def get_web_app() -> FileResponse:
     return FileResponse(WEB_DIR.joinpath("index.html"), media_type="text/html")
 
 
-@app.get("/highlights/{job_id}")
-def get_highlights(request: Request, job_id: str) -> dict[str, object]:
+@app.get("/jobs/{job_id}", include_in_schema=False)
+def get_preview_page(job_id: str) -> FileResponse:
     try:
-        _, job = _load_job(job_id)
+        _load_job(job_id)
     except _JobNotFound:
         raise HTTPException(404, "not found") from None
-    return _job_response(request, job_id, job)
+    return FileResponse(WEB_DIR.joinpath("preview.html"), media_type="text/html")
+
+
+@app.get("/highlights/{job_id}", name="get_job")
+def get_job(
+    request: Request, job_id: str, event: str | None = None
+) -> dict[str, object]:
+    selected_events = None
+    if event is not None and event.strip():
+        try:
+            selected_events = parse_events(event)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+    try:
+        job_dir = _job_dir(job_id)
+    except _JobNotFound:
+        raise HTTPException(404, "not found") from None
+    if (job_dir / JOB_FILE).exists():
+        try:
+            _, job = _load_job(job_id)
+        except _JobNotFound:
+            raise HTTPException(404, "not found") from None
+        entries = job["segments"]
+        assert isinstance(entries, list)
+        if selected_events is not None:
+            entries = [
+                entry for entry in entries
+                if entry.get("event", "other") in selected_events
+            ]
+        return _job_response(request, job_id, job, entries)
+    if (job_dir / INPUT_NAME).exists():
+        raise HTTPException(404, "not found")
+    entries = _manifest(job_id)
+    if selected_events is not None:
+        entries = [
+            entry for entry in entries
+            if entry.get("event", "other") in selected_events
+        ]
+    return {"job_id": job_id, "highlights": _highlights(request, job_id, entries)}
 
 
 @app.post("/highlights")
@@ -235,6 +311,7 @@ def create_highlights(
     top: int = Form(10, ge=1),
     min_len: float = Form(10, gt=0, allow_inf_nan=False),
     max_len: float = Form(30, gt=0, allow_inf_nan=False),
+    events: str | None = Form(None),
 ) -> dict[str, object]:
     if url is not None and not url.strip():
         url = None
@@ -242,6 +319,12 @@ def create_highlights(
         raise HTTPException(422, "send exactly one of file or url")
     if min_len > max_len:
         raise HTTPException(422, "min_len must be <= max_len")
+    selected_events = None
+    if events is not None and events.strip():
+        try:
+            selected_events = parse_events(events)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
     if url is not None:
         try:
             sources.check_youtube_url(url)
@@ -268,7 +351,7 @@ def create_highlights(
             shutil.rmtree(job_dir / DOWNLOAD_DIR, ignore_errors=True)
         entries = pipeline.run(
             input_path, job_dir / CLIPS_DIR,
-            top=top, min_len=min_len, max_len=max_len,
+            top=top, min_len=min_len, max_len=max_len, events=selected_events,
         )
         job: dict[str, object] = {
             "source_name": (file.filename or "upload") if file is not None else None,
@@ -349,7 +432,13 @@ def put_segments(request: Request, job_id: str, edits: SegmentEdits):
     next_version = version + 1
     suffix = f"_v{next_version}"
     segments = [
-        Segment(item.start, item.end, None, item.reason or "manual")
+        Segment(
+            item.start,
+            item.end,
+            None,
+            item.reason or "manual",
+            event=item.event or "other",
+        )
         for item in edits.segments
     ]
     clips_dir = job_dir / CLIPS_DIR
@@ -386,9 +475,16 @@ def put_segments(request: Request, job_id: str, edits: SegmentEdits):
 @app.get("/highlights/{job_id}/clips/{name}", name="get_clip")
 def get_clip(job_id: str, name: str) -> FileResponse:
     try:
-        job_dir, job = _load_job(job_id)
+        job_dir = _job_dir(job_id)
+        if (job_dir / JOB_FILE).exists():
+            _, job = _load_job(job_id)
+            entries = job["segments"]
+        else:
+            if (job_dir / INPUT_NAME).exists():
+                raise _JobNotFound
+            entries = _manifest(job_id)
         clips_dir = job_dir / CLIPS_DIR
-        if name not in {entry["file"] for entry in job["segments"]}:
+        if name not in {entry["file"] for entry in entries}:
             raise _JobNotFound
         path = clips_dir / name
         if not path.is_file():

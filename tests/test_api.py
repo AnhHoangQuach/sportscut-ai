@@ -54,13 +54,13 @@ def test_post_returns_highlights_covering_bursts(job):
     assert str(uuid.UUID(job_id)) == job_id
     highlights = body["highlights"]
     assert len(highlights) == 3
-    assert all(set(item) == {"start", "end", "score", "reason", "clip_url"} for item in highlights)
+    assert all(list(item) == ["start", "end", "score", "reason", "event", "event_confidence", "clip_url"] for item in highlights)
     assert all(any(item["start"] <= start and item["end"] >= end for item in highlights)
                for start, end in [(20, 21), (50, 51), (75, 76)])
     job_dir = data_dir / "jobs" / job_id
     manifest = json.loads((job_dir / "clips" / "highlights.json").read_text())
     assert [{k: v for k, v in item.items() if k != "clip_url"} for item in highlights] == [
-        {k: v for k, v in entry.items() if k not in {"file", "event"}} for entry in manifest
+        {k: v for k, v in entry.items() if k != "file"} for entry in manifest
     ]
     assert (job_dir / "input").read_bytes() == source.read_bytes()
 
@@ -89,6 +89,7 @@ def test_post_persists_full_job_and_returns_canonical_response(
     assert body["duration"] == 12.5
     assert body["highlights"] == [{
         "start": 1.0, "end": 2.5, "score": 3.0, "reason": "peak",
+        "event": "other", "event_confidence": 0.0,
         "clip_url": f"http://testserver/highlights/{body['job_id']}/clips/clip_01.mp4",
     }]
     job_path = data_dir / "jobs" / body["job_id"] / "job.json"
@@ -129,6 +130,7 @@ def test_get_highlights_returns_persisted_job(data_dir):
         "duration": 10.0,
         "highlights": [{
             "start": 1.0, "end": 2.0, "score": 3.0, "reason": "peak",
+            "event": "other", "event_confidence": 0.0,
             "clip_url": f"http://testserver/highlights/{job_id}/clips/clip_01.mp4",
         }],
     }
@@ -536,7 +538,7 @@ def test_default_data_dir_is_cwd_sportscut_data(monkeypatch, tmp_path):
     expected = tmp_path / "sportscut-data" / "jobs" / job_id
     assert (expected / "input").read_bytes() == b"data"
     assert calls == [((expected / "input", expected / "clips"),
-                      {"top": 10, "min_len": 10, "max_len": 30})]
+                      {"top": 10, "min_len": 10, "max_len": 30, "events": None})]
 
 
 @pytest.mark.parametrize("case", [

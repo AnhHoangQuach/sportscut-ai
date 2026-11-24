@@ -84,10 +84,10 @@ def test_acceptance_ac2_ac3_real_video_round_trip(api_client, burst_video):
     assert (job / "input").read_bytes() == source
     manifest = json.loads((job / "clips" / "highlights.json").read_text())
     assert [{k: v for k, v in h.items() if k != "clip_url"} for h in body["highlights"]] == [
-        {k: v for k, v in entry.items() if k not in {"file", "event"}} for entry in manifest
+        {k: v for k, v in entry.items() if k != "file"} for entry in manifest
     ]
     for number, highlight in enumerate(body["highlights"], 1):
-        assert set(highlight) == {"start", "end", "score", "reason", "clip_url"}
+        assert set(highlight) == {"start", "end", "score", "reason", "event", "event_confidence", "clip_url"}
         name = f"clip_{number:02d}.mp4"
         assert highlight["clip_url"].endswith(f"/{body['job_id']}/clips/{name}")
         clip = client.get(highlight["clip_url"])
@@ -183,7 +183,7 @@ def test_acceptance_ac9_default_directory_tracks_cwd(monkeypatch, tmp_path):
     assert response.status_code == 200
     job = tmp_path / "sportscut-data" / "jobs" / response.json()["job_id"]
     assert (job / "input").read_bytes() == b"data"
-    assert calls == [((job / "input", job / "clips"), {"top": 10, "min_len": 10, "max_len": 30})]
+    assert calls == [((job / "input", job / "clips"), {"top": 10, "min_len": 10, "max_len": 30, "events": None})]
 
 
 def test_acceptance_ac10_manifest_authorizes_downloads(api_client):

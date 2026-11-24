@@ -21,9 +21,10 @@ def test_to_dict_shape_order_and_values() -> None:
         "score": 0.8,
         "reason": "crowd noise",
         "event": "other",
+        "event_confidence": 0.0,
     }
-    assert list(result) == ["start", "end", "score", "reason", "event"]
-    assert [type(value) for value in result.values()] == [float, float, float, str, str]
+    assert list(result) == ["start", "end", "score", "reason", "event", "event_confidence"]
+    assert [type(value) for value in result.values()] == [float, float, float, str, str, float]
 
 
 def test_to_dict_is_json_safe_for_numpy_scalars() -> None:
@@ -37,6 +38,15 @@ def test_to_dict_is_json_safe_for_numpy_scalars() -> None:
     json.dumps(result)
     assert all(type(result[key]) is float for key in ("start", "end", "score"))
     assert type(result["reason"]) is str
+
+
+def test_event_confidence_roundtrip_and_validation() -> None:
+    result = Segment(1, 2, 0.5, "goal", event_confidence=np.float64(0.75)).to_dict()
+    assert result["event_confidence"] == 0.75
+    assert type(result["event_confidence"]) is float
+    for confidence in (-0.1, 1.5, float("nan")):
+        with pytest.raises(ValueError, match="^event_confidence must be between 0 and 1$"):
+            Segment(1, 2, 0.5, "invalid", event_confidence=confidence)
 
 
 def test_event_roundtrip() -> None:

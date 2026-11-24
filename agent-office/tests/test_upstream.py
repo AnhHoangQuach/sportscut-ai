@@ -106,19 +106,19 @@ def test_claude_covers_dev_and_test_while_codex_rests_for_errors(env, cause):
     assert plan_steps(office.store, env.now, True).steps[0].agent == "lead"
 
 
-def test_502_on_dev_hands_the_task_to_claude_and_it_gets_done(env):
+def test_502_on_dev_resumes_on_codex_after_one_minute(env):
+    """The half-done dev session is Codex's (PR #34), so it waits for Codex, which retries in 1 minute."""
     env.script(codex_dev=[{"stdout": BAD_GATEWAY, "fail": True}])
     office = env.office()
     office.add_request("Cut highlights")
     _to_stage(office, Stage.DEV)
-    office.step()  # 502: codex rests 1 min
-    office.step()  # the PM (claude) covers the dev step right away
+    office.step()  # 502: codex rests 1 min, the task keeps its Codex checkpoint
+    assert office.store.agents["dev"].rest_cause == "upstream"
+    env.advance(minutes=1)
+    while office.store.tasks["T-001"].stage == Stage.DEV:
+        assert office.step() is not None
     assert office.store.tasks["T-001"].stage == Stage.TEST
-    dev_calls = [c for c in env.calls() if c["kind"] == "dev"]
-    assert [c["agent"] for c in dev_calls] == ["codex", "claude"]
-    events = [json.loads(x) for x in (env.repo / ".agent-office" / "events.jsonl").read_text().splitlines()]
-    fo = [e for e in events if e["event"] == "agent_failover"]
-    assert fo and fo[0]["agent"] == "pm" and fo[0]["reason"] == "upstream"
+    assert [c["agent"] for c in env.calls() if c["kind"] == "dev"] == ["codex", "codex"]
 
 
 def _closed_port() -> str:

@@ -1,0 +1,22 @@
+[
+ {
+  "start": 18.0,
+  "end": 28.0,
+  "type": "red_card"
+ },
+ {
+  "start": 46.0,
+  "end": 54.0,
+  "type": "save"
+ },
+ {
+  "start": 71.0,
+  "end": 81.0,
+  "type": "controversy"
+ },
+ {
+  "start": 153.0,
+  "end": 163.0,
+  "type": "red_card"
+ }
+]

@@ -56,3 +56,9 @@ Add `sportscut/export.py` with `export_clips(video, segments, out_dir) -> list[P
   and produce `clip_NN_vN.mp4` names in both files and the manifest.
 - `Segment.score` may be `null` for manually edited segments. Detector-produced
   segments and default export behavior remain unchanged.
+
+## Updated by T-023
+
+- Updated by T-023: A manifest entry may be passed to `commentary.facts_from_entry` to build facts
+  for title, caption and hashtag generation. The manifest schema and export
+  behavior are unchanged.

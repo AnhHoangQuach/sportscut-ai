@@ -21,8 +21,9 @@ Tester rested 13 times that day, while PM and Tech Lead (Claude) sat idle.
 - `_wake` for `upstream`: `CliAgent.server_problem()` first (Codex: TCP connect to the provider's
   `base_url`, e.g. codex-lb `:2455`); still down → rest again without a probe. A probe failing with a
   transient error stays `upstream`.
-- Failover for every rest cause (`FAILOVER_CAUSES` in `scheduler.py`), including `upstream` and
-  `failure`: the other CLI keeps the work moving (refines R-007).
+- Failover for every rest cause, including `upstream` and `failure` (landed in PR #34 on main
+  first): the other CLI keeps the work moving. Per PR #34 a task with a half-done Codex session
+  waits for Codex, which with this change retries within 1-5 minutes.
 - One chat message per outage (who covers); the awake message and event say why work resumes
   (`agent_awake.cause`). Dashboard: label "máy chủ lỗi tạm thời", "thử lại lúc", card line
   "→ PM @claude đang làm thay" (`covered_by` in `/api/state`), event "làm tiếp (máy chủ chạy lại)".
@@ -33,8 +34,8 @@ Tester rested 13 times that day, while PM and Tech Lead (Claude) sat idle.
 `agent-office/tests/{test_upstream,test_dashboard,fake_agent}.py`, `docs/01`, `docs/02`.
 
 ## Acceptance
-- A 502 on a dev run rests Codex for 1 minute, cause `upstream`, and Claude (PM) runs the dev step
-  right away; the task moves on to test.
+- A 502 on a dev run rests Codex for 1 minute, cause `upstream`; after that minute Codex resumes the
+  task and it moves on to test. While Codex rests, Claude covers dev/test of other tasks.
 - Failed probes give rests of 1, 2, 5, 5 minutes.
 - With codex-lb's port closed, wake spends no probe.
 - `cd agent-office && python -m pytest -q` passes.

@@ -1,4 +1,5 @@
 import ast
+import importlib.util
 import json
 import re
 import subprocess
@@ -6,8 +7,22 @@ from pathlib import Path
 
 import pytest
 
+from sportscut import pipeline
 from sportscut.media import MediaError, probe_duration
+from sportscut.models import Segment
 from sportscut.pipeline import PipelineError, run
+
+
+@pytest.fixture(scope="module")
+def pipeline_eval_set(tmp_path_factory, require_ffmpeg):
+    build_path = Path(__file__).parent / "fixtures" / "eval" / "build.py"
+    spec = importlib.util.spec_from_file_location("t013_pipeline_eval_build", build_path)
+    assert spec is not None and spec.loader is not None
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+    root = tmp_path_factory.mktemp("t013_pipeline_eval")
+    build.build_all(root)
+    return root
 
 
 def _video_only(tmp_path: Path) -> Path:
@@ -24,7 +39,7 @@ def test_run_returns_manifest_entries(burst_video, tmp_path):
     out = tmp_path / "out"
     entries = run(burst_video, out)
     assert isinstance(entries, list) and len(entries) == 3
-    assert all(set(entry) == {"start", "end", "score", "reason", "event", "file"} for entry in entries)
+    assert all(set(entry) == {"start", "end", "score", "reason", "event", "event_confidence", "file"} for entry in entries)
     assert [entry["file"] for entry in entries] == [f"clip_{i:02d}.mp4" for i in range(1, 4)]
     assert all((out / entry["file"]).is_file() for entry in entries)
     assert entries == json.loads((out / "highlights.json").read_text(encoding="utf-8"))
@@ -83,3 +98,65 @@ def test_pipeline_module_does_not_import_subprocess():
     source = Path(__file__).parents[1] / "sportscut" / "pipeline.py"
     imports = [node for node in ast.walk(ast.parse(source.read_text())) if isinstance(node, (ast.Import, ast.ImportFrom))]
     assert all(not ((isinstance(node, ast.Import) and any(alias.name == "subprocess" for alias in node.names)) or (isinstance(node, ast.ImportFrom) and node.module == "subprocess")) for node in imports)
+
+
+def test_run_calls_tag_goals_between_detect_and_select(
+    burst_video, tmp_path, monkeypatch
+):
+    calls = []
+    candidate = Segment(0, 1, 3, "x")
+
+    def fake_find(video, **kwargs):
+        calls.append(("find", video, kwargs))
+        return [candidate]
+
+    def fake_tag(video, candidates, **kwargs):
+        calls.append(("tag", video, candidates, kwargs))
+        return list(candidates)
+
+    def fake_select(candidates, **kwargs):
+        calls.append(("select", candidates, kwargs))
+        return list(candidates)
+
+    monkeypatch.setattr(pipeline, "find_highlights", fake_find)
+    monkeypatch.setattr(pipeline, "tag_goals", fake_tag)
+    monkeypatch.setattr(pipeline, "select_segments", fake_select)
+
+    run(burst_video, tmp_path / "out", top=2, min_len=4, max_len=6)
+
+    assert [call[0] for call in calls] == ["find", "tag", "select"]
+    assert calls[0][2] == {"top": None, "min_len": 4, "max_len": 6}
+    assert calls[1] == (
+        "tag",
+        burst_video,
+        [candidate],
+        {"min_len": 4, "max_len": 6},
+    )
+    assert calls[2][2] == {"top": 2, "events": None}
+
+
+def test_run_wraps_tag_goals_media_error(burst_video, tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline, "find_highlights", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        pipeline,
+        "tag_goals",
+        lambda *args, **kwargs: (_ for _ in ()).throw(MediaError("tag failed")),
+    )
+
+    with pytest.raises(PipelineError, match="^tag failed$"):
+        run(burst_video, tmp_path / "out")
+
+
+def test_run_goals_only_on_fixture(pipeline_eval_set, tmp_path):
+    out = tmp_path / "goals"
+
+    entries = run(
+        pipeline_eval_set / "goals_saves" / "video.mp4",
+        out,
+        events=["goal"],
+    )
+
+    assert len(entries) == 2
+    assert all(entry["event"] == "goal" for entry in entries)
+    assert all(entry["event_confidence"] == 0.9 for entry in entries)
+    assert entries == json.loads((out / "highlights.json").read_text())

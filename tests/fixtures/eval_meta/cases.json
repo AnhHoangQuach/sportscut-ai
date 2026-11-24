@@ -1,0 +1,50 @@
+[
+  {
+    "id": "goal_full",
+    "facts": {"event": "goal", "minute": 23, "home": "Hà Nội FC", "away": "Hải Phòng", "competition": "V.League 2026", "score": "1-0"},
+    "must_mention": [["bàn thắng"], ["Hà Nội FC"], ["Hải Phòng"], ["phút 23"], ["1-0"], ["V.League"]],
+    "forbidden": ["Viettel", "Nam Định"]
+  },
+  {
+    "id": "save_teams",
+    "facts": {"event": "save", "minute": 67, "home": "Arsenal", "away": "Chelsea", "competition": "Premier League"},
+    "must_mention": [["cứu thua"], ["Arsenal"], ["Chelsea"], ["phút 67"], ["Premier League"]],
+    "forbidden": ["Tottenham", "Liverpool"]
+  },
+  {
+    "id": "red_card_minute_only",
+    "facts": {"event": "red_card", "minute": 88},
+    "must_mention": [["thẻ đỏ"], ["phút 88"]],
+    "forbidden": ["Real Madrid"]
+  },
+  {
+    "id": "controversy_no_minute",
+    "facts": {"event": "controversy", "home": "Thép Xanh Nam Định", "away": "Hoàng Anh Gia Lai", "competition": "Cúp Quốc gia"},
+    "must_mention": [["tranh cãi"], ["Nam Định"], ["Hoàng Anh Gia Lai"], ["Cúp Quốc gia"]],
+    "forbidden": ["Hà Nội"]
+  },
+  {
+    "id": "other_bare",
+    "facts": {"event": "other"},
+    "must_mention": [["khoảnh khắc"]],
+    "forbidden": ["Barcelona"]
+  },
+  {
+    "id": "goal_long_names",
+    "facts": {"event": "goal", "minute": 120, "home": "Câu lạc bộ Bóng đá Công an Hà Nội", "away": "Becamex Bình Dương Football Club", "competition": "Night Wolf V.League 1", "score": "3-2"},
+    "must_mention": [["bàn thắng"], ["Công an Hà Nội"], ["Bình Dương"], ["phút 120"], ["3-2"]],
+    "forbidden": ["Thể Công"]
+  },
+  {
+    "id": "goal_u23",
+    "facts": {"event": "goal", "minute": 45, "home": "U23 Việt Nam", "away": "U23 Thái Lan", "competition": "SEA Games 33", "score": "2-2"},
+    "must_mention": [["bàn thắng"], ["Việt Nam"], ["Thái Lan"], ["phút 45"], ["2-2"], ["SEA Games"]],
+    "forbidden": ["Indonesia", "Malaysia"]
+  },
+  {
+    "id": "save_competition_only",
+    "facts": {"event": "save", "minute": 5, "competition": "Champions League", "score": "0-0"},
+    "must_mention": [["cứu thua"], ["phút 5"], ["0-0"], ["Champions League"]],
+    "forbidden": ["Bayern"]
+  }
+]
