@@ -225,17 +225,20 @@ def test_acceptance_committed_label_oracle_and_untracked_media():
         if event[0] in build.DISTRACTORS
     ]
     assert len(distractors) == 5
-    try:
-        tracked = subprocess.run(
-            ["git", "ls-files", "tests/fixtures/eval"],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.splitlines()
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        pytest.skip("git is required to check tracked fixture files")
-    assert not any(path.endswith((".mp4", ".mkv", ".mov", ".wav")) for path in tracked)
+    tracked = subprocess.run(
+        ["git", "ls-files", "tests/fixtures/eval"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert tracked == [
+        "tests/fixtures/eval/build.py",
+        "tests/fixtures/eval/cards/labels.json",
+        "tests/fixtures/eval/controversy/labels.json",
+        "tests/fixtures/eval/goals_saves/labels.json",
+        "tests/fixtures/eval/mixed/labels.json",
+    ]
 
 
 def test_acceptance_footprints_are_bounded_and_separated():
@@ -261,6 +264,22 @@ def test_acceptance_scoreboard_changes_once_per_goal():
             assert build.score_at(name, t0 + 0.9) == tuple(score)
             score[0 if team[0] == "home" else 1] += 1
             assert build.score_at(name, t0 + 1.0) == tuple(score)
+
+
+def test_acceptance_score_update_changes_no_pixels_outside_scoreboard(monkeypatch):
+    original_score_at = build.score_at
+    for name in build.MATCHES:
+        for _, t0, *_ in _events(name, "goal"):
+            live_frame = build.render_frame(name, t0 + 1.0)
+            previous_score = original_score_at(name, t0 + 0.9)
+            with monkeypatch.context() as patch:
+                patch.setattr(build, "score_at", lambda _name, _time: previous_score)
+                frame_without_increment = build.render_frame(name, t0 + 1.0)
+            assert not np.array_equal(_score_crop(live_frame), _score_crop(frame_without_increment))
+            assert np.array_equal(
+                _without_scoreboard(live_frame),
+                _without_scoreboard(frame_without_increment),
+            )
 
 
 def test_acceptance_red_closeup_exists_only_in_red_card_windows():
@@ -510,3 +529,15 @@ def test_acceptance_readme_baseline_contract():
         assert report["per_event"][kind]["recall"] == 0.0
         assert report["per_event"][kind]["precision"] is None
     assert report["per_event"]["other"]["recall"] is None
+
+
+def test_acceptance_task_does_not_modify_production_or_shared_test_config():
+    changed = subprocess.run(
+        ["git", "diff", "--name-only", "HEAD^", "HEAD"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    forbidden = {"tests/conftest.py", "pyproject.toml", ".gitignore"}
+    assert not any(path.startswith("sportscut/") or path in forbidden for path in changed)
