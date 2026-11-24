@@ -37,12 +37,17 @@ def built_eval_set(tmp_path_factory, require_ffmpeg):
 def test_place_window_examples():
     assert detect.place_window(50, 12, 100, 8) == (42.0, 54.0)
     assert detect.place_window(5, 12, 100, 8) == (0.0, 12.0)
-    assert detect.place_window(95, 12, 100, 8) == (88.0, 100.0)
+    assert detect.place_window(95, 12, 100, 8) == (87.0, 99.0)
+    assert detect.place_window(97, 12, 100, 8) == (88.0, 100.0)
     assert detect.place_window(5, 12, 6, 8) == (0.0, 6.0)
 
 
 def test_place_window_does_not_shift_an_in_bounds_window():
     assert detect.place_window(94.5, 12, 100, 8) == (86.5, 98.5)
+
+
+def test_place_window_preserves_a_subsecond_tail_gap():
+    assert detect.place_window(95.5, 12, 100, 8) == (87.5, 99.5)
 
 
 def test_loudness_residual_lengths():

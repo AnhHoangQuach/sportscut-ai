@@ -132,7 +132,8 @@ def test_ac1_sample_top_band_one_exact_ffmpeg_call_and_partial_drop(
 def test_ac2_window_examples_and_empty_short_residuals():
     assert detect.place_window(50, 12, 100, 8) == (42.0, 54.0)
     assert detect.place_window(5, 12, 100, 8) == (0.0, 12.0)
-    assert detect.place_window(95, 12, 100, 8) == (88.0, 100.0)
+    assert detect.place_window(95, 12, 100, 8) == (87.0, 99.0)
+    assert detect.place_window(97, 12, 100, 8) == (88.0, 100.0)
     assert detect.place_window(5, 12, 6, 8) == (0.0, 6.0)
     assert detect.loudness_residual(np.zeros(0, np.float32)).shape == (0,)
     short = np.zeros(int(3.5 * media.SAMPLE_RATE), np.float32)

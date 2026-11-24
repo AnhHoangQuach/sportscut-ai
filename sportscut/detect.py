@@ -39,9 +39,6 @@ def place_window(
     if start < 0:
         end -= start
         start = 0.0
-    if 0 < duration - end <= 1.0:
-        start += duration - end
-        end = float(duration)
     if end > duration:
         start -= end - duration
         end = float(duration)
@@ -84,7 +81,7 @@ def find_highlights(
             duration,
             length * PRE_SEC / (PRE_SEC + POST_SEC),
         )
-        windows.append((max(start, 0.0), end, z_score))
+        windows.append((start, end, z_score))
 
     kept = []
     for window in sorted(windows, key=lambda item: (-item[2], item[0])):
