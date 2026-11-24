@@ -218,6 +218,15 @@ def get_web_app() -> FileResponse:
     return FileResponse(WEB_DIR.joinpath("index.html"), media_type="text/html")
 
 
+@app.get("/jobs/{job_id}", include_in_schema=False)
+def get_preview_page(job_id: str) -> FileResponse:
+    try:
+        _load_job(job_id)
+    except _JobNotFound:
+        raise HTTPException(404, "not found") from None
+    return FileResponse(WEB_DIR.joinpath("preview.html"), media_type="text/html")
+
+
 @app.get("/highlights/{job_id}")
 def get_highlights(request: Request, job_id: str) -> dict[str, object]:
     try:

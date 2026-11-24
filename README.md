@@ -143,3 +143,23 @@ duyệt không phát lại bản đã cache.
 
 Hiện việc xử lý diễn ra đồng bộ, chưa có xác thực, các thư mục job thành công
 không tự xóa, và server mặc định chỉ lắng nghe trên localhost.
+
+## Trang web: tải lên, xem trước và chỉnh mốc cắt
+
+```bash
+pip install -e '.[api,youtube]'
+sportscut serve
+```
+
+1. Mở `http://127.0.0.1:8000/`.
+2. Chọn một tệp hoặc dán liên kết YouTube rồi nhấn "Tạo highlight".
+3. Trang sẽ chuyển tới `http://127.0.0.1:8000/jobs/JOB_ID`.
+4. Nhấn "▶ Đoạn N" để phát một đoạn.
+5. Nhập mốc đầu hoặc cuối theo `mm:ss.s` (cũng nhận số giây như `75.5`), hoặc
+   dùng "Đầu/Cuối = hiện tại" và các nút ±0.5 s.
+6. Nhấn "Xóa" để xóa một đoạn.
+7. Nhấn "Thêm đoạn tại thời điểm hiện tại" để thêm một đoạn 10 giây.
+8. Nhấn "Lưu" để cắt lại toàn bộ clip. Mỗi lần lưu thay thế cả danh sách, không
+   có hoàn tác và các liên kết clip cũ sẽ ngừng hoạt động.
+
+Trang trả về lỗi 404 nếu `JOB_ID` không tồn tại.
