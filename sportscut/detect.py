@@ -11,9 +11,9 @@ MIN_SCALE_DB = 1.0
 
 
 def find_highlights(
-    video: str, top: int = 10, min_len: float = 10, max_len: float = 30
+    video: str, top: int | None = 10, min_len: float = 10, max_len: float = 30
 ) -> list[Segment]:
-    if top < 1:
+    if top is not None and top < 1:
         raise ValueError("top must be >= 1")
     if min_len <= 0:
         raise ValueError("min_len must be > 0")
@@ -68,7 +68,7 @@ def find_highlights(
         start, end, _score = window
         if all(not (start < other[1] and other[0] < end) for other in kept):
             kept.append(window)
-            if len(kept) == top:
+            if top is not None and len(kept) == top:
                 break
 
     return sorted(

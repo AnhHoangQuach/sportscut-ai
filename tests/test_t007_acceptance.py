@@ -16,7 +16,9 @@ from sportscut.models import Segment
 
 
 RESPONSE_KEYS = {"job_id", "source_name", "source_url", "duration", "highlights"}
-HIGHLIGHT_KEYS = {"start", "end", "score", "reason", "clip_url"}
+HIGHLIGHT_KEYS = {
+    "start", "end", "score", "reason", "event", "event_confidence", "clip_url"
+}
 
 
 @pytest.fixture

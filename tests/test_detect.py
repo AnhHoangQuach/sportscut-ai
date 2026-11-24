@@ -11,7 +11,7 @@ from sportscut.media import extract_audio, probe_duration
 def test_public_detector_contract() -> None:
     assert inspect.signature(find_highlights).parameters == {
         "video": inspect.Parameter("video", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=str),
-        "top": inspect.Parameter("top", inspect.Parameter.POSITIONAL_OR_KEYWORD, default=10, annotation=int),
+        "top": inspect.Parameter("top", inspect.Parameter.POSITIONAL_OR_KEYWORD, default=10, annotation=int | None),
         "min_len": inspect.Parameter("min_len", inspect.Parameter.POSITIONAL_OR_KEYWORD, default=10, annotation=float),
         "max_len": inspect.Parameter("max_len", inspect.Parameter.POSITIONAL_OR_KEYWORD, default=30, annotation=float),
     }
@@ -86,6 +86,13 @@ def test_top_keeps_highest_scores_sorted_by_time(burst_video) -> None:
     top_one = find_highlights(burst_video, top=1)
     assert len(top_one) == 1
     assert _contains(top_one[0], 75, 76)
+
+
+def test_top_none_returns_all_candidates_and_preserves_capped_result(burst_video) -> None:
+    all_segments = find_highlights(burst_video, top=None)
+    assert len(all_segments) >= 3
+    ranked = sorted(all_segments, key=lambda item: (-item.score, item.start))[:2]
+    assert find_highlights(burst_video, top=2) == sorted(ranked, key=lambda item: item.start)
 
 
 def test_min_len_extends_segments(burst_video) -> None:

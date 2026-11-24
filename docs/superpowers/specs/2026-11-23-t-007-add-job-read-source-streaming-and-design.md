@@ -64,3 +64,11 @@ Persist each job as `jobs/<uuid>/job.json` (source name or URL, duration, segmen
 - `docs/superpowers/specs/2026-11-23-t-003-export-segments-as-mp4-clips-plus-design.md`
 - `docs/superpowers/specs/2026-11-23-t-005-expose-post-highlights-over-http-with-design.md`
 - `docs/superpowers/specs/2026-11-23-t-006-accept-a-youtube-link-as-post-design.md`
+
+## Updated by T-012
+
+- Canonical POST, GET and PUT highlight items add `event` and `event_confidence`.
+  GET accepts `?event=` filtering. A job directory holding
+  `clips/highlights.json` with neither `job.json` nor `input` is read from the
+  manifest as `{job_id, highlights}`; any other job without a valid `job.json`
+  stays 404. (updated by T-012)

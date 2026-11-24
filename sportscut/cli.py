@@ -11,7 +11,15 @@ from sportscut.eval_player import evaluate_dir
 from sportscut.media import MediaError
 from sportscut.pipeline import PipelineError, run
 from sportscut.player import PlayerQuery
+from sportscut.ranking import parse_events
 from sportscut.reel import MANIFEST_NAME, make_player_reel
+
+
+def _events_arg(text: str) -> tuple[str, ...]:
+    try:
+        return parse_events(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,6 +45,12 @@ def main(argv: list[str] | None = None) -> int:
     cut_parser.add_argument("--top", type=int, default=10)
     cut_parser.add_argument("--min-len", type=float, default=10)
     cut_parser.add_argument("--max-len", type=float, default=30)
+    cut_parser.add_argument(
+        "--events",
+        type=_events_arg,
+        default=None,
+        help="comma-separated events to keep: goal,save,red_card,controversy,other",
+    )
     eval_player_parser = subparsers.add_parser("eval-player", help="evaluate player-touch detection")
     eval_player_parser.add_argument("directory")
     eval_player_parser.add_argument("--json", action="store_true")
@@ -136,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
             entries = run(
                 args.video, args.out, top=args.top,
                 min_len=args.min_len, max_len=args.max_len,
+                events=args.events,
             )
         except (PipelineError, MediaError) as exc:
             print(f"sportscut: error: {exc}", file=sys.stderr)
