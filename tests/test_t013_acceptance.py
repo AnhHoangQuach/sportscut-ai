@@ -220,7 +220,7 @@ def test_ac6_match_goals_is_one_to_one_non_mutating_and_sorted():
 
     competing = residual.copy()
     competing[60:70] = 20
-    d = Segment(54, 66, 5, "d")
+    d = Segment(58, 70, 5, "d")
     nearest = scoreboard.match_goals([a, d], competing, [62.0], 200)
     assert [segment.event for segment in nearest] == ["other", "goal"]
 

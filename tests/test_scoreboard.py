@@ -166,7 +166,7 @@ def test_match_goals_nearest_peak_wins():
     residual = _roar_residual()
     residual[60:70] = 20
     a = _segments()[0]
-    d = Segment(54, 66, 5, "d")
+    d = Segment(58, 70, 5, "d")
 
     result = match_goals([a, d], residual, [62.0], 200)
 
