@@ -61,3 +61,9 @@ Without --json, the same report is printed with indent=2.
 - `docs/superpowers/specs/2026-11-23-t-035-scaffold-sportscut-packaging-version-cli-and-design.md`
 - `docs/superpowers/specs/2026-11-23-t-002-detect-highlight-segments-from-audio-excitement-design.md`
 - `docs/superpowers/specs/2026-11-23-t-004-add-a-pipeline-entry-point-and-design.md`
+
+## Updated by T-023
+
+- Updated by T-023: `commentary.ClipFacts` carries the manifest entry's validated `event` into the
+  deterministic Vietnamese metadata template. The event vocabulary and existing
+  `sportscut eval` F1 gate are unchanged.

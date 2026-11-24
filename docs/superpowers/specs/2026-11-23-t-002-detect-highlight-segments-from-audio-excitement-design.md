@@ -52,3 +52,9 @@ Add `sportscut/detect.py` with `find_highlights(video, top=10, min_len=10, max_l
 ## Existing specs this task changes
 
 - (none)
+
+## Updated by T-023
+
+- Updated by T-023: Clip metadata uses `PRE_SEC` and `POST_SEC` to place the event anchor two-thirds
+  through a detector-produced clip when a kickoff offset is available. Detection
+  output and thresholds are unchanged.
