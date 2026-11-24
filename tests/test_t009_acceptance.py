@@ -354,6 +354,21 @@ def test_preview_javascript_acceptance_contract() -> None:
     assert "http://" not in source and "https://" not in source
 
 
+def test_preview_controls_stay_disabled_until_job_load_acceptance() -> None:
+    source = (WEB / "preview.js").read_text(encoding="utf-8")
+    load_job_at = source.index("async function loadJob()")
+
+    assert source.index("save.disabled = true") < load_job_at
+    assert source.index("addSegment.disabled = true") < load_job_at
+
+    accepted_at = source.index("acceptResponse(data)", load_job_at)
+    failed_path_at = source.index("} catch", accepted_at)
+    accepted_path = source[accepted_at:failed_path_at]
+    assert "save.disabled = false" in accepted_path
+    assert "addSegment.disabled = false" in accepted_path
+    assert source.count("addSegment.disabled = false") == 1
+
+
 def test_preview_styles_acceptance() -> None:
     source = (WEB / "style.css").read_text(encoding="utf-8")
     for fragment in (
