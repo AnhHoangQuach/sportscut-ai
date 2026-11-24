@@ -31,9 +31,14 @@ form.addEventListener("submit", async (event) => {
   const top = document.querySelector("#top").value.trim()
   const min_len = document.querySelector("#min_len").value.trim()
   const max_len = document.querySelector("#max_len").value.trim()
+  const events = Array.from(
+    document.querySelectorAll('input[name="events"]:checked'),
+    (input) => input.value,
+  ).join(",")
   if (top) formData.append("top", top)
   if (min_len) formData.append("min_len", min_len)
   if (max_len) formData.append("max_len", max_len)
+  if (events) formData.append("events", events)
 
   submit.disabled = true
   form.setAttribute("aria-busy", "true")

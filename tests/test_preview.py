@@ -212,7 +212,7 @@ def test_preview_js_contract():
         "`/highlights/${encodeURIComponent(jobId)}/source`",
         "fetch(`/highlights/${encodeURIComponent(jobId)}/segments`, {",
         'method: "PUT"', '"Content-Type": "application/json"',
-        "({ start, end, reason })", "T.newSegmentAt(player.currentTime, duration)",
+        "({ start, end, reason, event })", "T.newSegmentAt(player.currentTime, duration)",
         "T.clampTime(", "T.parseTime(", "T.formatTime(",
         "player.currentTime = seg.start", "player.play()", "player.pause()",
         "playUntil", "clip_url", "segments.splice", "NaN",
