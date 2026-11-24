@@ -442,4 +442,3 @@ def test_ac15_no_forbidden_paths_or_new_dependency_in_task_diff():
     }
     assert changed.isdisjoint(forbidden)
     assert not any(path == "agent-office" or path.startswith("agent-office/") for path in changed)
-
