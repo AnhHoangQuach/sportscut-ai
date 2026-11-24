@@ -185,6 +185,16 @@ def test_match_goals_does_not_substitute_a_lower_roar():
     assert match_goals([segment], residual, [15.0], 40) == [segment]
 
 
+def test_match_goals_does_not_substitute_a_later_tied_roar():
+    residual = np.zeros(40)
+    residual[10] = 20
+    residual[14:21] = 20
+    segment = Segment(8, 22, 5, "audio peak z=5.0")
+
+    assert roar(residual, segment.start, segment.end) == (10.5, 1)
+    assert match_goals([segment], residual, [15.0], 40) == [segment]
+
+
 def test_match_goals_keeps_non_other_events():
     segment = Segment(14, 26, 5, "r", "save")
 

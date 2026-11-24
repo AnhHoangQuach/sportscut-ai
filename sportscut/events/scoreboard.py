@@ -137,33 +137,6 @@ def roar(residual: np.ndarray, start: float, end: float) -> tuple[float, int]:
     return peak + 0.5, right - left
 
 
-def _qualifying_roar(
-    residual: np.ndarray, start: float, end: float
-) -> tuple[float, int]:
-    peak, run = roar(residual, start, end)
-    if run >= ROAR_SEC:
-        return peak, run
-
-    first = max(0, math.floor(start))
-    stop = min(len(residual), math.ceil(end))
-    if first >= stop:
-        return peak, run
-    peak_second = first + int(np.argmax(residual[first:stop]))
-    peak_level = residual[peak_second]
-    for sample in range(peak_second + 1, stop):
-        if residual[sample] != peak_level:
-            continue
-        left = sample
-        while left > 0 and residual[left - 1] >= ROAR_DB:
-            left -= 1
-        right = sample + 1
-        while right < len(residual) and residual[right] >= ROAR_DB:
-            right += 1
-        if right - left >= ROAR_SEC:
-            return sample + 0.5, right - left
-    return peak, run
-
-
 def match_goals(
     segments: list[Segment],
     residual: np.ndarray,
@@ -178,7 +151,7 @@ def match_goals(
     for index, segment in enumerate(segments):
         if segment.event != "other":
             continue
-        peak, run = _qualifying_roar(residual, segment.start, segment.end)
+        peak, run = roar(residual, segment.start, segment.end)
         if run >= ROAR_SEC:
             qualified[index] = (peak, run)
 
