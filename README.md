@@ -50,6 +50,26 @@ Tài liệu đầy đủ (kiến trúc multi-agent, code, văn phòng 3D, công 
 
 Chi tiết: [agent-office/README.md](agent-office/README.md).
 
+## Bình luận AI: đo chất lượng tiêu đề, caption, hashtag (eval-meta)
+
+```bash
+python -m sportscut eval-meta tests/fixtures/eval_meta --json
+```
+
+Mỗi ca trong `cases.json` gồm `facts`, các nhóm `must_mention` (chỉ cần khớp một
+giá trị trong mỗi nhóm) và danh sách `forbidden`. Tiêu đề phải dài 10–80 ký tự,
+caption tối đa 300 ký tự, và có 3–8 hashtag ASCII duy nhất. Điểm ca bằng
+`fact_recall` khi đúng định dạng, không bị phát hiện bịa số/tên cấm và đạt
+heuristic tiếng Việt; nếu không thì bằng 0.
+
+Baseline template đo trong T-023:
+
+```json
+{"score": 1.0, "format_ok": 1.0, "fact_recall": 1.0, "hallucination_rate": 0.0, "vi_rate": 1.0}
+```
+
+Mọi PR thuộc R-005 phải báo cáo điểm này và điểm không được giảm.
+
 ## Theo dõi cầu thủ: đo độ chính xác (eval-player)
 
 Tạo bộ video tổng hợp và chạy phép đo:
