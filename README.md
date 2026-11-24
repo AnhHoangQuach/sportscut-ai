@@ -127,6 +127,14 @@ Kết quả sau T-013 (bàn thắng = bảng tỷ số đổi + tiếng reo kéo
 
 SportsCut xác nhận bàn thắng khi tiếng reo kéo dài đi trước thay đổi bảng tỷ số; nếu không tìm thấy bảng tỷ số, hệ thống dùng tiếng reo với độ tin cậy thấp hơn.
 
+Kết quả sau T-014 (cứu thua = tiếng reo ngắn, bật lên nhanh, không có tiếng còi trong 5 giây sau và bảng tỷ số không đổi):
+
+```json
+{"f1": 0.8421, "precision": 0.7273, "recall": 1.0, "event_accuracy": 0.625, "per_event": {"goal": {"precision": 1.0, "recall": 1.0, "f1": 1.0}, "save": {"precision": 1.0, "recall": 1.0, "f1": 1.0}, "red_card": {"precision": null, "recall": 0.0, "f1": null}, "controversy": {"precision": null, "recall": 0.0, "f1": null}, "other": {"precision": 0.0, "recall": null, "f1": null}}, "precision_at_5": 0.8889, "per_match": [{"match": "cards", "labels": 4, "predictions": 7, "f1": 0.7273, "precision": 0.5714, "recall": 1.0, "event_accuracy": 0.25, "precision_at_5": 0.8}, {"match": "controversy", "labels": 3, "predictions": 3, "f1": 1.0, "precision": 1.0, "recall": 1.0, "event_accuracy": 0.3333, "precision_at_5": 1.0}, {"match": "goals_saves", "labels": 4, "predictions": 6, "f1": 0.8, "precision": 0.6667, "recall": 1.0, "event_accuracy": 1.0, "precision_at_5": 0.8}, {"match": "mixed", "labels": 5, "predictions": 6, "f1": 0.9091, "precision": 0.8333, "recall": 1.0, "event_accuracy": 0.8, "precision_at_5": 1.0}]}
+```
+
+Các ngưỡng của T-014 (còi 2–4 kHz kéo dài ≥ 0,3 giây, tiếng reo < 4 giây, thời gian bật ≤ 0,5 giây) chỉ được chỉnh trên bộ video tổng hợp. Muốn chỉnh cho trận thật cần bộ nhãn data/eval/ do PO gán. Khi video không có bảng tỷ số, SportsCut không gắn nhãn cứu thua.
+
 ## Theo dõi cầu thủ: xuất video tổng hợp (player)
 
 ```bash
