@@ -41,6 +41,10 @@ def test_place_window_examples():
     assert detect.place_window(5, 12, 6, 8) == (0.0, 6.0)
 
 
+def test_place_window_does_not_shift_an_in_bounds_window():
+    assert detect.place_window(94.5, 12, 100, 8) == (86.5, 98.5)
+
+
 def test_loudness_residual_lengths():
     assert len(detect.loudness_residual(np.zeros(0, np.float32))) == 0
     samples = np.zeros(int(3.5 * SAMPLE_RATE), np.float32)
@@ -169,6 +173,16 @@ def test_match_goals_nearest_peak_wins():
     assert result[0] == a
     assert result[1].event == "goal"
     assert result[1].event_confidence == 0.9
+
+
+def test_match_goals_does_not_substitute_a_lower_roar():
+    residual = np.zeros(40)
+    residual[10] = 20
+    residual[14:21] = 10
+    segment = Segment(8, 22, 5, "audio peak z=5.0")
+
+    assert roar(residual, segment.start, segment.end) == (10.5, 1)
+    assert match_goals([segment], residual, [15.0], 40) == [segment]
 
 
 def test_match_goals_keeps_non_other_events():

@@ -143,11 +143,15 @@ def _qualifying_roar(
     peak, run = roar(residual, start, end)
     if run >= ROAR_SEC:
         return peak, run
-    sample = max(0, math.floor(start))
+
+    first = max(0, math.floor(start))
     stop = min(len(residual), math.ceil(end))
-    while sample < stop:
-        if residual[sample] < ROAR_DB:
-            sample += 1
+    if first >= stop:
+        return peak, run
+    peak_second = first + int(np.argmax(residual[first:stop]))
+    peak_level = residual[peak_second]
+    for sample in range(peak_second + 1, stop):
+        if residual[sample] != peak_level:
             continue
         left = sample
         while left > 0 and residual[left - 1] >= ROAR_DB:
@@ -157,7 +161,6 @@ def _qualifying_roar(
             right += 1
         if right - left >= ROAR_SEC:
             return sample + 0.5, right - left
-        sample = right
     return peak, run
 
 
