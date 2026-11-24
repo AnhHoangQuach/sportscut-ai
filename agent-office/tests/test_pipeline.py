@@ -6,6 +6,7 @@ import pytest
 
 from agent_office.agents import extract_json
 from agent_office.models import Agent, AgentStatus, InvalidTransition, Stage, Task
+from agent_office.scheduler import next_step
 
 
 def test_transitions_are_enforced():
@@ -68,26 +69,31 @@ def test_usage_limit_checkpoint_and_resume(env):
 
     t1 = office.store.tasks["T-001"]
     codex = office.store.agents["dev"]
-    assert t1.stage == Stage.PR and t1.checkpoint is None
     assert codex.status.value == "resting" and codex.reset_known
     assert datetime.fromisoformat(codex.rest_until) == datetime.fromisoformat("2026-11-22T14:01:00+00:00")
     assert office.store.agents["tester"].rest_until == codex.rest_until  # same CLI, same quota
     assert office.store.agents["pm"].status.value == "idle"  # the other CLI's roles keep working
     assert office.store.agents["lead"].status.value == "idle"
 
+    # The interrupted session is Codex's: Claude does not take over the half-done task, it waits.
+    assert t1.stage == Stage.DEV and t1.checkpoint["provider"] == "codex"
     wt = env.tmp / "sportscut-worktrees" / "T-001"
-    assert not (wt / ".office" / "CHECKPOINT.md").exists()
-    assert (wt / "half.py").exists()  # the replacement agent continued from the saved work
+    assert (wt / ".office" / "CHECKPOINT.md").exists()
     log = __import__("subprocess").run(["git", "log", "--format=%s"], cwd=wt, capture_output=True,
                                        text=True).stdout
     assert "wip(office): checkpoint T-001 dev" in log  # partial work saved
+    assert [c["agent"] for c in env.calls() if c["kind"] == "dev"] == ["codex"]
+    why = next(r for r in next_step(office.store, env.now).waiting_on if r.startswith("T-001"))
+    assert "codex" in why and "interrupted" in why
 
+    env.advance(hours=3)  # Codex is back and resumes its own work
+    env.run_all(office)
+    assert t1.stage == Stage.PR and t1.checkpoint is None
+    assert not (wt / ".office" / "CHECKPOINT.md").exists()
+    assert (wt / "half.py").exists()
     dev_calls = [c for c in env.calls() if c["kind"] == "dev"]
-    assert [c["agent"] for c in dev_calls[:2]] == ["codex", "claude"]
-    dev_prompts = [c["prompt"] for c in dev_calls]
-    assert "RESUMING" in dev_prompts[-1]
-    assert any(json.loads(line)["event"] == "agent_failover" for line in
-               (env.repo / ".agent-office/events.jsonl").read_text().splitlines())
+    assert [c["agent"] for c in dev_calls] == ["codex", "codex"]
+    assert "RESUMING" in dev_calls[-1]["prompt"]
 
 
 def test_codex_runs_claude_step_read_only_while_claude_is_quota_resting(env):

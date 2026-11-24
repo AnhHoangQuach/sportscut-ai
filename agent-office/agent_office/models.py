@@ -28,8 +28,9 @@ ROLES = ("pm", "lead", "dev", "tester")
 PROVIDERS = ("claude", "codex")
 DEFAULT_PROVIDER = {"pm": "claude", "lead": "claude", "dev": "codex", "tester": "codex"}
 ROLE_TITLE = {"pm": "Product Manager", "lead": "Tech Lead · Reviewer", "dev": "Developer", "tester": "Tester"}
-# While a CLI is out of quota, a role on the other CLI covers its work (creating <-> creating,
+# While a CLI rests (out of quota, budget, env or failing), a role on the other CLI covers its work (creating <-> creating,
 # checking <-> checking). The covering role keeps its own identity; permissions follow the step.
+# A task left half-done (checkpoint) stays with the CLI whose session it is; the cover takes other tasks.
 FAILOVER = {"pm": "dev", "dev": "pm", "lead": "tester", "tester": "lead"}
 
 # Which role does the work for a task sitting in a stage (None = orchestrator only).
@@ -162,7 +163,7 @@ class Agent:
     reset_known: bool = False
     failures: int = 0  # consecutive non-limit failures
     last_error: str = ""
-    rest_cause: str = ""  # quota | budget | env | failure; all but failure permit role failover
+    rest_cause: str = ""  # quota | budget | env | failure; each lets the other CLI cover (failover)
     rest_detail: str = ""  # the CLI's own error line that caused the rest
     rest_log: str = ""     # log file of the call that caused the rest
     active: list[str] = field(default_factory=list)  # task/request ids this agent works on right now
