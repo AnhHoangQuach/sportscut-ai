@@ -69,6 +69,7 @@ def test_pipeline_contract_and_success_acceptance(burst_video: Path, tmp_path: P
     assert custom[0]["end"] - custom[0]["start"] == pytest.approx(6, abs=0.01)
 
 
+@pytest.mark.usefixtures("require_ffmpeg")
 @pytest.mark.parametrize(
     ("kind", "message"),
     [
@@ -147,6 +148,7 @@ def test_cut_cli_success_options_and_zero_segments_acceptance(
     assert json.loads((empty_out / "highlights.json").read_text(encoding="utf-8")) == []
 
 
+@pytest.mark.usefixtures("require_ffmpeg")
 def test_cut_cli_failure_help_and_required_out_acceptance(tmp_path: Path) -> None:
     bad = tmp_path / "bad.mp4"
     bad.write_text("bad", encoding="utf-8")

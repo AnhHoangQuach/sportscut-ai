@@ -61,3 +61,15 @@ Add `sportscut/api.py` (FastAPI, installed through the `[api]` extra: fastapi, u
 - `file` is optional and `url` is the alternative input; exactly one is required (422 otherwise).
 - A `SourceError` from URL validation or downloading maps to HTTP 400.
 - Every successful job writes `job.json` containing its source URL or `null` for uploads.
+
+## Updated by T-007
+
+- Successful POST now persists an atomic full `job.json` containing source name or
+  URL, duration, version, and manifest-equivalent segments. Its response adds
+  `source_name`, `source_url`, and `duration` to the existing job/highlight shape.
+- `GET /highlights/{job_id}` reopens that canonical response, while
+  `GET /highlights/{job_id}/source` streams the fixed input with single-range byte
+  seeking. `PUT /highlights/{job_id}/segments` replaces and synchronously re-cuts
+  the full segment list.
+- Clip authorization now uses only current `job.json` segment filenames, so stale
+  versioned URLs and traversal-shaped names return 404.

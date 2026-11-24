@@ -14,7 +14,7 @@ pytest.importorskip("fastapi")
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from sportscut import pipeline
+from sportscut import media, pipeline
 import sportscut.api as api
 from sportscut.cli import main
 from sportscut.media import MediaError
@@ -69,7 +69,11 @@ def test_acceptance_ac2_ac3_real_video_round_trip(api_client, burst_video):
     response = client.post("/highlights", files={"file": ("match.mp4", source, "video/mp4")})
     assert response.status_code == 200, response.text
     body = response.json()
-    assert set(body) == {"job_id", "highlights"}
+    assert set(body) == {
+        "job_id", "source_name", "source_url", "duration", "highlights"
+    }
+    assert body["source_name"] == "match.mp4"
+    assert body["source_url"] is None
     assert str(uuid.UUID(body["job_id"])) == body["job_id"]
     assert len(body["highlights"]) == 3
     assert all(
@@ -159,6 +163,7 @@ def test_acceptance_ac8_limit_boundary(api_client, monkeypatch):
     calls = []
     monkeypatch.setenv("SPORTSCUT_MAX_UPLOAD_BYTES", "10")
     monkeypatch.setattr(pipeline, "run", lambda *a, **k: calls.append((a, k)) or [])
+    monkeypatch.setattr(media, "probe_duration", lambda _path: 10.0)
     over = client.post("/highlights", files={"file": ("x", b"12345678901")})
     assert over.status_code == 413
     assert over.json() == {"detail": "upload exceeds 10 bytes"}
@@ -173,6 +178,7 @@ def test_acceptance_ac9_default_directory_tracks_cwd(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     calls = []
     monkeypatch.setattr(pipeline, "run", lambda *a, **k: calls.append((a, k)) or [])
+    monkeypatch.setattr(media, "probe_duration", lambda _path: 4.0)
     response = TestClient(api.app).post("/highlights", files={"file": ("x", b"data")})
     assert response.status_code == 200
     job = tmp_path / "sportscut-data" / "jobs" / response.json()["job_id"]
