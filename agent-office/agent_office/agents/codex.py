@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ..codex_provider import provider_info
+from ..codex_provider import port_problem, provider_info
 from .base import AgentResult, CliAgent, subscription_env
 
 
@@ -39,6 +39,12 @@ class CodexAgent(CliAgent):
     def env_problem(self) -> str:
         key = provider_info().env_key
         return key if key and not self.child_env().get(key) else ""
+
+    def server_problem(self) -> str:
+        """A custom provider (e.g. codex-lb on :2455) that refuses connections: no probe is spent on it."""
+        url = provider_info().base_url
+        err = port_problem(url) if url else ""
+        return f"{url} not reachable ({err})" if err else ""
 
     def parse(self, res: AgentResult, extra: dict[str, Any]) -> None:
         last: Path | None = extra.get("_last_msg")

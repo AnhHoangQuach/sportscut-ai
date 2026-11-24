@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from .. import runner_proc
 from ..config import load_config
 from ..models import PROVIDERS, ROLE_TITLE, ROLES
-from ..scheduler import plan_steps
+from ..scheduler import assigned_agent, plan_steps
 from ..store import Store
 from ..worktree import NOTES_DIR
 
@@ -53,7 +53,11 @@ def snapshot(repo: Path) -> dict[str, Any]:
                      "max_goal_rounds": cfg.max_goal_rounds, "parallel": cfg.parallel,
                      "max_calls_per_day": cfg.max_calls_per_day}
     # One desk per role; old events name a CLI ("claude"/"codex"): show them at its first role.
+    now = datetime.now(timezone.utc)
     raw["agents"] = [a.to_dict() for a in store.agents.values()]
+    for d in raw["agents"]:  # while a role rests, the role on the other CLI that takes its work
+        other = assigned_agent(store, d["name"], now)
+        d["covered_by"] = other if other != d["name"] else ""
     raw["roles"] = [{"name": a.name, "provider": a.provider, "title": ROLE_TITLE.get(a.name, a.name)}
                     for a in store.agents.values()]
     raw["legacy_agents"] = {p: next((a.name for a in store.roles_of(p)), "") for p in store.providers()}

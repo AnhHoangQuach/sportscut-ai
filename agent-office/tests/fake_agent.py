@@ -67,6 +67,8 @@ def main() -> int:
             time.sleep(resp["hang"])
         return 1
     if resp.get("fail"):
+        if resp.get("stdout"):  # e.g. codex --json `turn.failed` with a gateway error
+            print(resp["stdout"], flush=True)
         sys.stderr.write("boom\n")
         return 2
 

@@ -247,7 +247,8 @@ function drawScreen(st) {
     lines = asks ? ["Team hỏi", `${asks} câu`] : ["Product", "Owner"];
   } else if (a && a.status === "resting") {
     key = `rest:${a.rest_until}`; bg = "#2b2410";
-    lines = [a.rest_cause === "failure" ? `${a.provider} lỗi` : a.rest_cause === "env" ? `${a.provider} thiếu env` : `Hết quota ${a.provider}`, `nghỉ đến ${hhmm(a.rest_until)}`];
+    lines = [a.rest_cause === "upstream" ? `${a.provider} 502…` : a.rest_cause === "failure" ? `${a.provider} lỗi` : a.rest_cause === "env" ? `${a.provider} thiếu env` : `Hết quota ${a.provider}`,
+             a.covered_by ? `${a.covered_by} làm thay` : `thử lại ${hhmm(a.rest_until)}`];
   } else if (w) {
     key = `work:${w.label}:${w.task}`; bg = providerOf(st.key) === "claude" ? "#3b2216" : "#10302a"; lines = [w.label, w.task];
   } else {

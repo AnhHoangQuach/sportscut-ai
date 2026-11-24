@@ -24,7 +24,7 @@ from sportscut.ranking import parse_events
 from sportscut.sources import SourceError
 
 
-DEFAULT_MAX_UPLOAD_BYTES = 2 * 1024**3
+DEFAULT_MAX_UPLOAD_BYTES = 20 * 1024**3  # a full 90-minute match is often 3-8 GB
 CHUNK_BYTES = 1024 * 1024
 INPUT_NAME = "input"
 CLIPS_DIR = "clips"

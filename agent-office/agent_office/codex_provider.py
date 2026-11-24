@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import os
 import re
+import socket
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
+from urllib.parse import urlparse
 
 # The codex error when the provider's env_key is unset (codex-rs EnvVarError).
 _MISSING_ENV = re.compile(r"Missing environment variable:?\s*`?([A-Za-z_][A-Za-z0-9_]*)`?")
@@ -52,6 +54,18 @@ def provider_info(env: Mapping[str, str] | None = None) -> ProviderInfo:
         prov = {}
     return ProviderInfo(name=name, env_key=str(prov.get("env_key") or ""),
                         base_url=str(prov.get("base_url") or ""), config_path=str(path))
+
+
+def port_problem(url: str, timeout: float = 3.0) -> str:
+    """"" when the host:port of url accepts a TCP connection, else the error."""
+    u = urlparse(url)
+    if not u.hostname:
+        return "no host in base_url"
+    try:
+        socket.create_connection((u.hostname, u.port or (443 if u.scheme == "https" else 80)), timeout=timeout).close()
+        return ""
+    except OSError as e:
+        return str(e) or e.__class__.__name__
 
 
 def read_env_file(path: Path | str | None) -> dict[str, str]:

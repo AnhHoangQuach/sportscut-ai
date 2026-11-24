@@ -41,6 +41,8 @@ def rest_reason(a) -> str:
         text = f"daily call budget used: {detail}"
     elif a.rest_cause == "env":
         text = f"environment problem for the user (not out of quota): {detail}; add it to .agent-office/.env"
+    elif a.rest_cause == "upstream":
+        text = f"model server briefly unavailable (not quota), retrying soon: {detail}"
     elif a.rest_cause == "failure":
         text = f"CLI failed repeatedly, not quota: {detail}"
     else:

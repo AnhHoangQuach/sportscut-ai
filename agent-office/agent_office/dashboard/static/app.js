@@ -17,6 +17,10 @@ const norm = (a) => (state && state.legacy_agents && state.legacy_agents[a]) || 
 const roleOf = (a) => (state && (state.roles || []).find((r) => r.name === norm(a))) || null;
 const providerOf = (a) => { const r = roleOf(a); return r ? r.provider : (DEFAULT_PROVIDER[norm(a)] || ""); };
 const roleName = (a) => ROLE_LABEL[norm(a)] || a;
+// Why a CLI rests (agent.rest_cause / event cause). "upstream" = the model server or codex-lb answered
+// 502/503/504 or refused the connection: retried within minutes, the other CLI covers the work.
+const REST_WHY = { failure: "CLI lỗi", env: "thiếu biến môi trường", budget: "hết ngân sách", upstream: "máy chủ lỗi tạm thời" };
+const restWhy = (c) => REST_WHY[c] || "hết quota";
 const REQ_STATUS = { new: "mới", planned: "đang làm", done: "xong", blocked: "chờ PO" };
 
 let state = null;
@@ -127,8 +131,8 @@ function renderAgents() {
     const w = working[a.name];
     let status;
     if (a.status === "resting") {
-      const why = a.rest_cause === "failure" ? "CLI lỗi" : a.rest_cause === "env" ? "thiếu biến môi trường" : a.rest_cause === "budget" ? "hết ngân sách" : "hết quota";
-      status = `Nghỉ (${why} ${esc(a.provider)}) đến ${hhmm(a.rest_until)} · <span data-until="${esc(a.rest_until)}"></span>`;
+      const until = a.rest_cause === "upstream" ? "thử lại lúc" : "đến";
+      status = `Nghỉ (${restWhy(a.rest_cause)} ${esc(a.provider)}) ${until} ${hhmm(a.rest_until)} · <span data-until="${esc(a.rest_until)}"></span>`;
     } else if (a.status === "working" || w) {
       status = `Đang làm ${esc(w ? `${w.label} · ${w.task}` : "")}`;
     } else {
@@ -144,6 +148,7 @@ function renderAgents() {
         <div class="agent-role">${esc(role.title || "")}</div>
         <div class="agent-status"><span class="status-dot"></span>${status}</div>
         ${usage(a)}
+        ${a.status === "resting" && a.covered_by ? `<div class="hint ev-good">→ ${esc(roleName(a.covered_by))} @${esc(providerOf(a.covered_by))} đang làm thay, không phải chờ</div>` : ""}
         ${(a.rest_detail || a.last_error) && a.status === "resting" ? `<div class="hint">${esc(a.rest_detail || a.last_error).slice(0, 120)}</div>` : ""}
       </div>${wake}</div>`;
   }).join("");
@@ -256,9 +261,9 @@ function describe(e) {
     case "agent_working": return `${who(e.agent)} bắt đầu ${esc(e.label)} (${esc(e.task_id)})`;
     case "agent_done": return `${who(e.agent)} xong ${esc(e.label)} (${esc(e.task_id)})`;
     case "agent_failed": return `${who(e.agent)} <span class="ev-bad">lỗi</span> (${esc(e.task_id)}, exit ${esc(e.exit_code)})`;
-    case "agent_resting": return `${(e.roles || [e.agent]).map(who).join(", ")} <span class="ev-warn">${e.cause === "failure" ? "CLI lỗi" : e.cause === "budget" ? "hết ngân sách" : "hết quota"}${e.provider ? ` ${esc(e.provider)}` : ""}</span>, nghỉ đến ${hhmm(e.until)}`;
-    case "agent_failover": return `${who(e.agent)} <span class="ev-good">tiếp quản</span> ${esc(e.step_kind)} (${esc(e.task_id)}) thay ${who(e.preferred)} đang hết quota`;
-    case "agent_awake": return `${(e.roles || [e.agent]).map(who).join(", ")} làm việc lại`;
+    case "agent_resting": return `${(e.roles || [e.agent]).map(who).join(", ")} <span class="ev-warn">${restWhy(e.cause)}${e.provider ? ` ${esc(e.provider)}` : ""}</span>, ${e.cause === "upstream" ? "thử lại lúc" : "nghỉ đến"} ${hhmm(e.until)}`;
+    case "agent_failover": return `${who(e.agent)} <span class="ev-good">tiếp quản</span> ${esc(e.step_kind)} (${esc(e.task_id)}) thay ${who(e.preferred)} đang nghỉ (${restWhy(e.reason)})`;
+    case "agent_awake": return `${(e.roles || [e.agent]).map(who).join(", ")} <span class="ev-good">làm tiếp</span>${e.cause === "upstream" ? " (máy chủ chạy lại)" : e.cause === "failure" ? " (CLI chạy lại)" : ""}`;
     case "task_checkpoint": return `<b>${esc(e.task_id)}</b> lưu checkpoint (${esc(e.reason)})`;
     case "review_done": return `${who("lead")} review <b>${esc(e.task_id)}</b> vòng ${esc(e.round)}: <span class="${e.verdict === "approve" ? "ev-good" : "ev-warn"}">${esc(e.verdict)}</span>`;
     case "pr_opened": return `PR mở cho <b>${esc(e.task_id)}</b>`;

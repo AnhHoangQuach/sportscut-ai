@@ -36,6 +36,23 @@ WEAK_PATTERNS: list[re.Pattern[str]] = [
     ]
 ]
 
+# The model server (or a proxy such as codex-lb) is briefly down: not quota, not a broken CLI.
+# Matched only on a failed run, only in the tail. Such errors retry within minutes (UPSTREAM ladder).
+TRANSIENT_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r"(?:unexpected status|status code|http status|HTTP/\d(?:\.\d)?)\s*:?\s*50[234]\b[^\n]{0,40}",
+        r"\b50[234]\s+(?:bad gateway|service unavailable|gateway time-?out)",
+        r"bad gateway|service unavailable|gateway time-?out",
+        r"connection (?:refused|reset|closed|aborted)[^\n]{0,40}",
+        r"\bE(?:CONNREFUSED|CONNRESET|TIMEDOUT|PIPE)\b",
+        r"error sending request[^\n]{0,80}",
+        r"stream disconnected before completion",
+        r"upstream connect error",
+        r"(?:operation|request|connection) timed out",
+    ]
+]
+
 # How much of the end of a failed run's stdout / stderr is searched for a limit message.
 TAIL_CHARS = 2000
 
@@ -68,6 +85,18 @@ def detect(agent: str, stdout: str, stderr: str, exit_code: int | None,
         if m:
             return LimitHit(agent=agent, matched=m.group(0), reset_at=parse_reset(text, now))
     return None
+
+
+def transient_error(stdout: str, stderr: str, exit_code: int | None) -> str:
+    """The matched text when a failed run ended on a transient server/network error, else ""."""
+    if exit_code == 0:
+        return ""
+    text = f"{stdout[-TAIL_CHARS:]}\n{stderr[-TAIL_CHARS:]}"
+    for pat in TRANSIENT_PATTERNS:
+        m = pat.search(text)
+        if m:
+            return m.group(0).strip()
+    return ""
 
 
 def parse_reset(text: str, now: datetime | None = None) -> datetime | None:

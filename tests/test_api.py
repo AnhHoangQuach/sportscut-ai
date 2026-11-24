@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from sportscut.api import app
 from sportscut.media import MediaError
 from sportscut.models import Segment
-from sportscut import export, media, pipeline, sources
+from sportscut import api, export, media, pipeline, sources
 
 
 client = TestClient(app)
@@ -515,6 +515,11 @@ def test_upload_over_limit_returns_413(monkeypatch, data_dir):
     assert response.status_code == 413
     assert response.json() == {"detail": "upload exceeds 10 bytes"}
     assert calls == [] and _jobs(data_dir) == before
+
+
+def test_default_upload_limit_fits_a_full_match():
+    # A 90-minute match file is often 3-8 GB; 2 GiB gave 413 on the web upload page.
+    assert api.DEFAULT_MAX_UPLOAD_BYTES == 20 * 1024**3
 
 
 def test_upload_at_limit_is_accepted(monkeypatch):
