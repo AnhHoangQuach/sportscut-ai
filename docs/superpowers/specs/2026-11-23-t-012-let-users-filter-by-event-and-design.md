@@ -41,7 +41,7 @@ Add `--events goal,save,...` and keep `--top N` on `sportscut cut`, with the sam
 
 ## Decisions
 
-- T-012 (R-003): Pipeline order is detect all candidates (`find_highlights(top=None)`) -> classifiers (later tasks, inserted in pipeline.run) -> filter by events -> rank and take top N -> export in time order. `top` applies after the filter, so 'top 5 goals' is the 5 best goals among all candidates.
+- T-012 (R-003): Pipeline order is detect all candidates (`find_highlights(top=None)`) -> classifiers (`tag_goals` now fills this slot) -> filter by events -> rank and take top N -> export in time order. `top` applies after the filter, so 'top 5 goals' is the 5 best goals among all candidates. (updated by T-013)
 - T-012 (R-003): `find_highlights(top=None)` means no cap (every non-overlapping candidate). Integer top keeps its exact old behaviour, and the eval keeps calling the default top=10, so eval F1 is unchanged.
 - T-012 (R-003): Ranking lives in the new module `sportscut/ranking.py`: `EVENT_PRIORITY = {goal:5, red_card:4, controversy:3, save:2, other:1}`; the rank key is `(-(score*priority), -priority, start, end)`, so a goal wins a tie on score x priority and then the earlier segment wins; the result is returned sorted by (start, end). Scores are assumed to be non-negative (detector z >= 3). Weights may be retuned later only with an eval that shows precision_at_5 does not drop.
 - T-012 (R-003): `parse_events(text)` splits on commas, strips and lower-cases, de-duplicates in first-seen order and returns a tuple. An empty or unknown item raises ValueError `unknown event '<name>'; choose from goal, save, red_card, controversy, other`. Input is case-insensitive, while Segment.event stays exact lowercase (T-010).

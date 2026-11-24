@@ -459,6 +459,7 @@ def test_acceptance_build_reuse_force_and_label_recovery(acceptance_eval_set):
 @pytest.mark.parametrize("reported_event", ["oracle", "other"])
 def test_acceptance_eval_oracles(acceptance_eval_set, monkeypatch, reported_event):
     from sportscut import detect
+    from sportscut.events import scoreboard
     from sportscut.evaluate import evaluate_dir
     from sportscut.models import Segment
 
@@ -478,6 +479,7 @@ def test_acceptance_eval_oracles(acceptance_eval_set, monkeypatch, reported_even
         ]
 
     monkeypatch.setattr(detect, "find_highlights", fake_find_highlights)
+    monkeypatch.setattr(scoreboard, "tag_goals", lambda video, segments, **kw: list(segments))
     report = evaluate_dir(output)
     assert (report["f1"], report["precision"], report["recall"]) == (1.0, 1.0, 1.0)
     expected_accuracy = 1.0 if reported_event == "oracle" else 0.0
