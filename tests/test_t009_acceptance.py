@@ -330,7 +330,7 @@ def test_preview_javascript_acceptance_contract() -> None:
         put_fetch,
         'method: "PUT"',
         '"Content-Type": "application/json"',
-        "({ start, end, reason })",
+        "({ start, end, reason, event })",
         "T.validateSegments(segments, duration)",
         "T.newSegmentAt(player.currentTime, duration)",
         "T.clampTime(",

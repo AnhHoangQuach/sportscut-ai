@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
-from typing import Annotated
+from typing import Annotated, Literal
 import uuid
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -62,6 +62,7 @@ class SegmentEdit(BaseModel):
     start: FiniteFloat
     end: FiniteFloat
     reason: str | None = None
+    event: Literal["goal", "save", "red_card", "controversy", "other"] | None = None
 
 
 class SegmentEdits(BaseModel):
@@ -431,7 +432,13 @@ def put_segments(request: Request, job_id: str, edits: SegmentEdits):
     next_version = version + 1
     suffix = f"_v{next_version}"
     segments = [
-        Segment(item.start, item.end, None, item.reason or "manual")
+        Segment(
+            item.start,
+            item.end,
+            None,
+            item.reason or "manual",
+            event=item.event or "other",
+        )
         for item in edits.segments
     ]
     clips_dir = job_dir / CLIPS_DIR

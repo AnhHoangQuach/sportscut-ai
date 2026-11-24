@@ -72,3 +72,16 @@ Persist each job as `jobs/<uuid>/job.json` (source name or URL, duration, segmen
   `clips/highlights.json` with neither `job.json` nor `input` is read from the
   manifest as `{job_id, highlights}`; any other job without a valid `job.json`
   stays 404. (updated by T-012)
+
+## Updated by T-016
+
+- Each `PUT /highlights/{job_id}/segments` item accepts an optional `event`:
+  `goal`, `save`, `red_card`, `controversy`, or `other`. Missing or null becomes
+  `other`; every other value returns 422 before export.
+- This amends AC8/AC9 and the decision that every PUT segment is manual: score
+  stays null and event confidence stays 0.0, while an accepted event is kept.
+
+## Updated by T-012
+
+- The T-012 manifest-only job compatibility described above remains unchanged
+  by T-016.

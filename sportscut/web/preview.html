@@ -4,15 +4,28 @@
   <title>SportsCut — Xem trước và chỉnh highlight</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/timefmt.js" defer></script>
+  <script src="/static/filters.js" defer></script>
   <script src="/static/preview.js" defer></script>
 </head><body><main class="preview">
   <p><a href="/">← Tải video khác</a></p>
   <h1 id="job-title">Xem trước highlight</h1>
   <video id="player" controls preload="metadata"></video>
   <p>Thời điểm hiện tại: <output id="current-time">00:00.0</output></p>
+  <div id="filters" role="group" aria-label="Lọc theo sự kiện">
+    <button type="button" id="filter-all" aria-pressed="true">Tất cả</button>
+    <button type="button" class="chip" data-event="goal" aria-pressed="false">Bàn thắng</button>
+    <button type="button" class="chip" data-event="save" aria-pressed="false">Cứu thua</button>
+    <button type="button" class="chip" data-event="red_card" aria-pressed="false">Thẻ đỏ</button>
+    <button type="button" class="chip" data-event="controversy" aria-pressed="false">Tranh cãi</button>
+    <button type="button" class="chip" data-event="other" aria-pressed="false">Khác</button>
+    <button type="button" id="preset-goals" aria-pressed="false">Chỉ bàn thắng</button>
+    <button type="button" id="preset-top5" aria-pressed="false">Top 5 pha hay</button>
+    <output id="filter-count"></output>
+  </div>
   <ol id="segments"></ol>
   <template id="segment-row"><li class="segment">
     <button type="button" class="play">▶ Phát đoạn</button>
+    <span class="event-badge"></span>
     <label>Đầu <input class="start" type="text" inputmode="decimal" placeholder="mm:ss.s"></label>
     <button type="button" class="start-minus">−0.5 s</button>
     <button type="button" class="start-plus">+0.5 s</button>

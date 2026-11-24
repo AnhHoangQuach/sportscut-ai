@@ -80,6 +80,27 @@ main.preview {
   width: 100%;
 }
 
+#filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+#filters button {
+  width: auto;
+}
+
+#filters button[aria-pressed="true"] {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.event-badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
 .segment {
   display: flex;
   flex-wrap: wrap;
