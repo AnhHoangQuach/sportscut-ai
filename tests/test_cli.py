@@ -51,7 +51,7 @@ def test_detect_json(burst_video, capsys: pytest.CaptureFixture[str]) -> None:
     assert len(captured.out.splitlines()) == 1
     items = json.loads(captured.out)
     assert len(items) == 3
-    assert all(set(item) == {"start", "end", "score", "reason", "event"} for item in items)
+    assert all(set(item) == {"start", "end", "score", "reason", "event", "event_confidence"} for item in items)
     assert captured.err == ""
 
 

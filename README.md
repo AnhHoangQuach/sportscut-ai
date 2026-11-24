@@ -131,6 +131,12 @@ Mỗi pha chạm được lấy thêm 3 giây trước và 2 giây sau; các đo
 không có pha chạm thì chỉ có manifest. Việc phát hiện pha chạm vẫn là stub cho
 đến khi T-031..T-033 hoàn thành.
 
+Lọc clip theo sự kiện và chỉ giữ các pha được xếp hạng cao nhất:
+
+```bash
+sportscut cut match.mp4 --out clips --events goal --top 5
+```
+
 ## API HTTP
 
 Cài phần phụ thuộc API và chạy server cục bộ:
@@ -144,7 +150,8 @@ sportscut serve --host 127.0.0.1 --port 8000
 Gửi video và tải một clip từ URL trong kết quả:
 
 ```bash
-curl -F file=@match.mp4 -F top=5 -F min_len=10 -F max_len=30 \
+curl -F file=@match.mp4 -F top=5 -F events=goal,save \
+  -F min_len=10 -F max_len=30 \
   http://127.0.0.1:8000/highlights
 curl -F url=https://www.youtube.com/watch?v=VIDEO_ID \
   http://127.0.0.1:8000/highlights
@@ -153,7 +160,8 @@ curl -o clip_01.mp4 "<clip_url>"
 
 Phản hồi có dạng `{"job_id":"...","source_name":"match.mp4","source_url":null,
 "duration":90,"highlights":[{"start":12,"end":24,
-"score":4.2,"reason":"audio peak z=4.2","clip_url":"http://127.0.0.1:8000/
+"score":4.2,"reason":"audio peak z=4.2","event":"goal",
+"event_confidence":0.8,"clip_url":"http://127.0.0.1:8000/
 highlights/.../clips/clip_01.mp4"}]}`. `SPORTSCUT_DATA_DIR` chọn thư mục dữ liệu
 (mặc định `./sportscut-data`), còn `SPORTSCUT_MAX_UPLOAD_BYTES` đặt giới hạn
 upload (mặc định 2 GiB). API dùng mã 400 cho video đầu vào không hợp lệ, 404 cho
@@ -170,6 +178,7 @@ có quyền sử dụng video đó.
 
 ```bash
 curl http://127.0.0.1:8000/highlights/JOB_ID
+curl 'http://127.0.0.1:8000/highlights/JOB_ID?event=goal'
 curl -H 'Range: bytes=0-1048575' \
   http://127.0.0.1:8000/highlights/JOB_ID/source -o source-part.mp4
 ```

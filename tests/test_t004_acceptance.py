@@ -60,7 +60,7 @@ def test_pipeline_contract_and_success_acceptance(burst_video: Path, tmp_path: P
     assert [entry["file"] for entry in entries] == [
         "clip_01.mp4", "clip_02.mp4", "clip_03.mp4"
     ]
-    assert all(set(entry) == {"start", "end", "score", "reason", "event", "file"} for entry in entries)
+    assert all(set(entry) == {"start", "end", "score", "reason", "event", "event_confidence", "file"} for entry in entries)
     assert all((out / entry["file"]).is_file() for entry in entries)
     assert all(probe_duration(out / entry["file"]) == pytest.approx(12, abs=0.5) for entry in entries)
 

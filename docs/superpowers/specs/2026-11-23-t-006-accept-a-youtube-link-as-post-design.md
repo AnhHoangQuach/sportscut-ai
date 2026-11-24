@@ -64,3 +64,8 @@ Goal of R-002: a user opens a web page, uploads a video or pastes a YouTube link
 - URL POST responses use the same expanded canonical shape as uploads, and URL jobs
   support the same job read, ranged source stream, and full-list segment edit
   endpoints.
+
+## Updated by T-012
+
+- URL and upload highlight items both add `event` and `event_confidence`; URL input
+  accepts the same optional `events` form filter. (updated by T-012)

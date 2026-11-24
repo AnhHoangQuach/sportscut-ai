@@ -24,7 +24,7 @@ def test_run_returns_manifest_entries(burst_video, tmp_path):
     out = tmp_path / "out"
     entries = run(burst_video, out)
     assert isinstance(entries, list) and len(entries) == 3
-    assert all(set(entry) == {"start", "end", "score", "reason", "event", "file"} for entry in entries)
+    assert all(set(entry) == {"start", "end", "score", "reason", "event", "event_confidence", "file"} for entry in entries)
     assert [entry["file"] for entry in entries] == [f"clip_{i:02d}.mp4" for i in range(1, 4)]
     assert all((out / entry["file"]).is_file() for entry in entries)
     assert entries == json.loads((out / "highlights.json").read_text(encoding="utf-8"))
