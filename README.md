@@ -172,7 +172,7 @@ Phản hồi có dạng `{"job_id":"...","source_name":"match.mp4","source_url":
 "event_confidence":0.8,"clip_url":"http://127.0.0.1:8000/
 highlights/.../clips/clip_01.mp4"}]}`. `SPORTSCUT_DATA_DIR` chọn thư mục dữ liệu
 (mặc định `./sportscut-data`), còn `SPORTSCUT_MAX_UPLOAD_BYTES` đặt giới hạn
-upload (mặc định 2 GiB). API dùng mã 400 cho video đầu vào không hợp lệ, 404 cho
+upload (mặc định 20 GiB, đủ cho nguyên trận 90 phút). API dùng mã 400 cho video đầu vào không hợp lệ, 404 cho
 clip không tồn tại, 413 cho upload quá lớn, 422 cho tham số sai và 500 khi xử lý
 phía server thất bại.
 
