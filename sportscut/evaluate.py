@@ -8,6 +8,7 @@ from typing import NamedTuple
 
 from sportscut import detect
 from sportscut.eval_player import prf
+from sportscut.events import scoreboard
 from sportscut.models import EVENT_TYPES, Segment
 
 LABEL_TYPES = ("goal", "save", "red_card", "controversy", "chance", "yellow_card", "foul", "other")
@@ -170,7 +171,7 @@ def evaluate_dir(path: str | Path) -> dict:
               "events": {event: {"tp": 0, "fp": 0, "fn": 0} for event in EVENT_TYPES}}
     per_match = []
     for case, video, labels in prepared:
-        segments = detect.find_highlights(video)
+        segments = scoreboard.tag_goals(video, detect.find_highlights(video))
         counts = score_case(segments, labels)
         for key in ("tp", "fp", "fn", "type_hits", "p5_hits", "p5_total"):
             totals[key] += counts[key]

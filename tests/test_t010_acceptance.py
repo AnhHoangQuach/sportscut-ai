@@ -7,6 +7,7 @@ import pytest
 
 from sportscut import detect
 from sportscut.cli import main
+from sportscut.events import scoreboard
 from sportscut.evaluate import (
     LABEL_TYPES,
     Label,
@@ -305,6 +306,7 @@ def test_t010_ac9_sums_cases_in_sorted_order(tmp_path: Path, monkeypatch) -> Non
         return by_case[Path(video).parent.name]
 
     monkeypatch.setattr(detect, "find_highlights", fake)
+    monkeypatch.setattr(scoreboard, "tag_goals", lambda video, segments, **kw: list(segments))
     report = evaluate_dir(tmp_path)
     assert calls == ["a", "b", "c"]
     # totals: tp=2 (a:1, b:1), fp=1, fn=2 -> p=0.6667, r=0.5

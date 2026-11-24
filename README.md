@@ -119,6 +119,14 @@ Baseline đo trong T-011 (mọi đoạn đều là `other`):
 
 Mục tiêu tiếp theo: recall mỗi sự kiện ≥ 0.9, recall bàn thắng ≥ 0.95, F1 không giảm.
 
+Kết quả sau T-013 (bàn thắng = bảng tỷ số đổi + tiếng reo kéo dài):
+
+```json
+{"f1": 0.8421, "precision": 0.7273, "recall": 1.0, "event_accuracy": 0.3125, "per_event": {"goal": {"precision": 1.0, "recall": 1.0, "f1": 1.0}, "save": {"precision": null, "recall": 0.0, "f1": null}, "red_card": {"precision": null, "recall": 0.0, "f1": null}, "controversy": {"precision": null, "recall": 0.0, "f1": null}, "other": {"precision": 0.0, "recall": null, "f1": null}}, "precision_at_5": 0.8889, "per_match": [{"match": "cards", "labels": 4, "predictions": 7, "f1": 0.7273, "precision": 0.5714, "recall": 1.0, "event_accuracy": 0.0, "precision_at_5": 0.8}, {"match": "controversy", "labels": 3, "predictions": 3, "f1": 1.0, "precision": 1.0, "recall": 1.0, "event_accuracy": 0.3333, "precision_at_5": 1.0}, {"match": "goals_saves", "labels": 4, "predictions": 6, "f1": 0.8, "precision": 0.6667, "recall": 1.0, "event_accuracy": 0.5, "precision_at_5": 0.8}, {"match": "mixed", "labels": 5, "predictions": 6, "f1": 0.9091, "precision": 0.8333, "recall": 1.0, "event_accuracy": 0.4, "precision_at_5": 1.0}]}
+```
+
+SportsCut xác nhận bàn thắng khi tiếng reo kéo dài đi trước thay đổi bảng tỷ số; nếu không tìm thấy bảng tỷ số, hệ thống dùng tiếng reo với độ tin cậy thấp hơn.
+
 ## Theo dõi cầu thủ: xuất video tổng hợp (player)
 
 ```bash

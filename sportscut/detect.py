@@ -10,22 +10,11 @@ MIN_Z = 3.0
 MIN_SCALE_DB = 1.0
 
 
-def find_highlights(
-    video: str, top: int | None = 10, min_len: float = 10, max_len: float = 30
-) -> list[Segment]:
-    if top is not None and top < 1:
-        raise ValueError("top must be >= 1")
-    if min_len <= 0:
-        raise ValueError("min_len must be > 0")
-    if min_len > max_len:
-        raise ValueError("min_len must be <= max_len")
-
-    duration = probe_duration(video)
-    samples = extract_audio(video)
+def loudness_residual(samples: np.ndarray) -> np.ndarray:
+    """Return per-second RMS dB above the centred rolling baseline."""
     n = len(samples) // SAMPLE_RATE
     if n == 0:
-        return []
-
+        return np.empty(0, dtype=np.float64)
     frames = samples[: n * SAMPLE_RATE].reshape(n, SAMPLE_RATE)
     rms = np.sqrt(
         np.einsum("ij,ij->i", frames, frames, dtype=np.float64) / SAMPLE_RATE
@@ -38,7 +27,40 @@ def find_highlights(
             for i in range(n)
         ]
     )
-    residual = db - baseline
+    return db - baseline
+
+
+def place_window(
+    anchor: float, length: float, duration: float, before: float
+) -> tuple[float, float]:
+    """Place a fixed-length window around an anchor inside media bounds."""
+    start = float(anchor - before)
+    end = float(start + length)
+    if start < 0:
+        end -= start
+        start = 0.0
+    if end > duration:
+        start -= end - duration
+        end = float(duration)
+    return max(start, 0.0), end
+
+
+def find_highlights(
+    video: str, top: int | None = 10, min_len: float = 10, max_len: float = 30
+) -> list[Segment]:
+    if top is not None and top < 1:
+        raise ValueError("top must be >= 1")
+    if min_len <= 0:
+        raise ValueError("min_len must be > 0")
+    if min_len > max_len:
+        raise ValueError("min_len must be <= max_len")
+
+    duration = probe_duration(video)
+    samples = extract_audio(video)
+    residual = loudness_residual(samples)
+    if len(residual) == 0:
+        return []
+
     mad = np.median(np.abs(residual - np.median(residual)))
     scale = max(1.4826 * mad, MIN_SCALE_DB)
     z_scores = residual / scale
@@ -47,21 +69,19 @@ def find_highlights(
         for i, z_score in enumerate(z_scores)
         if z_score >= MIN_Z
         and z_score >= (z_scores[i - 1] if i else -np.inf)
-        and z_score > (z_scores[i + 1] if i + 1 < n else -np.inf)
+        and z_score > (z_scores[i + 1] if i + 1 < len(z_scores) else -np.inf)
     ]
 
     length = min(max(PRE_SEC + POST_SEC, min_len), max_len)
     windows = []
     for peak_time, z_score in candidates:
-        start = peak_time - length * PRE_SEC / (PRE_SEC + POST_SEC)
-        end = peak_time + length * POST_SEC / (PRE_SEC + POST_SEC)
-        if start < 0:
-            end -= start
-            start = 0.0
-        if end > duration:
-            start -= end - duration
-            end = duration
-        windows.append((max(start, 0.0), end, z_score))
+        start, end = place_window(
+            peak_time,
+            length,
+            duration,
+            length * PRE_SEC / (PRE_SEC + POST_SEC),
+        )
+        windows.append((start, end, z_score))
 
     kept = []
     for window in sorted(windows, key=lambda item: (-item[2], item[0])):

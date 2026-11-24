@@ -4,6 +4,8 @@ import tempfile
 from pathlib import Path
 import numpy as np
 SAMPLE_RATE = 16_000
+BAND_W = 160
+BAND_H = 30
 class MediaError(RuntimeError):
     """Any ffmpeg/ffprobe discovery, probing or decoding failure."""
 def find_tool(name: str) -> str:
@@ -66,6 +68,39 @@ def extract_audio(path: str | Path) -> np.ndarray:
         detail = _failure_detail(result.stderr, result.returncode)
         raise MediaError(f"ffmpeg failed for {path}: {detail}")
     return np.frombuffer(result.stdout, dtype="<f4").astype(np.float32)
+
+
+def sample_top_band(path: str | Path) -> np.ndarray:
+    """Sample one tiny grayscale top-band frame per second."""
+    p = Path(path)
+    if not p.is_file():
+        raise MediaError(f"media file not found: {path}")
+    ffmpeg = find_tool("ffmpeg")
+    args = [
+        ffmpeg,
+        "-v",
+        "error",
+        "-nostdin",
+        "-i",
+        str(p),
+        "-an",
+        "-vf",
+        "fps=1,scale=160:90,format=gray,crop=160:30:0:0",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "gray",
+        "pipe:1",
+    ]
+    result = subprocess.run(args, capture_output=True, check=False)
+    if result.returncode:
+        detail = _failure_detail(result.stderr, result.returncode)
+        raise MediaError(f"ffmpeg failed for {path}: {detail}")
+    frame_size = BAND_W * BAND_H
+    count = len(result.stdout) // frame_size
+    return np.frombuffer(result.stdout, np.uint8)[: count * frame_size].reshape(
+        count, BAND_H, BAND_W
+    )
 
 def cut_clip(path: str | Path, start: float, end: float, dest: str | Path) -> Path:
     p = Path(path)

@@ -12,7 +12,7 @@ After foundation, create `sportscut/media.py`, `tests/conftest.py`, `tests/test_
 
 ## Acceptance criteria
 
-- AC1: `sportscut/media.py` exposes `SAMPLE_RATE == 16000`, `MediaError` (subclass of `RuntimeError`), `find_tool`, `probe_duration` and `extract_audio` with the signatures in the spec.
+- AC1: `sportscut/media.py` exposes `SAMPLE_RATE == 16000`, `MediaError` (subclass of `RuntimeError`), `find_tool`, `probe_duration`, `extract_audio` and `sample_top_band` with the signatures in the specs. (updated by T-013)
 - AC2: With PATH set to an empty directory, `find_tool('ffmpeg')` and `find_tool('ffprobe')` raise `MediaError` whose message is exactly `ffmpeg not found on PATH; install ffmpeg` / `ffprobe not found on PATH; install ffmpeg`. For an existing file, `probe_duration` and `extract_audio` raise the matching exact ffprobe/ffmpeg message.
 - AC3: For a non-existent path, both `probe_duration` and `extract_audio` raise `MediaError` with message exactly `media file not found: <path>`, even without ffmpeg installed.
 - AC4: `probe_duration(synthetic_video)` returns a native `float` within 0.15 s of 6.0. When ffprobe exits 0 with output `N/A`, it raises `MediaError('ffprobe returned no duration for <path>')`.

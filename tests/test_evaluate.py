@@ -105,10 +105,12 @@ def test_score_case_worked_example() -> None:
 
 def test_evaluate_dir_validates_then_aggregates(tmp_path: Path, monkeypatch) -> None:
     from sportscut import detect
+    from sportscut.events import scoreboard
     from sportscut.evaluate import evaluate_dir
 
     called = []
     monkeypatch.setattr(detect, "find_highlights", lambda video: called.append(Path(video).parent.name) or [seg(0, 10)])
+    monkeypatch.setattr(scoreboard, "tag_goals", lambda video, segments, **kw: list(segments))
     with pytest.raises(ValueError, match="no eval cases found"):
         evaluate_dir(tmp_path)
     for name in ("b", "a"):
@@ -125,6 +127,7 @@ def test_evaluate_dir_validates_then_aggregates(tmp_path: Path, monkeypatch) -> 
 
 def test_evaluate_dir_ignores_hidden_video_metadata(tmp_path: Path, monkeypatch) -> None:
     from sportscut import detect
+    from sportscut.events import scoreboard
     from sportscut.evaluate import evaluate_dir
 
     case = tmp_path / "match"
@@ -135,6 +138,7 @@ def test_evaluate_dir_ignores_hidden_video_metadata(tmp_path: Path, monkeypatch)
     (case / "._video.mp4").touch()
     seen = []
     monkeypatch.setattr(detect, "find_highlights", lambda path: seen.append(path) or [])
+    monkeypatch.setattr(scoreboard, "tag_goals", lambda video, segments, **kw: list(segments))
 
     evaluate_dir(tmp_path)
 

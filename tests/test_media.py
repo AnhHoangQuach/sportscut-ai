@@ -12,7 +12,61 @@ from sportscut.media import (
     has_audio,
     probe_duration,
     require_ffmpeg,
+    sample_top_band,
 )
+
+
+def test_sample_top_band_shape_and_values(synthetic_video):
+    frames = sample_top_band(synthetic_video)
+
+    assert frames.dtype == np.uint8
+    assert frames.shape[0] in (6, 7)
+    assert frames.shape[1:] == (30, 160)
+    assert frames[1].mean() < 64
+    assert frames[4].mean() > 192
+
+
+def test_sample_top_band_single_ffmpeg_call_with_filter(monkeypatch, tmp_path):
+    path = tmp_path / "clip.mp4"
+    path.touch()
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0, stdout=bytes(2 * 30 * 160), stderr=b"")
+
+    monkeypatch.setattr("sportscut.media.find_tool", lambda name: "ffmpeg")
+    monkeypatch.setattr("sportscut.media.subprocess.run", fake_run)
+
+    frames = sample_top_band(path)
+
+    assert frames.shape == (2, 30, 160)
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert "-i" in args and "-an" in args
+    assert "fps=1,scale=160:90,format=gray,crop=160:30:0:0" in args
+    assert kwargs == {"capture_output": True, "check": False}
+
+
+def test_sample_top_band_missing_file_without_ffmpeg(monkeypatch, tmp_path):
+    path = tmp_path / "missing.mp4"
+    monkeypatch.setenv("PATH", "/nonexistent")
+
+    with pytest.raises(MediaError) as exc:
+        sample_top_band(path)
+
+    assert str(exc.value) == f"media file not found: {path}"
+
+
+def test_sample_top_band_non_media_file_raises(require_ffmpeg, tmp_path):
+    path = tmp_path / "bad.mp4"
+    path.write_text("not a video")
+
+    with pytest.raises(
+        MediaError,
+        match="^" + re.escape(f"ffmpeg failed for {path}: ") + ".+",
+    ):
+        sample_top_band(path)
 
 def test_concat_clips_empty_raises_value_error(tmp_path):
     with pytest.raises(ValueError, match="^no clips to concatenate$"):
