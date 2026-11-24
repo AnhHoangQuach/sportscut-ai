@@ -424,9 +424,16 @@ def test_ac14_budget_test_is_opt_in_with_exact_skip_reason():
 
 
 def test_ac15_no_forbidden_paths_or_new_dependency_in_task_diff():
+    base = subprocess.run(
+        ["/usr/bin/git", "merge-base", "main", "HEAD"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
     changed = set(
         subprocess.run(
-            ["/usr/bin/git", "diff", "--name-only", "main"],
+            ["/usr/bin/git", "diff", "--name-only", base],
             cwd=ROOT,
             capture_output=True,
             text=True,

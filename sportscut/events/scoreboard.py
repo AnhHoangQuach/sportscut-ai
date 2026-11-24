@@ -119,6 +119,13 @@ def score_changes(frames: np.ndarray, box: Box) -> list[float]:
     return changes
 
 
+def board_changes(video: str | Path) -> list[float] | None:
+    """Return scoreboard change times, or None when no board is visible."""
+    frames = sample_top_band(video)
+    box = find_box(frames)
+    return None if box is None else score_changes(frames, box)
+
+
 def roar(residual: np.ndarray, start: float, end: float) -> tuple[float, int]:
     """Find the peak second and sustained-above-baseline run around it."""
     first = max(0, math.floor(start))
@@ -223,9 +230,7 @@ def tag_goals(
     """Load media signals and classify goal segments."""
     duration = probe_duration(video)
     residual = loudness_residual(extract_audio(video))
-    frames = sample_top_band(video)
-    box = find_box(frames)
-    changes = None if box is None else score_changes(frames, box)
+    changes = board_changes(video)
     return match_goals(
         list(segments), residual, changes, duration, min_len, max_len
     )
