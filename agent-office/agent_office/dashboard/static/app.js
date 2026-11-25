@@ -163,7 +163,11 @@ function usage(a) {
   const shared = mates.reduce((n, m) => n + (m.calls_day === today ? m.calls_today || 0 : 0), 0);
   const cap = (cfg.max_calls_per_day || {})[a.provider] || 0;
   const par = (cfg.parallel || {})[a.name] || 1;
-  return `<div class="hint">Hôm nay ${calls} lượt (${esc(a.provider)}: ${shared}${cap ? `/${cap}` : ""}) · ${(a.active || []).length}/${par} phiên · đã nghỉ ${a.rests_total || 0} lần</div>`;
+  // [parallel] claude/codex: total sessions of the CLI, all its roles together (0 = no cap)
+  const cliCap = (cfg.cli_parallel || {})[a.provider] || 0;
+  const cliUsed = mates.reduce((n, m) => n + (m.active || []).length, 0);
+  const cli = cliCap ? ` (${esc(a.provider)}: ${cliUsed}/${cliCap} phiên)` : "";
+  return `<div class="hint">Hôm nay ${calls} lượt (${esc(a.provider)}: ${shared}${cap ? `/${cap}` : ""}) · ${(a.active || []).length}/${par} phiên${cli} · đã nghỉ ${a.rests_total || 0} lần</div>`;
 }
 function tickCountdowns() {
   document.querySelectorAll("[data-until]").forEach((el) => {

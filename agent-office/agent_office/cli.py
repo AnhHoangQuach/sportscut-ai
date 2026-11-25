@@ -99,12 +99,13 @@ def cmd_run(args) -> int:
             a.status = AgentStatus.IDLE
     office.store.save()
     office.store.event("runner_started", pid=os.getpid(), watch=bool(args.watch),
-                       parallel=office.cfg.parallel)
+                       parallel=office.cfg.parallel, cli_parallel=office.cfg.cli_parallel)
     steps = 0
     sequential = args.once or args.max_steps or args.sequential
     if not sequential:
-        print("Parallel mode: " + ", ".join(f"{n} x{k}" for n, k in office.cfg.parallel.items()) + " sessions.",
-              flush=True)
+        caps = [f"{p} {k}" for p, k in office.cfg.cli_parallel.items() if k > 0]
+        print("Parallel mode: " + ", ".join(f"{n} x{k}" for n, k in office.cfg.parallel.items()) + " sessions"
+              + (f" (at most {', '.join(caps)} at once)" if caps else "") + ".", flush=True)
     try:
         if not sequential:
             pool = ThreadPoolExecutor(max_workers=sum(office.cfg.parallel.values()) + 2,

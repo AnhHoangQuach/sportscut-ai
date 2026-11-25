@@ -90,11 +90,16 @@ upstream_retry_minutes = [1, 2, 5]
 [parallel]
 # How many sessions of each role may run at the same time. Each task has its own worktree,
 # so independent tasks are coded in parallel. More sessions = faster, but quota runs out sooner.
-# (Old configs with `claude = 1` / `codex = 2` still work: the number applies to every role on that CLI.)
 pm = 1
 lead = 1
 dev = 2
 tester = 1
+# How many Claude Code / Codex sessions may run at the same time in total, all roles of that CLI
+# together (a role covering for the other CLI counts for the CLI that runs it). 0 or missing = no
+# cap beyond the role counts. (Old configs with only `claude = 1` / `codex = 2` still work: the
+# number is then also each role's count.)
+claude = 2
+codex = 3
 
 [quality]
 # Command that measures product quality in a worktree and prints JSON with the metric, e.g.
@@ -151,6 +156,7 @@ class Config:
     upstream_retry_minutes: list[int] = field(default_factory=lambda: [1, 2, 5])
     roles: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_PROVIDER))
     parallel: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_PARALLEL))
+    cli_parallel: dict[str, int] = field(default_factory=lambda: {"claude": 0, "codex": 0})  # 0 = no cap
     max_calls_per_day: dict[str, int] = field(default_factory=lambda: {"claude": 0, "codex": 0})
     max_tasks_per_request: int = 12
     max_diff_lines: int = 4000
@@ -223,6 +229,7 @@ def load_config(office_dir: Path) -> Config:
         upstream_retry_minutes=list(raw.get("limits", {}).get("upstream_retry_minutes", [1, 2, 5])) or [1, 2, 5],
         roles=roles,
         parallel=_parallel(par, roles),
+        cli_parallel={p: max(0, int(par.get(p, 0))) for p in PROVIDERS},
         max_calls_per_day={n: max(0, int(caps.get(n, 0))) for n in PROVIDERS},
         max_tasks_per_request=int(g.get("max_tasks_per_request", 12)),
         max_diff_lines=int(g.get("max_diff_lines", 4000)),

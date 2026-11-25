@@ -64,9 +64,21 @@ pm = 1
 lead = 1
 dev = 2
 tester = 1
+# tổng số phiên Claude Code / Codex chạy cùng lúc, mọi vai của CLI đó cộng lại
+claude = 2
+codex = 3
 ```
 
-Config cũ `claude = 1` / `codex = 2` vẫn đọc được: số đó áp cho từng vai trên CLI tương ứng.
+Hai mức giới hạn cùng áp: một bước chỉ bắt đầu khi vai của nó còn phiên trống **và** CLI chạy nó
+còn phiên trống. Ví dụ `dev = 3, tester = 1, codex = 2`: lúc nào cũng tối đa 2 phiên Codex, có thể là
+2 Developer, hoặc 1 Developer + 1 Tester. Phiên tiếp quản (PM làm thay Dev khi Codex nghỉ) tính cho
+CLI thật sự chạy nó, tức là Claude. `claude`/`codex` = 0 hoặc không có dòng đó = không giới hạn thêm
+(tổng các vai). Khi phiên của vai trống vì CLI đã đủ phiên, console và sự kiện `slots_idle` ghi
+`codex 2/2 sessions in use ([parallel] codex = 2)`; dashboard hiện `codex: 2/2 phiên` trên thẻ vai,
+`office stats` / `/api/stats` có `providers.<cli>.sessions` và `max_sessions`.
+
+Config cũ chỉ có `claude = 1` / `codex = 2` vẫn đọc được: số đó áp cho từng vai trên CLI tương ứng,
+và cũng là tổng phiên tối đa của CLI đó.
 
 **Mô hình:** một tiến trình runner, một `ThreadPoolExecutor`, một khóa (`RLock`) bọc toàn bộ thay
 đổi trạng thái.
