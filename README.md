@@ -246,5 +246,10 @@ sportscut serve
     chọn các hàng cần xem.
 12. Các bộ lọc chỉ ẩn hàng: "Lưu" vẫn lưu tất cả đoạn, còn liên kết clip chỉ
     hiện cho những hàng đang được hiển thị.
+13. Mục "Tiêu đề, mô tả và hashtag" có một khối cho cả video và một khối cho mỗi đoạn. Sửa chữ, nhấn
+    "Sao chép" để chép tiêu đề, mô tả và hashtag, rồi nhấn "Lưu tiêu đề và hashtag" (tiêu đề 10–80 ký tự,
+    mô tả 1–300 ký tự, 3–8 hashtag dạng `#ChuKhongDau`, như `eval-meta`).
+14. Sau khi "Lưu" cắt lại clip, chữ của từng đoạn trở về mặc định, chữ của cả video được giữ. Nút
+    "Lồng tiếng" hiện khi một đoạn có bản lồng tiếng.
 
 Trang trả về lỗi 404 nếu `JOB_ID` không tồn tại.

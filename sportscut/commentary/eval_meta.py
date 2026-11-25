@@ -94,7 +94,7 @@ def load_cases(path) -> list[MetaCase]:
     return result
 
 
-def score_case(case: MetaCase, meta: ClipMeta) -> dict:
+def format_problems(meta: ClipMeta) -> list[str]:
     problems = []
     if not 10 <= len(meta.title) <= 80 or meta.title != meta.title.strip():
         problems.append(f"title length {len(meta.title)}")
@@ -110,6 +110,11 @@ def score_case(case: MetaCase, meta: ClipMeta) -> dict:
         if key in seen_tags:
             problems.append(f"duplicate hashtag {tag}")
         seen_tags.add(key)
+    return problems
+
+
+def score_case(case: MetaCase, meta: ClipMeta) -> dict:
+    problems = format_problems(meta)
     format_ok = not problems
 
     output = _output_text(meta)

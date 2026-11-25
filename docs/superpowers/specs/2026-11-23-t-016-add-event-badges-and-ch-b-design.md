@@ -57,3 +57,7 @@ On the R-002 preview page, show each segment's event as a Vietnamese badge (Bàn
 - `docs/superpowers/specs/2026-11-23-t-008-serve-a-web-upload-page-for-design.md`
 - `docs/superpowers/specs/2026-11-23-t-012-let-users-filter-by-event-and-design.md`
 - `docs/superpowers/specs/2026-11-23-t-010-add-event-types-to-segments-and-design.md`
+
+## Updated by T-028
+
+Updated by T-028: the preview script order becomes `timefmt.js`, `filters.js`, `metafmt.js`, `preview.js` (all `defer`). The exact resource-list test in tests/test_t016_acceptance.py gains `/static/metafmt.js`; nothing else in the T-016 contract changes.
