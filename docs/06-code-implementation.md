@@ -113,6 +113,7 @@ bộ nhớ hội thoại của CLI, nên resume sau khi hết quota hay khởi �
 | `test_autonomy.py` | Tự merge, goal check thêm task, câu hỏi cho PO |
 | `test_dashboard.py`, `test_office3d.py` | REST, WebSocket, trang 3D, sự kiện hội thoại, demo mô phỏng |
 | `test_parallel.py` | Developer 2 phiên, xung đột thật được gỡ, rào chắn, thống kê |
+| `test_cli_sessions.py` | `[parallel] claude`/`codex`: tổng phiên cùng lúc mỗi CLI, tính cả phiên làm thay |
 | `test_roles.py` | Bốn vai riêng: bước/log/tin nhắn theo vai, Tester trả lỗi về Developer, nghỉ quota theo CLI, `office wake <vai|cli>`, chuyển state/config cũ |
 | `test_practices.py` | Prompt có đủ kỷ luật, cổng eval chặn điểm tụt, `init` tạo quy tắc |
 | `test_techlead.py` | Câu hỏi kỹ thuật do Tech Lead trả lời, chỉ câu nghiệp vụ tới PO; retry/restart/split/wait/drop; hết lượt thì gác lại + báo cáo; task trùng file chạy lần lượt |

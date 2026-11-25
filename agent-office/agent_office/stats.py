@@ -41,6 +41,7 @@ def collect(store: Store, cfg: Config) -> dict[str, Any]:
             "rest_until": mates[0].rest_until, "rest_cause": mates[0].rest_cause,
             "calls_today": sum(m.calls_today for m in mates if m.calls_day == day), "calls_day": day,
             "max_calls_per_day": cfg.max_calls_per_day.get(p, 0),
+            "sessions": sum(len(m.active) for m in mates), "max_sessions": cfg.cli_parallel.get(p, 0),
             "calls_total": sum(m.calls_total for m in mates), "rests_total": sum(m.rests_total for m in mates),
             "limits_today": sum(m.limits_today for m in mates if m.calls_day == day),
         }

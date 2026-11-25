@@ -48,9 +48,13 @@ def snapshot(repo: Path) -> dict[str, Any]:
     # every other task (and every idle session) waits, not only why the next step cannot start.
     busy = {t for a in store.agents.values() for t in a.active}
     slots = {n: cfg.parallel.get(n, 1) - len(a.active) for n, a in store.agents.items()}
-    plan = plan_steps(store, datetime.now(timezone.utc), cfg.merge_mode == "auto", busy=busy, slots=slots)
+    cli_slots = {p: cap - sum(len(m.active) for m in store.roles_of(p))
+                 for p, cap in cfg.cli_parallel.items() if cap > 0}
+    plan = plan_steps(store, datetime.now(timezone.utc), cfg.merge_mode == "auto", busy=busy, slots=slots,
+                      cli_slots=cli_slots)
     raw["config"] = {"merge_mode": cfg.merge_mode, "base_branch": cfg.base_branch, "open_pr": cfg.open_pr,
                      "max_goal_rounds": cfg.max_goal_rounds, "parallel": cfg.parallel,
+                     "cli_parallel": cfg.cli_parallel,
                      "max_calls_per_day": cfg.max_calls_per_day}
     # One desk per role; old events name a CLI ("claude"/"codex"): show them at its first role.
     now = datetime.now(timezone.utc)
