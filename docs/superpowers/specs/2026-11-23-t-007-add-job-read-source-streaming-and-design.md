@@ -81,6 +81,13 @@ Persist each job as `jobs/<uuid>/job.json` (source name or URL, duration, segmen
 - This amends AC8/AC9 and the decision that every PUT segment is manual: score
   stays null and event confidence stays 0.0, while an accepted event is kept.
 
+## Updated by T-040
+
+- A new upload through `POST /players` creates the same canonical job shape with
+  empty segments; an existing job may be reused by id while only its `player/`
+  output is changed. The existing job, source, clips, and edit contracts remain
+  unchanged.
+
 ## Updated by T-012
 
 - The T-012 manifest-only job compatibility described above remains unchanged

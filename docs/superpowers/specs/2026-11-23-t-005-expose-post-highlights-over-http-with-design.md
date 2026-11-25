@@ -73,3 +73,8 @@ Add `sportscut/api.py` (FastAPI, installed through the `[api]` extra: fastapi, u
   the full segment list.
 - Clip authorization now uses only current `job.json` segment filenames, so stale
   versioned URLs and traversal-shaped names return 404.
+
+## Updated by T-040
+
+- The unchanged chunked upload/413 behavior now lives in `_save_upload` and is
+  shared by `POST /highlights` and `POST /players`.
