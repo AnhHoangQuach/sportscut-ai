@@ -30,6 +30,16 @@
   <section class="main-col">
     <div class="agents" id="agents"></div>
 
+    <details class="card role-settings" id="role-settings">
+      <summary><h2>Vai &amp; model</h2> <span class="hint" id="role-summary"></span></summary>
+      <p class="hint">Chọn CLI và model cho từng vai. Lưu vào <code>.agent-office/config.toml</code>, runner áp dụng
+        từ lần gọi tiếp theo, không cần chạy lại. Bước đang chạy giữ CLI cũ. Model để trống = model mặc định của CLI.</p>
+      <div id="role-rows"></div>
+      <datalist id="models-claude"><option value="opus"><option value="sonnet"><option value="haiku"></datalist>
+      <datalist id="models-codex"></datalist>
+      <div class="hint" id="role-hint"></div>
+    </details>
+
     <div class="card attention" id="attention" hidden>
       <h2>Cần anh trả lời</h2>
       <div id="attention-list"></div>

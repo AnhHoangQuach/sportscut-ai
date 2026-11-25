@@ -1,6 +1,9 @@
 """Config file: <target repo>/.agent-office/config.toml"""
 from __future__ import annotations
 
+import os
+import re
+import tempfile
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,6 +63,12 @@ pm = "claude"       # Product Manager: breakdown, specs, goal check
 lead = "claude"     # Tech Lead / Reviewer: reviews, technical blockers, business-question screening
 dev = "codex"       # Developer: code + unit tests (TDD)
 tester = "codex"    # Tester: its own acceptance tests from the spec, runs everything, reports to dev
+# Model per role, e.g. "opus" / "sonnet" for Claude; empty = the CLI's own model ([claude]/[codex] model).
+# The dashboard ("Vai & model") rewrites these lines and the ones above; `office run` applies it live.
+pm_model = ""
+lead_model = ""
+dev_model = ""
+tester_model = ""
 
 [claude]
 cmd = "claude"
@@ -155,6 +164,7 @@ class Config:
     backoff_minutes: list[int] = field(default_factory=lambda: [15, 30, 60])
     upstream_retry_minutes: list[int] = field(default_factory=lambda: [1, 2, 5])
     roles: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_PROVIDER))
+    role_models: dict[str, str] = field(default_factory=lambda: {r: "" for r in ROLES})  # "" = CLI's model
     parallel: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_PARALLEL))
     cli_parallel: dict[str, int] = field(default_factory=lambda: {"claude": 0, "codex": 0})  # 0 = no cap
     max_calls_per_day: dict[str, int] = field(default_factory=lambda: {"claude": 0, "codex": 0})
@@ -228,6 +238,7 @@ def load_config(office_dir: Path) -> Config:
         backoff_minutes=list(raw.get("limits", {}).get("backoff_minutes", [15, 30, 60])) or [15, 30, 60],
         upstream_retry_minutes=list(raw.get("limits", {}).get("upstream_retry_minutes", [1, 2, 5])) or [1, 2, 5],
         roles=roles,
+        role_models={r: str(raw.get("roles", {}).get(f"{r}_model", "")).strip() for r in ROLES},
         parallel=_parallel(par, roles),
         cli_parallel={p: max(0, int(par.get(p, 0))) for p in PROVIDERS},
         max_calls_per_day={n: max(0, int(caps.get(n, 0))) for n in PROVIDERS},
@@ -239,6 +250,44 @@ def load_config(office_dir: Path) -> Config:
         eval_higher_is_better=bool(q.get("higher_is_better", True)),
         eval_max_drop=float(q.get("max_drop", 0.0)),
     )
+
+
+MODEL_NAME = re.compile(r"^[A-Za-z0-9._:/@\[\]-]{0,100}$")
+
+
+def set_role(office_dir: Path, role: str, provider: str, model: str = "") -> None:
+    """Point a role at a CLI (and optional model) in config.toml's [roles], keeping every other line
+    and comment. Raises ValueError for an unknown role/CLI or a model name that is not a plain id."""
+    provider, model = provider.strip().lower(), model.strip()
+    if role not in ROLES:
+        raise ValueError(f"unknown role {role!r}: use {', '.join(ROLES)}")
+    if provider not in PROVIDERS:
+        raise ValueError(f"unknown CLI {provider!r}: use {', '.join(PROVIDERS)}")
+    if not MODEL_NAME.match(model):
+        raise ValueError(f"bad model name {model!r}: letters, digits and . _ - : / @ [ ] only")
+    path = office_dir / "config.toml"
+    lines = (path.read_text(encoding="utf-8") if path.exists() else DEFAULT_CONFIG).splitlines()
+    start = next((i for i, ln in enumerate(lines) if ln.strip() == "[roles]"), None)
+    if start is None:
+        lines += ["", "[roles]"]
+        start = len(lines) - 1
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
+    while end > start + 1 and not lines[end - 1].strip():
+        end -= 1  # new keys go before the blank line that ends the section
+    for key, value in ((role, provider), (f"{role}_model", model)):
+        pat = re.compile(rf'^(\s*{key}\s*=\s*)("[^"]*"|\'[^\']*\'|[^#\s]*)(.*)$')
+        hit = next((i for i in range(start + 1, end) if pat.match(lines[i])), None)
+        if hit is not None:
+            lines[hit] = pat.sub(lambda m: f'{m.group(1)}"{value}"{m.group(3)}', lines[hit])
+        elif value or key == role:
+            lines.insert(end, f'{key} = "{value}"')
+            end += 1
+    text = "\n".join(lines) + "\n"
+    tomllib.loads(text)  # never leave a config the office cannot read
+    fd, tmp = tempfile.mkstemp(dir=office_dir, prefix=".config.", suffix=".toml")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
 
 
 def write_default_config(office_dir: Path) -> Path:

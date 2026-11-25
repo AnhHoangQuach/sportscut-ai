@@ -92,7 +92,12 @@ class Store:
                 self.agents[r] = Agent.from_dict(d)
         for r in ROLES:
             self.agents.setdefault(r, Agent(name=r))
-            self.agents[r].provider = roles[r]
+        for r in ROLES:
+            a = self.agents[r]
+            if a.provider and a.provider != roles[r]:  # moved to the other CLI: rest follows the CLI
+                mate = next((m for m in self.agents.values() if m.provider == roles[r]), None)
+                _take_rest(a, mate)
+            a.provider = roles[r]
         self.agents = {r: self.agents[r] for r in ROLES}
 
     def roles_of(self, provider: str) -> list[Agent]:
@@ -179,6 +184,21 @@ class Store:
     def release_runner(self) -> None:
         if self.runner_pid() == os.getpid():
             self.pid_path.unlink(missing_ok=True)
+
+
+_REST_FIELDS = ("rest_until", "backoff_level", "reset_known", "rest_cause", "rest_detail", "rest_log",
+                "failures", "last_error")
+
+
+def _take_rest(a: Agent, mate: Agent | None) -> None:
+    """A role that moved to another CLI rests exactly when that CLI rests (`mate` = a role already on it)."""
+    resting = mate is not None and mate.status == AgentStatus.RESTING
+    for f in _REST_FIELDS:
+        setattr(a, f, getattr(mate, f) if mate is not None else type(getattr(a, f))())
+    if resting:
+        a.status = AgentStatus.RESTING
+    elif a.status == AgentStatus.RESTING:
+        a.status = AgentStatus.WORKING if a.active else AgentStatus.IDLE
 
 
 def pid_alive(pid: int) -> bool:

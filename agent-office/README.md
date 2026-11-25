@@ -14,8 +14,8 @@ Văn phòng phần mềm gồm bốn agent AI riêng (mỗi vai một agent), ch
 Luồng: yêu cầu của PO → PM tách task + viết spec/acceptance criteria → Developer code + unit test
 trong **git worktree riêng của task** → Tester tự viết test chấp nhận từ AC, chạy tất cả, lỗi thì trả
 về Developer → orchestrator chạy lại test → Tech Lead review diff (tối đa 3 vòng) → mở PR → merge.
-Vai nào chạy trên CLI nào chỉnh ở `[roles]` trong `config.toml`; các vai cùng CLI nghỉ cùng nhau khi
-hết quota.
+Vai nào chạy trên CLI nào (và model nào) chọn ngay trên dashboard, ô "Vai & model" (lưu vào `[roles]`
+trong `config.toml`, áp dụng không cần chạy lại); các vai cùng CLI nghỉ cùng nhau khi hết quota.
 
 Giai đoạn 1 là CLI, giai đoạn 2 thêm **dashboard 2D realtime** và **chế độ tự động hoàn toàn**:
 các agent tự làm tới khi yêu cầu được giao xong, tự merge khi review đạt và test pass, chỉ hỏi

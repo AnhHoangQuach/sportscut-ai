@@ -103,6 +103,11 @@ bộ nhớ hội thoại của CLI, nên resume sau khi hết quota hay khởi �
   thái bận và số session không đổi vai. `_execute()` ghi `agent_failover`, rồi `_call()` cấp quyền
   theo vai: chỉ đọc cho PM/review và ghi trong worktree cho dev/test.
 
+- Đổi vai lúc đang chạy (`set_role` trong inbox, từ `POST /api/roles/<vai>`): `config.set_role()` sửa
+  dòng trong `[roles]`, `Office.set_role()` nạp lại config và gọi `store._sync_roles()` (vai chuyển CLI
+  nhận trạng thái nghỉ của CLI mới). `_call()` truyền `model` của vai cho `build_cmd` (`--model`, thay
+  model của CLI). `_rest()` cho nghỉ CLI đã trả lời (`hit.agent`), nên vai vừa chuyển đi không nghỉ oan.
+
 ## 6.5 Kiểm thử
 
 | Test | Kiểm tra |

@@ -17,7 +17,7 @@ from . import github, specdocs
 from .codex_provider import missing_env_var, provider_info
 from . import worktree as wt
 from .agents import AgentResult, ClaudeAgent, CliAgent, CodexAgent, extract_json, subscription_env
-from .config import Config, load_config
+from .config import Config, load_config, set_role
 from .limits import LimitHit, detect, rest_until, transient_error
 from .models import (FAILOVER, MAX_CONFLICT_ROUNDS, MAX_REVIEW_ROUNDS, MAX_TEST_ATTEMPTS, STAGE_AGENT, STEP_ROLE,
                      AgentStatus, Request, Stage, Task, now_iso)
@@ -190,6 +190,8 @@ class Office:
                     results += self.triage() or ["nothing waits for the PO except business questions"]
                 elif kind == "retry_github":
                     results += self.retry_github()
+                elif kind == "set_role":
+                    results.append(self.set_role(str(c["role"]), str(c["provider"]), str(c.get("model", ""))))
                 elif kind == "wake":
                     roles = self.wake(str(c["agent"]))
                     results.append(f"{c['agent']} marked available ({', '.join(roles)})")
@@ -199,6 +201,24 @@ class Office:
                 results.append(f"{kind} failed: {e}")
                 self.store.event("command_failed", cmd=kind, error=str(e))
         return results
+
+    # ------------------------------------------------------------------ roles
+    def set_role(self, role: str, provider: str, model: str = "") -> str:
+        """PO choice from the dashboard: run `role` on `provider` (and `model`, "" = the CLI's own).
+        Saved in config.toml and used from the role's next call; a call in flight keeps its CLI."""
+        old = self.store.agents.get(role)
+        before = (old.provider, self.cfg.role_models.get(role, "")) if old else ("", "")
+        set_role(self.store.dir, role, provider, model)
+        self.cfg = load_config(self.store.dir)
+        self.store._sync_roles()
+        new = (self.cfg.roles[role], self.cfg.role_models[role])
+        shown = new[1] or getattr(self.cfg, new[0]).model or "mặc định"
+        self.store.event("role_changed", role=role, provider=new[0], model=new[1],
+                         from_provider=before[0], from_model=before[1])
+        self.say("po", role, f"Từ giờ {role} chạy bằng {new[0]} (model {shown}).", kind="report")
+        self.store.save()
+        self.echo(f"role {role}: {before[0]} -> {new[0]}" + (f" ({new[1]})" if new[1] else ""))
+        return f"{role} now runs on {new[0]}" + (f" ({new[1]})" if new[1] else "")
 
     # ------------------------------------------------------------------ triage
     def _triage_once(self) -> None:
@@ -409,7 +429,8 @@ class Office:
         try:
             with self._unlocked():
                 role = "write" if label == "dev" or label == "test" else "read"
-                res = self.agents[provider].run(text, cwd, log_path, role=role)
+                model = self.cfg.role_models.get(agent_name, "")
+                res = self.agents[provider].run(text, cwd, log_path, role=role, **({"model": model} if model else {}))
         finally:
             if task_id in agent.active:
                 agent.active.remove(task_id)
@@ -421,6 +442,11 @@ class Office:
             self._rest(agent_name, res.limit, task, label, res)
             return None
         mates = self.store.roles_of(provider)
+        if agent.provider != provider and not res.ok:  # the PO moved this role mid-call: next call uses
+            if task is not None:                       # its new CLI, the old one is not blamed
+                self._checkpoint(task, label, f"{agent_name} moved to {agent.provider} during the call", res,
+                                 provider)
+            return None
         missing = "" if res.ok else missing_env_var(res.tail(4000))
         if missing:
             self._env_rest(agent_name, missing, task, label, res)
@@ -453,10 +479,17 @@ class Office:
 
     def _rest(self, agent_name: str, hit: LimitHit, task: Task | None, label: str,
               res: AgentResult | None, budget: bool = False, cause: str = "quota") -> None:
-        """The role's CLI is out of quota/budget or failing: every role on that CLI rests together."""
-        a = self.store.agents[agent_name]
-        provider = a.provider
+        """The role's CLI is out of quota/budget or failing: every role on that CLI rests together.
+        `hit.agent` is the CLI that answered; a role the PO moved away during the call does not rest."""
+        provider = hit.agent
         mates = self.store.roles_of(provider)
+        a = self.store.agents[agent_name]
+        if a.provider != provider:
+            if not mates:
+                if task is not None:
+                    self._checkpoint(task, label, f"{agent_name} usage limit: {hit.matched}", res, provider)
+                return
+            a, agent_name = mates[0], mates[0].name
         if a.status == AgentStatus.RESTING and a.rest_until and datetime.fromisoformat(a.rest_until) > self.clock():
             # A parallel session on the same CLI already hit the limit: just save this task's progress.
             if task is not None:

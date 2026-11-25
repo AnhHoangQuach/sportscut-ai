@@ -120,6 +120,7 @@ function render() {
   btn.className = "btn " + (on ? "danger" : "primary");
   btn.disabled = false;
   renderAgents();
+  renderRoleSettings();
   renderAttention();
   renderRequests();
   renderBoard();
@@ -144,7 +145,7 @@ function renderAgents() {
     return `<div class="agent ${esc(a.provider)} ${cls}">
       <div class="avatar">${ROLE_AV[a.name] || "?"}</div>
       <div class="agent-info">
-        <div class="agent-name">${esc(roleName(a.name))} <span class="hint">@${esc(a.provider)}</span></div>
+        <div class="agent-name">${esc(roleName(a.name))} <span class="hint">@${esc(a.provider)}${modelOf(a.name) ? ` · ${esc(modelOf(a.name))}` : ""}</span></div>
         <div class="agent-role">${esc(role.title || "")}</div>
         <div class="agent-status"><span class="status-dot"></span>${status}</div>
         ${usage(a)}
@@ -154,6 +155,44 @@ function renderAgents() {
   }).join("");
   tickCountdowns();
 }
+// The model a role runs with: its own ([roles] <role>_model), else its CLI's ([claude]/[codex] model).
+function modelOf(name) {
+  const r = roleOf(name) || {};
+  return r.model || ((state.config || {}).models || {})[r.provider] || "";
+}
+// "Vai & model": one row per role. Re-rendered only when the saved choice changes and the PO is not
+// editing it, so a state update every few seconds never wipes what is being typed.
+let roleSig = "";
+function renderRoleSettings() {
+  const roles = state.roles || [];
+  const sig = JSON.stringify(roles.map((r) => [r.name, r.provider, r.model]));
+  $("role-summary").textContent = roles.map((r) => `${roleName(r.name)} @${r.provider}${r.model ? ` ${r.model}` : ""}`).join(" · ");
+  const box = $("role-rows");
+  if (sig === roleSig || box.contains(document.activeElement) || box.querySelector(".dirty")) return;
+  roleSig = sig;
+  const defaults = (state.config || {}).models || {};
+  box.innerHTML = roles.map((r) => `<div class="role-row" data-row="${esc(r.name)}">
+      <span class="role-name">${esc(roleName(r.name))}</span>
+      <select data-cli aria-label="CLI của ${esc(roleName(r.name))}">
+        ${["claude", "codex"].map((p) => `<option value="${p}"${p === r.provider ? " selected" : ""}>${p}</option>`).join("")}
+      </select>
+      <input data-model list="models-${esc(r.provider)}" value="${esc(r.model)}" maxlength="100"
+        placeholder="${esc(defaults[r.provider] || "mặc định")}" aria-label="Model của ${esc(roleName(r.name))}">
+      <button class="btn small" data-setrole="${esc(r.name)}">Lưu</button>
+    </div>`).join("");
+}
+document.addEventListener("input", (ev) => {
+  const row = ev.target.closest && ev.target.closest(".role-row");
+  if (!row) return;
+  row.classList.add("dirty");
+  if (ev.target.matches("select[data-cli]")) {  // other CLI: its own model names
+    const input = row.querySelector("input[data-model]");
+    input.value = "";
+    input.setAttribute("list", `models-${ev.target.value}`);
+    input.placeholder = ((state.config || {}).models || {})[ev.target.value] || "mặc định";
+  }
+});
+
 function usage(a) {
   const cfg = state.config || {};
   const today = new Date().toLocaleDateString("sv-SE");
@@ -267,6 +306,7 @@ function describe(e) {
     case "agent_failed": return `${who(e.agent)} <span class="ev-bad">lỗi</span> (${esc(e.task_id)}, exit ${esc(e.exit_code)})`;
     case "agent_resting": return `${(e.roles || [e.agent]).map(who).join(", ")} <span class="ev-warn">${restWhy(e.cause)}${e.provider ? ` ${esc(e.provider)}` : ""}</span>, ${e.cause === "upstream" ? "thử lại lúc" : "nghỉ đến"} ${hhmm(e.until)}`;
     case "agent_failover": return `${who(e.agent)} <span class="ev-good">tiếp quản</span> ${esc(e.step_kind)} (${esc(e.task_id)}) thay ${who(e.preferred)} đang nghỉ (${restWhy(e.reason)})`;
+    case "role_changed": return `${who(e.role)} giờ chạy bằng <b>${esc(e.provider)}</b>${e.model ? ` · ${esc(e.model)}` : ""} (trước: ${esc(e.from_provider)}${e.from_model ? ` · ${esc(e.from_model)}` : ""})`;
     case "agent_awake": return `${(e.roles || [e.agent]).map(who).join(", ")} <span class="ev-good">làm tiếp</span>${e.cause === "upstream" ? " (máy chủ chạy lại)" : e.cause === "failure" ? " (CLI chạy lại)" : ""}`;
     case "task_checkpoint": return `<b>${esc(e.task_id)}</b> lưu checkpoint (${esc(e.reason)})`;
     case "review_done": return `${who("lead")} review <b>${esc(e.task_id)}</b> vòng ${esc(e.round)}: <span class="${e.verdict === "approve" ? "ev-good" : "ev-warn"}">${esc(e.verdict)}</span>`;
@@ -377,6 +417,18 @@ document.addEventListener("click", async (ev) => {
       await api(`/api/tasks/${encodeURIComponent(el.dataset.answer)}/answer`, { text });
       src.value = "";
       if (el.dataset.src) $("drawer").close();
+    } else if (el.dataset.setrole) {
+      const row = el.closest(".role-row");
+      el.disabled = true;
+      const r = await api(`/api/roles/${encodeURIComponent(el.dataset.setrole)}`, {
+        provider: row.querySelector("select[data-cli]").value,
+        model: row.querySelector("input[data-model]").value.trim(),
+      });
+      $("role-hint").textContent = (r.results || []).join(" · ");
+      row.classList.remove("dirty");
+      roleSig = "";
+      el.disabled = false;
+      setState(await api("/api/state", undefined, "GET"));  // show the saved choice now
     } else if (el.dataset.wake) {
       await api(`/api/agents/${el.dataset.wake}/wake`);
     } else if (el.dataset.log) {
@@ -414,6 +466,7 @@ $("request-form").addEventListener("submit", async (ev) => {
 
 function alertBox(msg) {
   $("request-hint").textContent = "Lỗi: " + msg;
+  if ($("role-settings").open) $("role-hint").textContent = "Lỗi: " + msg;
 }
 
 setInterval(tickCountdowns, 1000);

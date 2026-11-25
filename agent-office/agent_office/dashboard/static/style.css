@@ -223,3 +223,15 @@ a.btn { text-decoration: none; }
 .hist { list-style: none; padding: 0; margin: 0; }
 .hist li { padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .empty-note { color: var(--muted); }
+
+/* role settings: CLI + model per role */
+.role-settings summary { cursor: pointer; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.role-settings summary h2 { display: inline; margin: 0; }
+.role-settings p { margin: 8px 0; }
+.role-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--border); }
+.role-row .role-name { width: 90px; font-weight: 600; }
+.role-row select, .role-row input {
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; background: var(--panel); color: var(--text); font: inherit;
+}
+.role-row input { flex: 1; min-width: 120px; }
+.role-row.dirty { background: var(--accent-soft); }
