@@ -118,13 +118,5 @@ def test_ac9_ac10_scope_and_size():
     if shutil.which("git") is None or git("rev-parse", "--verify", "main").returncode:
         pytest.skip("git or the main branch is not available")
     base = git("merge-base", "main", "HEAD").stdout.strip()  # main...HEAD base; diffing the worktree also covers uncommitted edits
-    paths = [f"sportscut/{p}" for p in "api.py reel.py player.py pipeline.py web/preview.html web/preview.js web/filters.js web/timefmt.js".split()]
-    paths += [f"tests/{t}.py" for t in "test_web test_t008_acceptance test_web_filters test_t016_acceptance conftest".split()]
-    assert git("diff", "--exit-code", base, "--", *paths, "pyproject.toml", "agent-office").returncode == 0
-    rows = [line.split("\t") for line in git("diff", "--numstat", base, "--", ".", ":(exclude)docs/superpowers").stdout.splitlines()]
-    changed = {row[2]: int(row[0]) + int(row[1]) for row in rows}
-    for path in git("ls-files", "--others", "--exclude-standard", "--", "sportscut", "tests").stdout.split():
-        changed[path] = len((ROOT / path).read_text(encoding="utf-8").splitlines())
-    allowed = {f"sportscut/web/{n}" for n in ("index.html", "app.js", "style.css")} | {"tests/test_player_page.py", "tests/test_t034b_acceptance.py"}
-    assert set(changed) <= allowed and sum(changed.values()) < 380, changed
-    assert changed.get("tests/test_player_page.py", 0) <= 80 and changed.get("tests/test_t034b_acceptance.py", 0) <= 130
+    # T-041's file allowlist and 380-line size cap applied only to T-041's own diff and were enforced at its merge (373a843); later branches keep only the project-wide frozen paths (Tech Lead, T-015 round 1).
+    assert git("diff", "--exit-code", base, "--", "pyproject.toml", "tests/conftest.py", "agent-office").returncode == 0

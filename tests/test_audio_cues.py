@@ -14,6 +14,7 @@ import pytest
 from sportscut import pipeline
 from sportscut import evaluate
 from sportscut.events import audio_cues
+from sportscut.events import incidents
 from sportscut.events import scoreboard
 from sportscut.media import SAMPLE_RATE, MediaError, extract_audio, sample_top_band
 from sportscut.models import Segment
@@ -352,6 +353,7 @@ def test_pipeline_calls_tag_saves_after_tag_goals_and_wraps_media_error(
 
     monkeypatch.setattr(pipeline, "find_highlights", fake_find)
     monkeypatch.setattr(pipeline, "tag_goals", fake_goals)
+    monkeypatch.setattr(pipeline, "tag_incidents", lambda _video, segments: segments)
     monkeypatch.setattr(pipeline, "tag_saves", fake_saves)
     monkeypatch.setattr(pipeline, "select_segments", fake_select)
     monkeypatch.setattr(pipeline, "export_clips", fake_export)
@@ -398,6 +400,7 @@ def test_evaluate_dir_runs_tag_saves_on_tag_goals_output(tmp_path, monkeypatch):
         return saves
 
     monkeypatch.setattr(evaluate.scoreboard, "tag_goals", fake_goals)
+    monkeypatch.setattr(incidents, "tag_incidents", lambda _video, segments: segments)
     monkeypatch.setattr(audio_cues, "tag_saves", fake_saves)
 
     report = evaluate.evaluate_dir(tmp_path)

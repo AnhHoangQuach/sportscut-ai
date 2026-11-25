@@ -428,13 +428,14 @@ def test_eval_oracle_matches_all_labels(eval_set: Path, monkeypatch) -> None:
 
 def test_eval_all_other_baseline_shape(eval_set: Path, monkeypatch) -> None:
     from sportscut import detect
-    from sportscut.events import audio_cues, scoreboard
+    from sportscut.events import audio_cues, incidents, scoreboard
     from sportscut.evaluate import evaluate_dir
 
     monkeypatch.setattr(detect, "find_highlights",
                         lambda video: _label_segments(video, "other"))
     monkeypatch.setattr(scoreboard, "tag_goals",
                         lambda video, segments, **kw: list(segments))
+    monkeypatch.setattr(incidents, "tag_incidents", lambda _video, segments: segments)
     monkeypatch.setattr(audio_cues, "tag_saves", lambda video, segments, **kw: list(segments))
     report = evaluate_dir(eval_set)
     assert report["f1"] == report["precision"] == report["recall"] == 1.0

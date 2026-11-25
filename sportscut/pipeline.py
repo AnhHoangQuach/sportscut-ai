@@ -4,6 +4,7 @@ from pathlib import Path
 
 from sportscut.detect import find_highlights
 from sportscut.events.audio_cues import tag_saves
+from sportscut.events.incidents import tag_incidents
 from sportscut.events.scoreboard import tag_goals
 from sportscut.export import MANIFEST_NAME, export_clips
 from sportscut.media import MediaError, has_audio, require_ffmpeg
@@ -34,6 +35,7 @@ def run(
         candidates = tag_goals(
             video, candidates, min_len=min_len, max_len=max_len
         )
+        candidates = tag_incidents(video, candidates)
         candidates = tag_saves(video, candidates)
         segments = select_segments(candidates, top=top, events=events)
     except (MediaError, ValueError) as exc:
