@@ -73,3 +73,83 @@ form.addEventListener("submit", async (event) => {
     busy.hidden = true
   }
 })
+
+const playerForm = document.querySelector("#player-form")
+const playerSubmit = document.querySelector("#player-submit")
+const playerBusy = document.querySelector("#player-busy")
+const playerError = document.querySelector("#player-error")
+const playerResult = document.querySelector("#player-result")
+const playerReel = document.querySelector("#player-reel")
+const playerEmpty = document.querySelector("#player-empty")
+const playerTouches = document.querySelector("#player-touches")
+const playerSource = document.querySelector("#player-source")
+
+function showPlayerError(message) {
+  playerError.textContent = message
+  playerError.hidden = false
+}
+
+playerForm.addEventListener("submit", async (event) => {
+  event.preventDefault()
+  playerError.textContent = ""
+  playerError.hidden = true
+  playerResult.hidden = true
+  const playerFile = document.querySelector("#player-file").files[0]
+  const playerJobId = document.querySelector("#player-job-id").value.trim()
+  if ((playerFile && playerJobId) || (!playerFile && !playerJobId)) {
+    showPlayerError("Hãy chọn một tệp video hoặc nhập mã công việc.")
+    return
+  }
+  const team = document.querySelector("#player-team-name").value.trim()
+    || document.querySelector("#player-team-color").value
+  const number = document.querySelector("#player-number").value.trim()
+  const playerData = new FormData()
+  if (playerFile) playerData.append("file", playerFile)
+  else playerData.append("job_id", playerJobId)
+  playerData.append("team", team)
+  playerData.append("number", number)
+
+  playerSubmit.disabled = true
+  playerForm.setAttribute("aria-busy", "true")
+  playerBusy.hidden = false
+  try {
+    const response = await fetch("/players", { method: "POST", body: playerData })
+    const data = await response.json()
+    if (!response.ok) {
+      let message = data?.detail
+      if (Array.isArray(message)) message = message.map((item) => item.msg).filter(Boolean).join("; ")
+      if (typeof message !== "string" || !message) message = "Không thể tạo video cầu thủ."
+      showPlayerError(`Lỗi ${response.status}: ${message}`)
+      return
+    }
+    playerSource.src = `/highlights/${encodeURIComponent(data.job_id)}/source`
+    if (data.reel_url) {
+      playerReel.src = data.reel_url
+      playerReel.hidden = false
+      playerEmpty.hidden = true
+    } else {
+      playerReel.removeAttribute("src")
+      playerReel.hidden = true
+      playerEmpty.hidden = false
+    }
+    playerTouches.replaceChildren()
+    for (const touch of data.touches) {
+      const item = document.createElement("li")
+      const seek = document.createElement("button")
+      seek.type = "button"
+      seek.textContent = `${touch.t.toFixed(1)} s`
+      seek.addEventListener("click", () => {
+        playerSource.currentTime = touch.t
+      })
+      item.append(seek)
+      playerTouches.append(item)
+    }
+    playerResult.hidden = false
+  } catch (_exception) {
+    showPlayerError("Không thể kết nối hoặc phản hồi từ máy chủ không hợp lệ.")
+  } finally {
+    playerSubmit.disabled = false
+    playerForm.removeAttribute("aria-busy")
+    playerBusy.hidden = true
+  }
+})
