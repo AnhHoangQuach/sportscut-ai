@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .. import runner_proc
-from ..config import load_config
+from ..config import MODEL_NAME, load_config
 from ..models import PROVIDERS, ROLE_TITLE, ROLES
 from ..scheduler import assigned_agent, plan_steps
 from ..store import Store
@@ -35,6 +35,11 @@ EVENTS_ON_CONNECT = 300
 
 class TextBody(BaseModel):
     text: str
+
+
+class RoleBody(BaseModel):
+    provider: str
+    model: str = ""
 
 
 def snapshot(repo: Path) -> dict[str, Any]:
@@ -55,6 +60,7 @@ def snapshot(repo: Path) -> dict[str, Any]:
     raw["config"] = {"merge_mode": cfg.merge_mode, "base_branch": cfg.base_branch, "open_pr": cfg.open_pr,
                      "max_goal_rounds": cfg.max_goal_rounds, "parallel": cfg.parallel,
                      "cli_parallel": cfg.cli_parallel,
+                     "models": {p: getattr(cfg, p).model for p in PROVIDERS},
                      "max_calls_per_day": cfg.max_calls_per_day}
     # One desk per role; old events name a CLI ("claude"/"codex"): show them at its first role.
     now = datetime.now(timezone.utc)
@@ -62,8 +68,8 @@ def snapshot(repo: Path) -> dict[str, Any]:
     for d in raw["agents"]:  # while a role rests, the role on the other CLI that takes its work
         other = assigned_agent(store, d["name"], now)
         d["covered_by"] = other if other != d["name"] else ""
-    raw["roles"] = [{"name": a.name, "provider": a.provider, "title": ROLE_TITLE.get(a.name, a.name)}
-                    for a in store.agents.values()]
+    raw["roles"] = [{"name": a.name, "provider": a.provider, "title": ROLE_TITLE.get(a.name, a.name),
+                     "model": cfg.role_models.get(a.name, "")} for a in store.agents.values()]
     raw["legacy_agents"] = {p: next((a.name for a in store.roles_of(p)), "") for p in store.providers()}
     raw["repo"] = {"name": repo.name, "path": str(repo)}
     raw["runner"] = {"pid": store.runner_pid(), "running": store.runner_pid() is not None}
@@ -157,6 +163,16 @@ def create_app(repo: Path) -> FastAPI:
         if name not in (*ROLES, *PROVIDERS):
             raise HTTPException(404, "unknown agent")
         return {"results": office().submit({"cmd": "wake", "agent": name})}
+
+    @app.post("/api/roles/{name}")
+    def set_role(name: str, body: RoleBody):
+        """PO picks the CLI (and optional model) a role runs on; the runner applies it live."""
+        if name not in ROLES:
+            raise HTTPException(404, "unknown role")
+        if body.provider.strip().lower() not in PROVIDERS or not MODEL_NAME.match(body.model.strip()):
+            raise HTTPException(400, f"provider must be one of {', '.join(PROVIDERS)}; model a plain name")
+        return {"results": office().submit({"cmd": "set_role", "role": name, "provider": body.provider,
+                                            "model": body.model})}
 
     @app.get("/api/tasks/{tid}/logs")
     def list_logs(tid: str):

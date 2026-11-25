@@ -15,6 +15,7 @@
 | `office answer T-003 "..."` / `office answer R-001 "..."` | Trả lời câu hỏi của Claude |
 | `office wake codex` / `office wake tester` | Cho CLI làm lại ngay (bỏ qua giờ nghỉ); tên vai đánh thức mọi vai trên CLI của nó vì chung quota |
 | `office retry-github` | Sau khi sửa `gh` trên máy: kiểm tra GitHub ngay, nếu ổn thì chạy lại ngay mọi PR / merge đang chờ (bị chặn vì GitHub, đang lùi lịch vì mạng, hay Tech Lead cũ bảo "chờ 60 phút"). Chạy được cả khi office đang chạy |
+| Dashboard, ô "Vai & model" | Chọn CLI (claude/codex) và model cho từng vai; lưu vào `[roles]` của `config.toml`, runner áp dụng từ lần gọi tiếp theo |
 | `office stats [--json]` | Lượt gọi, quota, xung đột, rào chắn, lịch sử điểm eval |
 | `office sync` | Nhận biết PR đã được merge tay |
 

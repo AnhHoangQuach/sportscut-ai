@@ -259,6 +259,13 @@ Tester kiểm tra công việc của Developer như một người khác.
 
 - `[roles]` trong `config.toml` chọn CLI cho từng vai (mặc định `pm`/`lead` = claude, `dev`/`tester` =
   codex). Ví dụ chỉ có gói Claude: đặt cả bốn vai là `"claude"`.
+- **Chọn trên dashboard** (ô "Vai & model"): mỗi vai chọn CLI và gõ model (`opus`, `sonnet`, `haiku`
+  cho Claude; trống = model của `[claude]`/`[codex] model`), bấm **Lưu**. Office ghi vào `[roles]`
+  (`pm = "codex"`, `pm_model = "gpt-5-codex"`, giữ nguyên chú thích) và runner đang chạy áp dụng từ lần
+  gọi tiếp theo, không cần chạy lại. Bước đang chạy giữ CLI cũ; vai chuyển sang CLI đang nghỉ thì nghỉ
+  cùng CLI đó. Giới hạn `[parallel] claude/codex`, ngân sách ngày và tiếp quản tự tính theo CLI mới;
+  nếu cả bốn vai cùng một CLI thì không còn ai làm thay khi CLI đó nghỉ. Sửa tay `config.toml` vẫn cần
+  chạy lại `office run`. API: `POST /api/roles/<vai>` `{"provider": "claude", "model": "sonnet"}`.
 - Tiếp quản khi hết quota (R-007) đi theo cặp: `pm` ↔ `dev`, `lead` ↔ `tester`. Vai thay thế giữ tên
   của mình, chạy bằng CLI của mình, nhận quyền của bước đang làm (sự kiện `agent_failover` ghi cả vai
   và CLI).

@@ -21,8 +21,9 @@ class CodexAgent(CliAgent):
                "--skip-git-repo-check", "-C", str(cwd), "--output-last-message", str(last)]
         if self.cfg.network and sandbox == "workspace-write":
             cmd += ["-c", "sandbox_workspace_write.network_access=true"]
-        if self.cfg.model:
-            cmd += ["--model", self.cfg.model]
+        model = extra.get("model") or self.cfg.model  # the role's own model, else the CLI's
+        if model:
+            cmd += ["--model", model]
         return cmd + list(self.cfg.extra_args) + ["-"]  # prompt comes from stdin
 
     def child_env(self, cwd: Path | None = None) -> dict[str, str]:

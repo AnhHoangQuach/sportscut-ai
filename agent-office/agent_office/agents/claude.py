@@ -18,8 +18,9 @@ class ClaudeAgent(CliAgent):
 
     def build_cmd(self, cwd: Path, extra: dict[str, Any]) -> list[str]:
         cmd = [self.cfg.cmd, "-p", "--output-format", "json"]
-        if self.cfg.model:
-            cmd += ["--model", self.cfg.model]
+        model = extra.get("model") or self.cfg.model  # the role's own model, else the CLI's
+        if model:
+            cmd += ["--model", model]
         if not extra.get("probe"):
             tools = WRITE_TOOLS if extra.get("role") == "write" else READ_ONLY_TOOLS
             cmd += ["--allowedTools", *tools,
