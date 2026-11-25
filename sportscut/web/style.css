@@ -61,11 +61,13 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
-#busy {
+#busy,
+#player-busy {
   color: #174e8c;
 }
 
-#error {
+#error,
+#player-error {
   padding: 0.75rem;
   color: #8b1a1a;
   background: #fff0f0;
@@ -123,4 +125,12 @@ main.preview {
 
 [aria-invalid="true"] {
   outline: 2px solid #b42318;
+}
+
+video {
+  width: 100%;
+}
+
+#player-section {
+  margin-top: 2rem;
 }

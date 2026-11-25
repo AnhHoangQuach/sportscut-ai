@@ -52,3 +52,7 @@ Add `sportscut/web/` as package data (index.html, app.js, style.css, no build st
 ## Existing specs this task changes
 
 - (none)
+
+## Updated by T-034
+
+- T-034 (built as T-041 / T-034B) adds a `Theo dõi cầu thủ` section (`#player-section`, `#player-form`) after `#highlights-form`, with a player-reel video, a touch list that seeks the source video, and its JS appended to the end of app.js. The `#highlights-form` behaviour is unchanged; the earlier 'no preview player' exclusion applies only to that original form. The page still references only `/static/style.css` and `/static/app.js`.
