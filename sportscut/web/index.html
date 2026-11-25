@@ -50,6 +50,33 @@
       <p id="busy" role="status" hidden>Đang xử lý video, vui lòng chờ…</p>
       <p id="error" role="alert" aria-live="assertive" hidden></p>
     </form>
+    <section id="player-section" aria-labelledby="player-title">
+      <h2 id="player-title">Theo dõi cầu thủ</h2>
+      <p>Chọn một tệp video hoặc nhập mã công việc đã có, rồi chọn màu áo và số áo.</p>
+      <form id="player-form">
+        <label for="player-file">Tệp video</label>
+        <input id="player-file" name="file" type="file" accept="video/*">
+        <label for="player-job-id">Mã công việc có sẵn</label>
+        <input id="player-job-id" name="job_id" type="text">
+        <label for="player-team-color">Màu áo</label>
+        <input id="player-team-color" name="team_color" type="color" value="#ff0000">
+        <label for="player-team-name">Hoặc tên màu áo (ví dụ: red, blue)</label>
+        <input id="player-team-name" name="team_name" type="text">
+        <label for="player-number">Số áo</label>
+        <input id="player-number" name="number" type="number" min="1" max="99" step="1">
+        <button id="player-submit" type="submit">Tạo video cầu thủ</button>
+        <p id="player-busy" role="status" hidden>Đang tìm các pha chạm bóng, vui lòng chờ…</p>
+        <p id="player-error" role="alert" aria-live="assertive" hidden></p>
+      </form>
+      <div id="player-result" hidden>
+        <h3>Video tổng hợp</h3>
+        <video id="player-reel" controls></video>
+        <p id="player-empty" hidden>Không tìm thấy pha chạm bóng nào.</p>
+        <h3>Các pha chạm bóng</h3>
+        <ol id="player-touches"></ol>
+        <video id="player-source" controls></video>
+      </div>
+    </section>
   </main>
 </body>
 </html>
