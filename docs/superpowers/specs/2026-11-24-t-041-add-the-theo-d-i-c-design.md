@@ -29,7 +29,7 @@ Verify: `python -m pytest -q` shows 0 failed; the numstat stays under 380 non-do
 - AC7 (spec note): docs/superpowers/specs/2026-11-23-t-008-serve-a-web-upload-page-for-design.md ends with a '## Updated by T-034' section that mentions 'Theo dõi cầu thủ', '#player-section' and '#highlights-form'.
 - AC8: `python -m pytest -q` reports 0 failed and 0 errors.
 - AC9 (scope): `git diff --exit-code main...HEAD -- sportscut/api.py sportscut/reel.py sportscut/player.py sportscut/pipeline.py sportscut/web/preview.html sportscut/web/preview.js sportscut/web/filters.js sportscut/web/timefmt.js pyproject.toml tests/conftest.py agent-office` exits 0. No existing test file is modified. The only non-doc files changed are sportscut/web/index.html, sportscut/web/app.js, sportscut/web/style.css, tests/test_player_page.py and tests/test_t034b_acceptance.py.
-- AC10 (size): `git diff --numstat main...HEAD -- . ':(exclude)docs/superpowers'` totals (added + deleted) under 380 lines. tests/test_player_page.py has <= 80 lines and tests/test_t034b_acceptance.py has <= 130 lines.
+- AC10 (size): `git diff --numstat main...HEAD -- . ':(exclude)docs/superpowers'` totals (added + deleted) under 380 lines. tests/test_player_page.py has <= 80 lines and tests/test_t034b_acceptance.py has <= 130 lines. (updated by T-015: AC9's file list and allowlist and AC10's size cap applied to T-041's own diff only; on later branches test_ac9_ac10_scope_and_size checks only that pyproject.toml, tests/conftest.py and agent-office/ are unchanged against the merge base)
 
 ## Out of scope
 

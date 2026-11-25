@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from sportscut import detect, evaluate, pipeline
-from sportscut.events import audio_cues, scoreboard
+from sportscut.events import audio_cues, incidents, scoreboard
 from sportscut.media import MediaError, extract_audio, sample_top_band
 from sportscut.models import Segment
 
@@ -257,6 +257,7 @@ def test_ac8_pipeline_orders_classifiers_and_wraps_save_media_errors(tmp_path, m
         "tag_saves",
         lambda video, segments: calls.append(("saves", video, segments)) or saves,
     )
+    monkeypatch.setattr(pipeline, "tag_incidents", lambda _video, segments: segments)
     monkeypatch.setattr(
         pipeline,
         "select_segments",
@@ -294,6 +295,7 @@ def test_ac9_evaluate_scores_tag_saves_output_after_tag_goals(tmp_path, monkeypa
     calls = []
     monkeypatch.setattr(detect, "find_highlights", lambda value: detected)
     monkeypatch.setattr(scoreboard, "tag_goals", lambda value, segments: goals)
+    monkeypatch.setattr(incidents, "tag_incidents", lambda _video, segments: segments)
 
     def tag_saves(value, segments):
         calls.append((value, segments))

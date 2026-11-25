@@ -19,6 +19,8 @@ MIN_BOARD_PIXELS = 12
 FLIP_DIFF = 40
 CHANGE_FRAC = 0.03
 STABLE_SAMPLES = 3
+REVERT_MAX = 180.0
+REVERT_FRAC = 0.01
 ROAR_DB = 6.0
 ROAR_SEC = 6
 MATCH_BEFORE = 10.0
@@ -124,6 +126,37 @@ def board_changes(video: str | Path) -> list[float] | None:
     frames = sample_top_band(video)
     box = find_box(frames)
     return None if box is None else score_changes(frames, box)
+
+
+def find_reverts(
+    frames: np.ndarray, box: Box, changes: list[float]
+) -> list[tuple[float, float]]:
+    """Return adjacent scoreboard changes that restore the earlier state."""
+    if len(changes) < 2:
+        return []
+    x, y, width, height = box
+    board = frames[:, y : y + height, x : x + width].astype(np.int16)
+    reverts = []
+    ordered = sorted(changes)
+    for first, second in zip(ordered, ordered[1:]):
+        if second - first > REVERT_MAX:
+            continue
+        before = board[int(first) - 1]
+        after = board[min(int(second) + STABLE_SAMPLES, len(board) - 1)]
+        changed = np.mean(np.abs(after - before) >= FLIP_DIFF)
+        if changed < REVERT_FRAC:
+            reverts.append((first, second))
+    return reverts
+
+
+def board_reverts(video: str | Path) -> list[tuple[float, float]]:
+    """Return scoreboard change pairs that restore the earlier state."""
+    frames = sample_top_band(video)
+    box = find_box(frames)
+    if box is None:
+        return []
+    changes = score_changes(frames, box)
+    return find_reverts(frames, box, changes)
 
 
 def roar(residual: np.ndarray, start: float, end: float) -> tuple[float, int]:
