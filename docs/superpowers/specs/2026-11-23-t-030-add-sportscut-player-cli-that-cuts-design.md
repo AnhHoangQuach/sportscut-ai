@@ -102,3 +102,9 @@ Wire `sportscut player VIDEO --team T --number N --out DIR [--pre 3 --post 2 --m
 ## Existing specs this task changes
 
 - `docs/superpowers/specs/2026-11-23-t-036-add-ffmpeg-media-helpers-and-synthetic-design.md`
+
+## Updated by T-040
+
+- `POST /players` now wraps `make_player_reel` for either a new upload or an
+  existing API job, and the manifest-authorized reel route serves its current
+  mp4. The earlier HTTP-API exclusion applied to T-030's CLI scope only.

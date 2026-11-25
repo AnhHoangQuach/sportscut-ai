@@ -16,9 +16,10 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from sportscut import export, media, pipeline, sources
+from sportscut import export, media, pipeline, reel, sources
 from sportscut.media import MediaError
 from sportscut.models import Segment
+from sportscut.player import PlayerQuery
 from sportscut.pipeline import PipelineError
 from sportscut.ranking import parse_events
 from sportscut.sources import SourceError
@@ -30,6 +31,7 @@ INPUT_NAME = "input"
 CLIPS_DIR = "clips"
 DOWNLOAD_DIR = "download"
 JOB_FILE = "job.json"
+PLAYER_DIR = "player"
 WEB_DIR = resources.files("sportscut").joinpath("web")
 
 app = FastAPI(title="SportsCut")
@@ -168,6 +170,17 @@ def _write_job(path: Path, job: dict[str, object]) -> None:
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def _save_upload(file: UploadFile, path: Path) -> None:
+    limit = int(os.environ.get("SPORTSCUT_MAX_UPLOAD_BYTES", DEFAULT_MAX_UPLOAD_BYTES))
+    total = 0
+    with path.open("wb") as destination:
+        while chunk := file.file.read(CHUNK_BYTES):
+            total += len(chunk)
+            if total > limit:
+                raise HTTPException(413, f"upload exceeds {limit} bytes")
+            destination.write(chunk)
 
 
 def _highlights(
@@ -337,14 +350,7 @@ def create_highlights(
     input_path = job_dir / INPUT_NAME
     try:
         if file is not None:
-            limit = int(os.environ.get("SPORTSCUT_MAX_UPLOAD_BYTES", DEFAULT_MAX_UPLOAD_BYTES))
-            total = 0
-            with input_path.open("wb") as destination:
-                while chunk := file.file.read(CHUNK_BYTES):
-                    total += len(chunk)
-                    if total > limit:
-                        raise HTTPException(413, f"upload exceeds {limit} bytes")
-                    destination.write(chunk)
+            _save_upload(file, input_path)
         else:
             downloaded = sources.download_youtube(url, job_dir / DOWNLOAD_DIR)
             os.replace(downloaded, input_path)
@@ -377,6 +383,96 @@ def create_highlights(
         shutil.rmtree(job_dir, ignore_errors=True)
         raise
     return _job_response(request, job_id, job)
+
+
+@app.post("/players")
+def create_player_reel(
+    request: Request,
+    file: UploadFile | None = File(None),
+    job_id: str | None = Form(None),
+    team: str = Form(...),
+    number: int = Form(...),
+) -> dict[str, object]:
+    job_id = (job_id or "").strip() or None
+    if (file is None) == (job_id is None):
+        raise HTTPException(422, "send exactly one of file or job_id")
+    try:
+        query = PlayerQuery(team, number)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    new_upload = file is not None
+    if new_upload:
+        job_id = str(uuid.uuid4())
+        job_dir = _data_dir() / "jobs" / job_id
+        job_dir.mkdir(parents=True)
+        input_path = job_dir / INPUT_NAME
+    else:
+        assert job_id is not None
+        try:
+            job_dir, _ = _load_job(job_id)
+            input_path = job_dir / INPUT_NAME
+            if not input_path.is_file():
+                raise OSError
+        except (_JobNotFound, OSError):
+            raise HTTPException(404, "not found") from None
+    try:
+        if new_upload:
+            assert file is not None
+            _save_upload(file, input_path)
+            media.require_ffmpeg()
+            try:
+                duration = media.probe_duration(input_path)
+            except MediaError as exc:
+                raise HTTPException(
+                    400, str(exc).replace(str(input_path), "upload")
+                ) from exc
+        manifest = reel.make_player_reel(input_path, query, job_dir / PLAYER_DIR)
+        if new_upload:
+            _write_job(job_dir / JOB_FILE, {
+                "source_name": file.filename or "upload",
+                "source_url": None,
+                "duration": duration,
+                "version": 0,
+                "segments": [],
+            })
+    except Exception as exc:
+        if new_upload:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        if isinstance(exc, HTTPException):
+            raise
+        if isinstance(exc, ValueError):
+            raise HTTPException(422, str(exc)) from exc
+        if isinstance(exc, (MediaError, OSError)):
+            raise HTTPException(500, "processing failed") from exc
+        raise
+    return {
+        "job_id": job_id,
+        "touches": manifest["touches"],
+        "reel_url": None if manifest["reel"] is None else str(request.url_for(
+            "get_player_reel", job_id=job_id, name=manifest["reel"]
+        )),
+    }
+
+
+@app.get("/players/{job_id}/reel/{name}", name="get_player_reel")
+def get_player_reel(job_id: str, name: str) -> FileResponse:
+    try:
+        job_dir, _ = _load_job(job_id)
+        manifest = json.loads(
+            (job_dir / PLAYER_DIR / reel.MANIFEST_NAME).read_text(encoding="utf-8")
+        )
+        if not (
+            isinstance(manifest, dict)
+            and isinstance(manifest.get("reel"), str)
+            and name == manifest["reel"]
+        ):
+            raise _JobNotFound
+        path = job_dir / PLAYER_DIR / name
+        if not path.is_file():
+            raise _JobNotFound
+    except (_JobNotFound, OSError, json.JSONDecodeError, UnicodeError, TypeError):
+        raise HTTPException(404, "not found") from None
+    return FileResponse(path, media_type="video/mp4")
 
 
 @app.get("/highlights/{job_id}/source")
