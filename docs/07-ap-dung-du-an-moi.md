@@ -39,6 +39,8 @@ pm = 1
 lead = 1
 dev = 2
 tester = 1
+claude = 2                         # tổng phiên Claude Code cùng lúc (mọi vai)
+codex = 3                          # tổng phiên Codex cùng lúc (mọi vai)
 
 [quality]
 eval_cmd = ""                      # có số đo chất lượng thì đặt ở đây (xem 7.4)
@@ -99,7 +101,7 @@ Claude chỉ hỏi khi thật sự thiếu thông tin; câu hỏi hiện ở das
 | Chỉ có gói Claude, không có Codex | `[roles] dev = "claude"`, `tester = "claude"`: Claude chạy bước dev/test với quyền ghi (`--allowedTools Edit Write Bash`) trong worktree; bốn vai vẫn riêng nhưng chung một quota |
 | Repo lớn, test chậm | `test_cmd` chỉ chạy test nhanh; để CI GitHub chạy bộ đầy đủ với `open_pr = true`, `merge_mode = "manual"` |
 | Cần người duyệt trước khi merge | `merge_mode = "manual"`: dừng ở PR, `office sync` (hoặc runner) tự nhận biết khi PR đã merge |
-| Quota ít | `[parallel] dev = 1`, đặt `max_calls_per_day` (tính theo CLI) |
+| Quota ít | `[parallel] dev = 1` hoặc `codex = 1` (tổng phiên Codex), đặt `max_calls_per_day` (tính theo CLI) |
 | Monorepo | Một `.agent-office/` ở gốc; `protected_paths` cho các phần agent không được đụng |
 | Muốn thử không tốn quota | `office demo`, hoặc `simulate = true` trong config |
 

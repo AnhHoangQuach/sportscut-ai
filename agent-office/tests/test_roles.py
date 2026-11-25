@@ -34,7 +34,7 @@ def test_four_roles_on_two_subscriptions_by_default(env):
 
 
 def test_old_parallel_keys_apply_to_every_role_of_that_cli(env):
-    set_cfg(env, ("pm = 1\nlead = 1\ndev = 2\ntester = 1", "claude = 2\ncodex = 3"))
+    set_cfg(env, ("pm = 1\nlead = 1\ndev = 2\ntester = 1\n", ""))  # only `claude = 2`, `codex = 3` left
     assert load_config(env.repo / ".agent-office").parallel == {"pm": 2, "lead": 2, "dev": 3, "tester": 3}
 
 

@@ -112,6 +112,8 @@ pm = 1       # chia việc, spec, kiểm tra mục tiêu
 lead = 1     # review, gỡ blocker kỹ thuật
 dev = 2      # code hai task độc lập cùng lúc, mỗi task một worktree
 tester = 1   # kiểm tra độc lập
+claude = 2   # tổng phiên Claude Code chạy cùng lúc (PM + Tech Lead + phiên làm thay)
+codex = 3    # tổng phiên Codex chạy cùng lúc (Developer + Tester + phiên làm thay); 0 = không giới hạn thêm
 ```
 
 Trong lúc Developer code T-002 và T-004, Tester kiểm tra T-001, PM viết spec và Tech Lead review

@@ -160,17 +160,19 @@ def task_runnable(store: Store, task: Task, auto_merge: bool = False,
 
 def plan_steps(store: Store, now: datetime | None = None, auto_merge: bool = False,
                busy: set[str] | frozenset[str] = frozenset(), slots: dict[str, int] | None = None,
-               limit: int | None = None) -> Plan:
+               limit: int | None = None, cli_slots: dict[str, int] | None = None) -> Plan:
     """Every step that can start now, in priority order.
 
     busy: request/task ids/agent names that already have a step running (skipped).
     slots: free sessions per agent (None = no cap; each chosen step uses one slot).
+    cli_slots: free sessions per CLI, all its roles together (a CLI missing = no cap).
     """
     now = now or datetime.now(timezone.utc)
     reasons: list[str] = []
     resting_wakes: list[datetime] = []
     steps: list[Step] = []
     free = dict(slots) if slots is not None else None
+    cli_free = dict(cli_slots or {})
     unavailable: set[str] = set()
 
     def full() -> bool:
@@ -184,7 +186,13 @@ def plan_steps(store: Store, now: datetime | None = None, auto_merge: bool = Fal
             if free is not None:
                 if free.get(a, 0) <= 0:
                     return False
+            provider = store.agents[a].provider
+            if provider in cli_free and cli_free[provider] <= 0:
+                return False
+            if free is not None:
                 free[a] -= 1
+            if provider in cli_free:
+                cli_free[provider] -= 1
         steps.append(step)
         return True
 
@@ -258,7 +266,9 @@ def plan_steps(store: Store, now: datetime | None = None, auto_merge: bool = Fal
                                    f"{owner}'s, so {agent} covers other tasks instead")
                     continue
             if not take(Step("task", t.id, agent)):
-                reasons.append(f"{t.id} ({stage.value}) waits for {agent}")
+                p = store.agents[agent].provider if agent else ""
+                cli_full = " (all [parallel] " + p + " sessions busy)" if p in cli_free and cli_free[p] <= 0 else ""
+                reasons.append(f"{t.id} ({stage.value}) waits for {agent}{cli_full}")
 
     for t in tasks:
         if t.stage == Stage.BLOCKED:

@@ -279,6 +279,15 @@ class Office:
                 used[agent] = used.get(agent, 0) + 1
         return {n: self.cfg.parallel.get(n, 1) - used.get(n, 0) for n in self.store.agents}
 
+    def free_cli_slots(self) -> dict[str, int]:
+        """Free sessions per CLI that has a [parallel] claude/codex cap (all its roles together)."""
+        used: dict[str, int] = {}
+        for agent in self.inflight.values():
+            if agent:
+                p = self.store.agents[agent].provider
+                used[p] = used.get(p, 0) + 1
+        return {p: cap - used.get(p, 0) for p, cap in self.cfg.cli_parallel.items() if cap > 0}
+
     def dispatch(self, pool: Executor) -> list[Future]:
         """Start every step that fits in the free agent sessions. Returns the new futures."""
         self.recheck_environment()
@@ -287,7 +296,8 @@ class Office:
             self.drain_inbox()
             self.sync_merged()
             plan = plan_steps(self.store, self.clock(), self.cfg.merge_mode == "auto",
-                              busy=set(self.inflight), slots=self.free_slots())
+                              busy=set(self.inflight), slots=self.free_slots(),
+                              cli_slots=self.free_cli_slots())
             started = []
             for s in plan.steps:
                 self.inflight[s.target] = s.agent
@@ -300,17 +310,22 @@ class Office:
 
     def _report_idle(self, waiting_on: list[str]) -> None:
         """Say once (event + console) why sessions of a multi-session role stay idle."""
-        free = self.free_slots()
+        free, cli_free = self.free_slots(), self.free_cli_slots()
         for role, idle in free.items():
             sessions = self.cfg.parallel.get(role, 1)
-            key = (idle, tuple(waiting_on)) if idle > 0 and sessions > 1 else None
+            p = self.store.agents[role].provider
+            why_role = list(waiting_on)
+            if cli_free.get(p, 1) <= 0:
+                cap = self.cfg.cli_parallel[p]
+                why_role.insert(0, f"{p} {cap}/{cap} sessions in use ([parallel] {p} = {cap})")
+            key = (idle, tuple(why_role)) if idle > 0 and sessions > 1 else None
             if key == self._idle_seen.get(role):
                 continue
             self._idle_seen[role] = key
             if key is None:
                 continue
-            self.store.event("slots_idle", role=role, idle=idle, sessions=sessions, waiting_on=waiting_on[:20])
-            why = "; ".join(waiting_on[:6]) or "no task is ready for this role"
+            self.store.event("slots_idle", role=role, idle=idle, sessions=sessions, waiting_on=why_role[:20])
+            why = "; ".join(why_role[:6]) or "no task is ready for this role"
             self.echo(f"  {role}: {idle}/{sessions} sessions idle; waiting: {why}")
 
     def _run_inflight(self, s: Step) -> Step:

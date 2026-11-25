@@ -144,7 +144,8 @@ T-002 code xong", "Tester → Developer: T-002 test fail..." hoặc "Tester → 
 2. Yêu cầu mới cần chia việc; yêu cầu có mọi task xong cần kiểm tra mục tiêu.
 3. Task theo thứ tự ưu tiên **làm nốt việc dở trước**: `pr > review > test > dev > spec > todo`.
 4. Bỏ qua task chưa đủ phụ thuộc, task `blocked`, vai đang nghỉ, vai hết phiên trống (`[parallel]`
-   tính riêng từng vai).
+   tính riêng từng vai), và CLI đã chạy đủ số phiên `[parallel] claude` / `codex` (tính chung mọi vai
+   của CLI đó).
 
 Hàm trả kèm danh sách lý do đang chờ ("T-005 waits for T-003, T-004 to be merged",
 "codex resting until 19:15 (roles dev, tester; quota: ...)") để CLI và dashboard giải thích vì sao
@@ -252,7 +253,7 @@ Tester kiểm tra công việc của Developer như một người khác.
 |---|---|---|
 | Prompt, bước | `pm`: breakdown, spec, goal; `lead`: review, techlead; `dev`: dev; `tester`: test | |
 | Log | `.agent-office/logs/<task>/NNN-<bước>-<vai>.log` | probe: `logs/_probe/NNN-<cli>.log` |
-| Phiên song song | `[parallel] pm = 1, lead = 1, dev = 2, tester = 1` | |
+| Phiên song song | `[parallel] pm = 1, lead = 1, dev = 2, tester = 1` | `[parallel] claude = 2, codex = 3`: tổng phiên cùng lúc của CLI (0 = không giới hạn thêm) |
 | Trạng thái, thẻ dashboard, bàn 3D, thống kê lượt gọi | riêng từng vai | `office stats` cộng theo CLI |
 | Quota, giờ nghỉ, probe, ngân sách `max_calls_per_day` | | **chung**: một vai chạm giới hạn thì mọi vai trên CLI đó nghỉ cùng giờ; 2 lần lỗi liên tiếp của bất kỳ vai nào trên CLI = CLI lỗi |
 
@@ -278,4 +279,4 @@ Developer" và dòng cuối `RESULT: FAIL`. Office:
 **State cũ.** `state.json` có agent `claude`/`codex` được tách tự động khi tải: trạng thái nghỉ chép
 sang mọi vai của CLI đó, bộ đếm lượt gọi giữ ở vai đầu (`pm`, `dev`) để tổng theo CLI không bị nhân
 đôi. `config.toml` cũ (`[parallel] claude = 1, codex = 2`, không có `[roles]`) vẫn chạy: số phiên của
-CLI áp cho từng vai trên CLI đó. Sự kiện cũ mang tên `claude`/`codex` được dashboard hiện ở `pm`/`dev`.
+CLI áp cho từng vai trên CLI đó, và cũng là tổng phiên tối đa của CLI đó. Sự kiện cũ mang tên `claude`/`codex` được dashboard hiện ở `pm`/`dev`.
