@@ -253,3 +253,32 @@ sportscut serve
     "Lồng tiếng" hiện khi một đoạn có bản lồng tiếng.
 
 Trang trả về lỗi 404 nếu `JOB_ID` không tồn tại.
+
+## Video dọc 9:16: đo khung cắt (eval-crop)
+
+Tạo bộ video tổng hợp có nhãn rồi đo baseline crop giữa khung hình:
+
+```bash
+python tests/fixtures/eval_crop/build.py
+python -m sportscut eval-crop tests/fixtures/eval_crop --json
+```
+
+Mỗi case có `clip.mp4` và `labels.json`. Nhãn là một danh sách lấy mẫu thưa theo
+thời gian; ví dụ một dòng:
+`{"t": 0.0, "ball": [120, 200], "players": [[103, 163, 14, 30]]}`.
+`ball: null` nghĩa là bóng không nhìn thấy, còn `players` có thể bỏ qua khi chưa
+gán nhãn cầu thủ. Dữ liệu thật dùng cùng bố cục tại
+`data/eval_crop/<name>/{clip.mp4,labels.json}`.
+
+`ball_in_crop` là tỷ lệ tâm bóng nằm trong cửa sổ crop; `players_in_crop` dùng
+tâm hộp cầu thủ. `jitter` là trung bình trị tuyệt đối của sai phân bậc hai tâm
+crop trên lưới 5 Hz, chia cho chiều rộng khung hình. `seconds_per_min` là thời
+gian lập kế hoạch crop trên mỗi phút video.
+
+Baseline đo trong T-017 (center crop):
+
+```json
+{"ball_in_crop": 0.2821, "players_in_crop": 0.4024, "jitter": 0.0, "seconds_per_min": 0.3127, "per_clip": [{"clip": "long_pass", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 0.0333, "players_in_crop": 0.25, "jitter": 0.0, "seconds_per_min": 0.3134}, {"clip": "occluded", "duration": 12.0, "labels": 60, "ball_labels": 54, "player_boxes": 180, "ball_in_crop": 0.6111, "players_in_crop": 0.8722, "jitter": 0.0, "seconds_per_min": 0.3009}, {"clip": "slow_dribble", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 0.5167, "players_in_crop": 0.2542, "jitter": 0.0, "seconds_per_min": 0.3041}, {"clip": "white_distractor", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 180, "ball_in_crop": 0.0, "players_in_crop": 0.3333, "jitter": 0.0, "seconds_per_min": 0.3324}]}
+```
+
+Mục tiêu: ball_in_crop ≥ 0.95 với jitter thấp (các task R-004 sau).
