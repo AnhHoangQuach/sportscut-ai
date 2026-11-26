@@ -64,3 +64,9 @@ The T-019 spec, acceptance criteria and file list, unchanged (green-field HSV ma
 - `docs/superpowers/specs/2026-11-23-t-036-add-ffmpeg-media-helpers-and-synthetic-design.md`
 - `docs/superpowers/specs/2026-11-24-t-042-land-the-t-017-9-16-design.md`
 - `docs/superpowers/specs/2026-11-25-t-044-re-land-the-reviewed-t-017-design.md`
+
+## Updated by T-020
+
+- Updated by T-020: `smooth_path` accepts per-sample gains. `dead_zone`, `ease` and `max_pan` may each be a scalar (unchanged T-045 behaviour) or a sequence with one value per target; a length mismatch raises ValueError.
+- Updated by T-020: `plan_crop` is ball-driven with player fallback. A tracked white ball drives the camera (the heaviest player window near the ball), cross-faded with the T-045 player target by a ball-confidence weight. With no ball candidates the plan is exactly the T-045 plan.
+- Updated by T-020: the T-045 player constants are unchanged (`DEAD_ZONE = 0.06`, `EASE = 0.2`, `MAX_PAN = 0.1`); ball mode uses its own `BALL_DEAD_ZONE`, `BALL_EASE` and `BALL_MAX_PAN`, interpolated by the weight. See `docs/superpowers/specs/2026-11-23-t-020-detect-the-ball-and-let-it-design.md`.
