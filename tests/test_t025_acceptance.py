@@ -137,3 +137,18 @@ def test_ac14_readme_llm_section():
     section = (ROOT / "README.md").read_text("utf-8").split("### Backend LLM (tùy chọn)", 1)[1].split("\n## ", 1)[0]
     needed = ("pip install 'sportscut[llm]'", "ANTHROPIC_API_KEY", "SPORTSCUT_LLM_MODEL", "claude-haiku-5-5", "python -m sportscut eval-meta tests/fixtures/eval_meta --json --meta-backend llm", "template fallback")
     assert all(s in section for s in needed)
+def test_ac13_scope_and_size():
+    git = lambda *a: subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True).stdout
+    try: base = git("merge-base", "main", "HEAD").strip()
+    except OSError: base = ""  # no git on PATH (the PATH=/nonexistent run): merge-base fails
+    if not base:
+        pytest.skip("main is required for scope check")
+    if "tests/test_t025_acceptance.py" not in git("diff", "--name-only", "--diff-filter=A", base).split():
+        pytest.skip("T-025 is not this branch's change")
+    frozen = {f"sportscut/{p}.py" for p in ("commentary/facts", "commentary/meta", "export", "pipeline", "api", "models")} | {"tests/conftest.py", "tests/fixtures/eval_meta/cases.json"}
+    changed = git("diff", "--name-only", base).split()
+    assert not frozen & set(changed) and not [p for p in changed if p.startswith("agent-office/")], changed
+    allowed = {f"tests/test_t{t}_acceptance.py" for t in ("013", "014", "015", "023", "034b", "042", "042_round2", "042_tester", "044")}
+    assert set(git("diff", "--name-only", "--diff-filter=M", base, "--", "tests").split()) <= allowed
+    numstat = git("diff", "--numstat", base, "--", ".", ":(exclude)docs/superpowers").splitlines()
+    assert sum(int(a) + int(d) for a, d, _ in (r.split("\t", 2) for r in numstat) if a != "-") < 520
