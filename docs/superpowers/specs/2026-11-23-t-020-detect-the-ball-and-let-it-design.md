@@ -61,3 +61,5 @@ Add ball detection to the reframe module. On each sampled frame, look inside the
 - `docs/superpowers/specs/2026-11-25-t-044-re-land-the-reviewed-t-017-design.md`
 - `docs/superpowers/specs/2026-11-23-t-017-add-a-measurable-9-16-reframing-design.md`
 - `docs/superpowers/specs/2026-11-24-t-043-render-vertical-9-16-clips-from-design.md`
+
+Updated by Tech Lead 2026-11-27: AC12 players gate is AFTER.players_in_crop >= BEFORE - 0.03 (label ceiling with the ball in the crop is 0.625; see DECISIONS.md).

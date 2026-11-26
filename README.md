@@ -387,16 +387,16 @@ white_distractor bóng ở xa cầu thủ, và một crop rộng 202 px có ch�
 Trước (T-045, chỉ cầu thủ):
 
 ```text
-{"ball_in_crop": 0.5812, "players_in_crop": 0.5988, "jitter": 0.001658, "seconds_per_min": 1.2035, "per_clip": [{"clip": "long_pass", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 0.6, "players_in_crop": 0.5, "jitter": 0.001355, "seconds_per_min": 1.2144}, {"clip": "occluded", "duration": 12.0, "labels": 60, "ball_labels": 54, "player_boxes": 180, "ball_in_crop": 0.7222, "players_in_crop": 0.7389, "jitter": 0.001839, "seconds_per_min": 1.2353}, {"clip": "slow_dribble", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 1.0, "players_in_crop": 0.6542, "jitter": 0.000765, "seconds_per_min": 1.1784}, {"clip": "white_distractor", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 180, "ball_in_crop": 0.0167, "players_in_crop": 0.5167, "jitter": 0.002673, "seconds_per_min": 1.186}]}
+{"ball_in_crop": 0.5812, "players_in_crop": 0.5988, "jitter": 0.001658, "seconds_per_min": 1.1899, "per_clip": [{"clip": "long_pass", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 0.6, "players_in_crop": 0.5, "jitter": 0.001355, "seconds_per_min": 1.2089}, {"clip": "occluded", "duration": 12.0, "labels": 60, "ball_labels": 54, "player_boxes": 180, "ball_in_crop": 0.7222, "players_in_crop": 0.7389, "jitter": 0.001839, "seconds_per_min": 1.1857}, {"clip": "slow_dribble", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 1.0, "players_in_crop": 0.6542, "jitter": 0.000765, "seconds_per_min": 1.1854}, {"clip": "white_distractor", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 180, "ball_in_crop": 0.0167, "players_in_crop": 0.5167, "jitter": 0.002673, "seconds_per_min": 1.1797}]}
 ```
 
 Sau (T-020):
 
 ```text
-{"ball_in_crop": 0.9615, "players_in_crop": 0.5774, "jitter": 0.001892, "seconds_per_min": 4.7047, "per_clip": [{"clip": "long_pass", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 0.85, "players_in_crop": 0.3667, "jitter": 0.002154, "seconds_per_min": 4.729}, {"clip": "occluded", "duration": 12.0, "labels": 60, "ball_labels": 54, "player_boxes": 180, "ball_in_crop": 1.0, "players_in_crop": 0.8833, "jitter": 0.002115, "seconds_per_min": 4.7087}, {"clip": "slow_dribble", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 1.0, "players_in_crop": 0.7417, "jitter": 0.002177, "seconds_per_min": 4.738}, {"clip": "white_distractor", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 180, "ball_in_crop": 1.0, "players_in_crop": 0.3333, "jitter": 0.001121, "seconds_per_min": 4.6431}]}
+{"ball_in_crop": 0.9615, "players_in_crop": 0.5774, "jitter": 0.001892, "seconds_per_min": 4.618, "per_clip": [{"clip": "long_pass", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 0.85, "players_in_crop": 0.3667, "jitter": 0.002154, "seconds_per_min": 4.6741}, {"clip": "occluded", "duration": 12.0, "labels": 60, "ball_labels": 54, "player_boxes": 180, "ball_in_crop": 1.0, "players_in_crop": 0.8833, "jitter": 0.002115, "seconds_per_min": 4.5732}, {"clip": "slow_dribble", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 1.0, "players_in_crop": 0.7417, "jitter": 0.002177, "seconds_per_min": 4.5969}, {"clip": "white_distractor", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 180, "ball_in_crop": 1.0, "players_in_crop": 0.3333, "jitter": 0.001121, "seconds_per_min": 4.6278}]}
 ```
 
-Thời gian lập kế hoạch cho clip 60 s 1280x720 (white_distractor lặp lại): 4.4 s (giới hạn
+Thời gian lập kế hoạch cho clip 60 s 1280x720 (white_distractor lặp lại): 4.34 s (giới hạn
 6.0 s).
 
 Clip thật: no data/eval_crop clips available.
