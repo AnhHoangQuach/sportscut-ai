@@ -52,6 +52,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="comma-separated events to keep: goal,save,red_card,controversy,other",
     )
+    cut_parser.add_argument(
+        "--vertical",
+        action="store_true",
+        help="also write 1080x1920 (9:16) clips to OUT/vertical/",
+    )
     eval_player_parser = subparsers.add_parser("eval-player", help="evaluate player-touch detection")
     eval_player_parser.add_argument("directory")
     eval_player_parser.add_argument("--json", action="store_true")
@@ -166,12 +171,15 @@ def main(argv: list[str] | None = None) -> int:
                 args.video, args.out, top=args.top,
                 min_len=args.min_len, max_len=args.max_len,
                 events=args.events,
+                vertical=args.vertical,
             )
         except (PipelineError, MediaError) as exc:
             print(f"sportscut: error: {exc}", file=sys.stderr)
             return 1
         for entry in entries:
             print(Path(args.out) / entry["file"])
+            if "vertical_file" in entry:
+                print(Path(args.out) / entry["vertical_file"])
         return 0
 
     try:

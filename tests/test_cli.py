@@ -215,3 +215,35 @@ def test_eval_crop_user_errors(monkeypatch, capsys, error):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "sportscut eval-crop: error: bad\n"
+
+
+# T-043: cut --vertical (appended)
+def test_cut_vertical_prints_clip_and_vertical_paths(burst_video, tmp_path, capsys):
+    out = tmp_path / "out"
+
+    assert main([
+        "cut", str(burst_video), "--out", str(out), "--top", "1",
+        "--min-len", "4", "--max-len", "6", "--vertical",
+    ]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        str(out / "clip_01.mp4"),
+        str(out / "vertical" / "clip_01.mp4"),
+    ]
+    assert captured.err == ""
+    assert (out / "vertical" / "clip_01.mp4").is_file()
+
+
+@pytest.mark.parametrize("flag, expected", [(["--vertical"], True), ([], False)])
+def test_cut_forwards_vertical_flag(monkeypatch, capsys, tmp_path, flag, expected):
+    calls = []
+
+    def fake_run(video, out, **kwargs):
+        calls.append(kwargs)
+        return [{"file": "clip_01.mp4"}]
+
+    monkeypatch.setattr("sportscut.cli.run", fake_run)
+    assert main(["cut", "match.mp4", "--out", str(tmp_path)] + flag) == 0
+    assert calls[0]["vertical"] is expected
+    assert capsys.readouterr().out.splitlines() == [str(tmp_path / "clip_01.mp4")]

@@ -2,6 +2,8 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
+from sportscut import reframe
+from sportscut import vertical as vertical_mod
 from sportscut.detect import find_highlights
 from sportscut.events.audio_cues import tag_saves
 from sportscut.events.incidents import tag_incidents
@@ -22,6 +24,7 @@ def run(
     min_len: float = 10,
     max_len: float = 30,
     events: Iterable[str] | None = None,
+    vertical: bool = False,
 ) -> list[dict]:
     if top < 1:
         raise PipelineError("top must be >= 1")
@@ -43,4 +46,13 @@ def run(
 
     export_clips(video, segments, out_dir)
     manifest = Path(out_dir) / MANIFEST_NAME
-    return json.loads(manifest.read_text(encoding="utf-8"))
+    entries = json.loads(manifest.read_text(encoding="utf-8"))
+    if vertical:
+        for entry in entries:
+            clip = Path(out_dir) / entry["file"]
+            rel = f"vertical/{entry['file']}"
+            crop_path = reframe.plan_crop(clip)
+            vertical_mod.render_vertical(clip, crop_path, Path(out_dir) / rel)
+            entry["vertical_file"] = rel
+        manifest.write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")
+    return entries
