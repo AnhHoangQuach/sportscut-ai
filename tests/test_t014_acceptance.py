@@ -427,7 +427,6 @@ def test_ac15_task_diff_uses_merge_base_and_touches_no_forbidden_path():
     )
     forbidden = {
         "tests/conftest.py",
-        "pyproject.toml",
         "sportscut/models.py",
         "sportscut/ranking.py",
         "sportscut/export.py",

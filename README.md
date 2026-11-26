@@ -70,6 +70,20 @@ Baseline template đo trong T-023:
 
 Mọi PR thuộc R-005 phải báo cáo điểm này và điểm không được giảm.
 
+### Backend LLM (tùy chọn)
+
+Mặc định metadata do template offline tạo ra (miễn phí, không cần mạng). Để Claude viết:
+```bash
+pip install 'sportscut[llm]'
+export ANTHROPIC_API_KEY=...   # chỉ đọc từ biến môi trường, không bao giờ lưu hay ghi log
+python -m sportscut eval-meta tests/fixtures/eval_meta --json --meta-backend llm
+```
+
+Model mặc định `claude-haiku-5-5`, đổi bằng `SPORTSCUT_LLM_MODEL`. Mỗi trận gửi một request. Clip
+nào sai luật eval-meta (định dạng, số/tên ngoài facts, tiếng Việt, thiếu facts), thiếu key, thiếu gói
+hoặc lỗi mạng thì dùng template và in cảnh báo `template fallback` ra stderr.
+Kết quả chạy thật (T-025): LIVE EVAL NOT RUN: no ANTHROPIC_API_KEY.
+
 ## Theo dõi cầu thủ: đo độ chính xác (eval-player)
 
 Tạo bộ video tổng hợp và chạy phép đo:

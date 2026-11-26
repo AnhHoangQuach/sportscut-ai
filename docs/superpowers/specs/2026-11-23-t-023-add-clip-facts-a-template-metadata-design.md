@@ -40,7 +40,7 @@ For every ClipFacts in the fixture, the title is 10 to 80 characters and the cap
 - AC13: The report keys are exactly score, format_ok, fact_recall, hallucination_rate, vi_rate, per_case, in that order, with floats rounded to 4 decimals. With `meta.generate_meta` monkeypatched over two cases (one perfect, one hallucinated), score is 0.5 and hallucination_rate is 0.5.
 - AC14: `python -m sportscut eval-meta tests/fixtures/eval_meta --json` exits 0 and prints one JSON line with score 1.0, format_ok 1.0, fact_recall 1.0, hallucination_rate 0.0, vi_rate 1.0 and 8 per_case entries, in the order goal_full, save_teams, red_card_minute_only, controversy_no_minute, other_bare, goal_long_names, goal_u23, save_competition_only. Without --json it prints the same report with indent=2. A missing directory prints 'sportscut eval-meta: error: ' on stderr, nothing on stdout, and exits 2. `sportscut eval-meta --help` lists DIRECTORY and --json.
 - AC15: README.md has an eval-meta section with the command, the case format, the format and score rules, and a JSON block whose five headline values equal what AC14 printed.
-- AC16: The T-023 diff does not change detect.py, evaluate.py, models.py, export.py, pipeline.py, api.py, pyproject.toml or tests/conftest.py, and adds no dependency. Later tasks may update evaluate.py; T-013 does so to add goal classification, so it is no longer protected after T-023. `python -m pytest -q` passes. The new tests pass with `PATH=/nonexistent`, because they need no ffmpeg. (updated by T-013)
+- AC16: The T-023 diff does not change detect.py, evaluate.py, models.py, export.py, pipeline.py, api.py, pyproject.toml or tests/conftest.py, and adds no dependency. Later tasks may update evaluate.py; T-013 does so to add goal classification, so it is no longer protected after T-023. `python -m pytest -q` passes. The new tests pass with `PATH=/nonexistent`, because they need no ffmpeg. (updated by T-013) (updated by T-025: pyproject.toml may gain optional extras; the llm extra is added by T-025)
 
 ## Out of scope
 
@@ -91,6 +91,15 @@ The key order is score, format_ok, fact_recall, hallucination_rate, vi_rate, per
 - `docs/superpowers/specs/2026-11-23-t-010-add-event-types-to-segments-and-design.md`
 - `docs/superpowers/specs/2026-11-23-t-003-export-segments-as-mp4-clips-plus-design.md`
 - `docs/superpowers/specs/2026-11-23-t-002-detect-highlight-segments-from-audio-excitement-design.md`
+
+## Updated by T-025
+
+The optional Claude LLM backend works per match through
+`sportscut.commentary.llm.generate_metas_llm(facts_list)` (one request for all clips) and runs
+through `sportscut eval-meta DIRECTORY --meta-backend llm`. `generate_meta` stays template-only
+and per clip (`backend='llm'` still raises `ValueError('unknown backend: llm')`).
+`eval_meta.validate_meta(facts, meta)` is the runtime gate: an LLM clip is kept only when it
+returns no problems; otherwise that clip falls back to the template. `score_case` is unchanged.
 
 ## Updated by T-028
 

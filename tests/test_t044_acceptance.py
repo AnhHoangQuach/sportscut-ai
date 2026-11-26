@@ -202,7 +202,7 @@ def _done(code: int, stdout: str = "", stderr: str = ""):
     return subprocess.CompletedProcess([], code, stdout=stdout, stderr=stderr)
 
 
-PROTECTED = ["sportscut/export.py", "pyproject.toml", "tests/conftest.py"]
+PROTECTED = ["sportscut/export.py", "tests/conftest.py"]
 
 
 def test_c_t023_ac16_exact_calls_and_clean_pass(monkeypatch):
