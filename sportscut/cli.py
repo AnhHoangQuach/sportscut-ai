@@ -7,6 +7,7 @@ from pathlib import Path
 from sportscut import __version__
 from sportscut import eval_crop
 from sportscut import evaluate
+from sportscut import subtitles
 from sportscut.commentary import eval_meta
 from sportscut.detect import find_highlights
 from sportscut.eval_player import evaluate_dir
@@ -15,6 +16,11 @@ from sportscut.pipeline import PipelineError, run
 from sportscut.player import PlayerQuery
 from sportscut.ranking import parse_events
 from sportscut.reel import MANIFEST_NAME, make_player_reel
+
+NOTICE = (
+    "sportscut: notice: subtitles need the [asr] extra: pip install 'sportscut[asr]'; "
+    "vertical clips are rendered without subtitles"
+)
 
 
 def _events_arg(text: str) -> tuple[str, ...]:
@@ -71,6 +77,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="X,Y,W,H",
         help="scoreboard box in source pixels for --vertical, when detection fails",
     )
+    cut_parser.add_argument(
+        "--subtitles",
+        action="store_true",
+        help="burn commentary subtitles into --vertical clips (needs the [asr] extra)",
+    )
     eval_player_parser = subparsers.add_parser("eval-player", help="evaluate player-touch detection")
     eval_player_parser.add_argument("directory")
     eval_player_parser.add_argument("--json", action="store_true")
@@ -102,10 +113,15 @@ def main(argv: list[str] | None = None) -> int:
     serve_parser = subparsers.add_parser("serve", help="serve the highlights HTTP API")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8000)
+    subparsers.add_parser(
+        "download-models", help="download the speech-to-text model used by cut --subtitles"
+    )
 
     args = parser.parse_args(argv)
     if args.command == "cut" and args.score_box is not None and not args.vertical:
         cut_parser.error("--score-box needs --vertical")
+    if args.command == "cut" and args.subtitles and not args.vertical:
+        cut_parser.error("--subtitles needs --vertical")
     if args.command is None:
         parser.print_help()
         return 0
@@ -185,7 +201,27 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report) if args.json else json.dumps(report, indent=2))
         return 0
 
+    if args.command == "download-models":
+        try:
+            path = subtitles.download_models()
+        except ImportError:
+            print(
+                f"sportscut download-models: error: needs the [asr] extra: {subtitles.ASR_HINT}",
+                file=sys.stderr,
+            )
+            return 1
+        except Exception as exc:
+            print(f"sportscut download-models: error: {exc}", file=sys.stderr)
+            return 1
+        print(f"downloaded faster-whisper base model to {path}")
+        return 0
+
     if args.command == "cut":
+        transcriber = None
+        if args.subtitles:
+            transcriber = subtitles.default_transcriber()
+            if transcriber is None:
+                print(NOTICE, file=sys.stderr)
         try:
             entries = run(
                 args.video, args.out, top=args.top,
@@ -193,6 +229,7 @@ def main(argv: list[str] | None = None) -> int:
                 events=args.events,
                 vertical=args.vertical,
                 score_box=args.score_box,
+                transcriber=transcriber,
             )
         except (PipelineError, MediaError) as exc:
             print(f"sportscut: error: {exc}", file=sys.stderr)

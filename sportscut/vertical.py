@@ -14,6 +14,9 @@ GRID_W, GRID_H = 160, 90          # sample_top_band scale grid
 SCORE_MAX_W, SCORE_MAX_H = 1000, 160
 SCORE_TOP = 40                    # y of the scoreboard overlay in the 1080x1920 frame
 CAPTION_Y = 240
+SUB_FONTSIZE = 56
+SUB_LAST_Y = 1600                 # top y of the last subtitle line (lower third)
+SUB_LINE_H = 80
 CAPTION_LABELS = {
     "goal": "BÀN THẮNG",
     "save": "CỨU THUA",
@@ -159,13 +162,31 @@ def drawtext_filter(caption: str, fontfile) -> str:
     )
 
 
+def subtitle_filters(cues, fontfile) -> str:
+    """Return one drawtext per subtitle line, shown only during its cue, in the lower third."""
+    filters = []
+    for start, end, text in cues:
+        lines = text.split("\n")
+        n = len(lines)
+        for j, line in enumerate(lines):
+            y = SUB_LAST_Y - (n - 1 - j) * SUB_LINE_H
+            filters.append(
+                f"drawtext=fontfile={_escape(str(fontfile))}:text={_escape(line)}:expansion=none:"
+                f"fontsize={SUB_FONTSIZE}:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=12:"
+                f"x=(w-text_w)/2:y={y}:enable='between(t,{start:.3f},{end:.3f})'"
+            )
+    return ",".join(filters)
+
+
 def vertical_filter(
-    crop_path, width: int, height: int, score_box=None, caption=None, fontfile=None
+    crop_path, width: int, height: int, score_box=None, caption=None, fontfile=None,
+    subtitles=None,
 ) -> str:
     """Return the ffmpeg -vf filter that crops along the path and scales to 9:16.
 
     With score_box, the box is cropped from the source on every frame and
-    overlaid in the top band; with caption, a drawtext line is added.
+    overlaid in the top band; with caption, a drawtext line is added; with
+    subtitles (layout cues), their lines are drawn in the lower third.
     """
     crop_w = reframe.crop_width(width, height)
     expr = crop_x_expression(crop_path, width, crop_w)
@@ -173,10 +194,12 @@ def vertical_filter(
         f"crop=w={crop_w}:h={height}:x='{expr}':y=0,"
         f"scale={OUT_WIDTH}:{OUT_HEIGHT},setsar=1"
     )
-    if score_box is None and caption is None:
+    if score_box is None and caption is None and not subtitles:
         return base
     if caption is not None and fontfile is None:
         raise ValueError("caption needs a fontfile")
+    if subtitles and fontfile is None:
+        raise ValueError("subtitles need a fontfile")
     graph = base
     if score_box is not None:
         bx, by, bw, bh = check_score_box(score_box, width, height)
@@ -187,18 +210,20 @@ def vertical_filter(
             f"[sc_v][sc_b]overlay=x={ox}:y={oy}"
         )
     if caption is not None:
-        return graph + "," + drawtext_filter(caption, fontfile)
+        graph = graph + "," + drawtext_filter(caption, fontfile)
+    if subtitles:
+        graph = graph + "," + subtitle_filters(subtitles, fontfile)
     return graph
 
 
-def render_vertical(clip, crop_path, out, score_box=None, caption=None) -> Path:
+def render_vertical(clip, crop_path, out, score_box=None, caption=None, subtitles=None) -> Path:
     """Render a 1080x1920 H.264 copy of clip that follows crop_path."""
     _validate(crop_path)
     width, height = media.probe_size(clip)
     Path(out).parent.mkdir(parents=True, exist_ok=True)
-    fontfile = media.find_font() if caption is not None else None
+    fontfile = media.find_font() if caption is not None or subtitles else None
     return media.filter_video(
         clip,
-        vertical_filter(crop_path, width, height, score_box, caption, fontfile),
+        vertical_filter(crop_path, width, height, score_box, caption, fontfile, subtitles),
         out,
     )

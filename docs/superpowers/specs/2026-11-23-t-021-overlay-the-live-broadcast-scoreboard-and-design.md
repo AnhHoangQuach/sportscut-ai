@@ -92,3 +92,7 @@ Check this with a monkeypatched `select_segments` returning one 'goal' Segment (
 - `docs/superpowers/specs/2026-11-23-t-036-add-ffmpeg-media-helpers-and-synthetic-design.md`
 - `docs/superpowers/specs/2026-11-23-t-013-tag-goals-from-scoreboard-region-changes-design.md`
 - `docs/superpowers/specs/2026-11-25-t-044-re-land-the-reviewed-t-017-design.md`
+
+## Updated by T-022
+
+Updated by T-022: `vertical_filter(..., fontfile=None, subtitles=None)` and `render_vertical(..., caption=None, subtitles=None)` gain `subtitles`, a list of layout cues `(start, end, text)` drawn as one drawtext per line in the lower third (last line at y=1600, 80 px per line, fontsize 56), each shown only during its cue. The subtitle filters come after the scoreboard overlay and the event caption. With `subtitles=None` or `[]`, every score_box/caption combination gives the byte-identical T-021 filter, and render_vertical calls `media.find_font()` only when a caption or subtitles are drawn. Non-empty subtitles without a fontfile raise ValueError `subtitles need a fontfile`.

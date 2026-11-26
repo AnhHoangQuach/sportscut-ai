@@ -89,3 +89,7 @@ Updated by T-021:
 - vertical.py now also finds the score box (`find_score_box`, via `media.sample_top_band`, `scoreboard.find_box` and `media.probe_size`), still with no external tool calls of its own.
 - The pipeline passes `score_box` and `caption` keyword arguments to render_vertical only when they are not None, so a clip with neither still gets exactly three positional arguments.
 - A clip with no detected board is logged at WARNING on `sportscut.pipeline`, which has a NullHandler, so nothing reaches stderr unless logging is configured.
+
+## Updated by T-022
+
+Updated by T-022: `sportscut cut ... --vertical --subtitles` also burns commentary subtitles (from the optional `[asr]` extra, faster-whisper `base`, language auto-detected) into each vertical clip and writes `vertical/clip_NN.srt`. `--subtitles` without `--vertical` exits 2. Without the extra it prints one notice line to stderr and renders the vertical clips without subtitles (exit 0). Without `--subtitles`, `cut --vertical` output, stdout and stderr are unchanged. `sportscut download-models` fetches the model ahead of time.

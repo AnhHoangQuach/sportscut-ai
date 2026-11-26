@@ -58,3 +58,7 @@ Updated by T-018 (implemented in T-043): `run(video, out_dir, top=10, min_len=10
 ## Updated by T-021
 
 Updated by T-021: `run(...)` gains a last parameter `score_box=None`, a scoreboard box `(x, y, w, h)` in source pixels for the vertical overlay. It needs `vertical=True` (otherwise PipelineError `score_box needs vertical=True`) and is checked against the source size before any clip is exported; an out-of-frame or malformed box raises PipelineError `invalid score box: ...`. The CLI exposes it as `sportscut cut ... --vertical --score-box X,Y,W,H` (a bad format or a missing `--vertical` exits 2). Without score_box the manifest keys and bytes are unchanged.
+
+## Updated by T-022
+
+Updated by T-022: `run(...)` gains a last parameter `transcriber=None` (a `sportscut.subtitles.Transcriber`). It needs `vertical=True` (otherwise PipelineError `transcriber needs vertical=True`, raised before anything is exported). With a transcriber, each exported clip's audio (never the full match) is transcribed, laid out with `subtitles.layout`, written to `<out_dir>/vertical/clip_NN.srt` and, when non-empty, passed to `render_vertical` as `subtitles=`; a transcriber failure becomes PipelineError `speech-to-text failed for clip_NN.mp4: ...`. The CLI exposes it as `sportscut cut ... --vertical --subtitles`. With `transcriber=None` (the default) nothing in `subtitles` is called, no .srt is written, and the manifest is unchanged.
