@@ -286,6 +286,22 @@ Khung cắt luôn lấy hết chiều cao và chạy theo đường crop của `
 `plan_crop` vẫn là crop tĩnh ở giữa khung hình; khi các task bám theo bóng và cầu
 thủ hoàn thành, bản dọc sẽ tự bám theo mà không cần đổi lệnh.
 
+Bảng tỉ số của đài truyền hình được tự động dò tìm, cắt ra từ khung hình gốc ở
+từng khung hình và phóng to ở dải trên cùng của bản dọc, nên tỉ số luôn đúng và
+tự cập nhật ngay sau bàn thắng.
+
+Clip có sự kiện được thêm một dòng chú thích như `BÀN THẮNG · 34'` (hoặc
+`CỨU THUA`, `THẺ ĐỎ`, `TRANH CÃI`). Phút được tính từ đầu video, không đọc đồng hồ
+trận đấu. Cần cài một phông chữ hỗ trợ tiếng Việt (ví dụ DejaVu Sans hoặc Noto
+Sans); kiểm tra bằng `fc-list :lang=vi`.
+
+Nếu không tìm thấy bảng tỉ số, bản dọc không có lớp tỉ số. Khi đó hãy chỉ định
+vùng bảng tỉ số bằng `--score-box x,y,w,h` (tính theo pixel của video gốc):
+
+```bash
+sportscut cut match.mp4 --out out --vertical --score-box 40,16,160,40
+```
+
 ## Video dọc 9:16: đo khung cắt (eval-crop)
 
 Tạo bộ video tổng hợp có nhãn rồi đo baseline crop giữa khung hình:

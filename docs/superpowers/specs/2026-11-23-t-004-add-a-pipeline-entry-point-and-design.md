@@ -54,3 +54,7 @@ AC3 and AC7 (PipelineError and CLI messages for missing, non-video and silent in
 ## Updated by T-018
 
 Updated by T-018 (implemented in T-043): `run(video, out_dir, top=10, min_len=10, max_len=30, events=None, vertical=False)` gains `vertical=False`. With `vertical=True`, each exported clip is reframed with `reframe.plan_crop` and rendered by `vertical.render_vertical` to `<out_dir>/vertical/clip_NN.mp4` (1080x1920, H.264, audio copied), and each manifest entry gains `vertical_file` (`vertical/clip_NN.mp4`) as its last key; highlights.json is rewritten with it. `sportscut cut ... --vertical` prints the vertical path after each clip path. With vertical off (the default) nothing is rendered, no `vertical/` directory is created, and AC1/AC6 hold unchanged.
+
+## Updated by T-021
+
+Updated by T-021: `run(...)` gains a last parameter `score_box=None`, a scoreboard box `(x, y, w, h)` in source pixels for the vertical overlay. It needs `vertical=True` (otherwise PipelineError `score_box needs vertical=True`) and is checked against the source size before any clip is exported; an out-of-frame or malformed box raises PipelineError `invalid score box: ...`. The CLI exposes it as `sportscut cut ... --vertical --score-box X,Y,W,H` (a bad format or a missing `--vertical` exits 2). Without score_box the manifest keys and bytes are unchanged.

@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -21,6 +22,12 @@ def _events_arg(text: str) -> tuple[str, ...]:
         return parse_events(text)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _score_box_arg(text):
+    if re.fullmatch(r"\d+,\d+,\d+,\d+", text.strip()) is None:
+        raise argparse.ArgumentTypeError("expected x,y,w,h as four non-negative integers")
+    return tuple(int(v) for v in text.split(","))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -57,6 +64,13 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also write 1080x1920 (9:16) clips to OUT/vertical/",
     )
+    cut_parser.add_argument(
+        "--score-box",
+        type=_score_box_arg,
+        default=None,
+        metavar="X,Y,W,H",
+        help="scoreboard box in source pixels for --vertical, when detection fails",
+    )
     eval_player_parser = subparsers.add_parser("eval-player", help="evaluate player-touch detection")
     eval_player_parser.add_argument("directory")
     eval_player_parser.add_argument("--json", action="store_true")
@@ -90,6 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     serve_parser.add_argument("--port", type=int, default=8000)
 
     args = parser.parse_args(argv)
+    if args.command == "cut" and args.score_box is not None and not args.vertical:
+        cut_parser.error("--score-box needs --vertical")
     if args.command is None:
         parser.print_help()
         return 0
@@ -176,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
                 min_len=args.min_len, max_len=args.max_len,
                 events=args.events,
                 vertical=args.vertical,
+                score_box=args.score_box,
             )
         except (PipelineError, MediaError) as exc:
             print(f"sportscut: error: {exc}", file=sys.stderr)

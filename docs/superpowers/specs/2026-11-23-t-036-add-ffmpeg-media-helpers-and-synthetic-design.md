@@ -70,4 +70,6 @@ Updated by T-017: the reframing eval builder may generate ignored fixture clips 
 
 Updated by T-018: sportscut.media also owns filter_video(path, video_filter, dest), which re-encodes video through an ffmpeg -vf filter (libx264 veryfast, yuv420p) and stream-copies audio, so vertical.py never calls ffmpeg directly.
 
+Updated by T-021: sportscut.media also owns find_font(), which resolves a Vietnamese-capable font through fontconfig (fc-list :lang=vi, ordered by fc-match -s) and raises MediaError when none exists.
+
 Updated by T-004: sportscut.media also exposes require_ffmpeg() (both tools on PATH, else MediaError) and has_audio(path) -> bool (ffprobe audio-stream check; ffprobe failures raise MediaError).
