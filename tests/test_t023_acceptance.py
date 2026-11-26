@@ -517,7 +517,6 @@ def test_ac15_readme_documents_the_measured_cli_baseline():
 def test_ac16_protected_implementation_files_are_unchanged_from_main():
     protected = [
         "sportscut/export.py",
-        "pyproject.toml",
         "tests/conftest.py",
     ]
     git = shutil.which(

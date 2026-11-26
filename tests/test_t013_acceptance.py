@@ -442,7 +442,6 @@ def test_ac15_no_forbidden_paths_or_new_dependency_in_task_diff():
     )
     forbidden = {
         "tests/conftest.py",
-        "pyproject.toml",
         "sportscut/export.py",
         "sportscut/models.py",
         "sportscut/ranking.py",

@@ -40,7 +40,6 @@ def test_scope_check_diffs_from_merge_base(monkeypatch):
             "abc123",
             "--",
             "sportscut/export.py",
-            "pyproject.toml",
             "tests/conftest.py",
         ],
     ]

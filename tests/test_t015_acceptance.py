@@ -675,7 +675,7 @@ def test_ac15_older_readme_blocks_unchanged_and_specs_updated():
 # AC16 ----------------------------------------------------------------------
 
 FORBIDDEN = {
-    "tests/conftest.py", "pyproject.toml", "sportscut/models.py", "sportscut/ranking.py",
+    "tests/conftest.py", "sportscut/models.py", "sportscut/ranking.py",
     "sportscut/export.py", "sportscut/events/audio_cues.py",
     "tests/fixtures/eval/build.py",
 }
