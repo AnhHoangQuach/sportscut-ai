@@ -229,3 +229,128 @@ def test_run_default_never_renders_vertical(burst_video, tmp_path, monkeypatch):
     assert not (out / "vertical").exists()
     assert entries and all("vertical_file" not in entry for entry in entries)
     assert entries == json.loads((out / "highlights.json").read_text())
+
+
+# T-021: scoreboard overlay and caption in the vertical stage (appended)
+import logging  # noqa: E402
+
+import sportscut.media  # noqa: E402
+
+GOAL = Segment(2.0, 8.0, 1.0, "r", "goal", 0.9)
+
+
+def _one_goal(monkeypatch):
+    monkeypatch.setattr(pipeline, "select_segments", lambda candidates, top, events: [GOAL])
+
+
+def _record_render(monkeypatch):
+    rendered = []
+
+    def fake_render(clip, crop_path, dest, **kw):
+        rendered.append((clip, crop_path, dest, kw))
+        Path(dest).parent.mkdir(parents=True, exist_ok=True)
+        return dest
+
+    monkeypatch.setattr(sportscut.vertical, "render_vertical", fake_render)
+    return rendered
+
+
+def test_run_vertical_passes_caption_kwarg(burst_video, tmp_path, monkeypatch):
+    _one_goal(monkeypatch)
+    rendered = _record_render(monkeypatch)
+    out = tmp_path / "out"
+
+    entries = run(burst_video, out, top=1, min_len=4, max_len=6, vertical=True)
+
+    assert entries[0]["event"] == "goal"
+    assert [r[3] for r in rendered] == [{"caption": "BÀN THẮNG · 1'"}]
+    assert rendered[0][2] == out / "vertical" / "clip_01.mp4"
+
+
+def test_run_vertical_manual_box_skips_detection(burst_video, tmp_path, monkeypatch):
+    _one_goal(monkeypatch)
+    rendered = _record_render(monkeypatch)
+    monkeypatch.setattr(
+        sportscut.vertical, "find_score_box",
+        lambda clip: pytest.fail("detection must not run with a manual box"),
+    )
+
+    run(burst_video, tmp_path / "out", top=1, min_len=4, max_len=6,
+        vertical=True, score_box=(8, 4, 44, 16))
+
+    assert [r[3] for r in rendered] == [
+        {"score_box": (8, 4, 44, 16), "caption": "BÀN THẮNG · 1'"}
+    ]
+
+
+def test_run_vertical_passes_detected_box(burst_video, tmp_path, monkeypatch):
+    rendered = _record_render(monkeypatch)
+    seen = []
+
+    def fake_find(clip):
+        seen.append(clip)
+        return (2, 2, 20, 10)
+
+    monkeypatch.setattr(sportscut.vertical, "find_score_box", fake_find)
+    out = tmp_path / "out"
+
+    run(burst_video, out, top=1, min_len=4, max_len=6, vertical=True)
+
+    assert seen == [out / "clip_01.mp4"]
+    assert [r[3] for r in rendered] == [{"score_box": (2, 2, 20, 10)}]
+
+
+def test_run_vertical_caption_reaches_filter(burst_video, tmp_path, monkeypatch):
+    _one_goal(monkeypatch)
+    filters = []
+
+    def fake_filter(clip, video_filter, dest):
+        filters.append(video_filter)
+        return Path(dest)
+
+    monkeypatch.setattr(sportscut.media, "find_font", lambda: Path("/fonts/DejaVuSans.ttf"))
+    monkeypatch.setattr(sportscut.media, "filter_video", fake_filter)
+
+    run(burst_video, tmp_path / "out", top=1, min_len=4, max_len=6, vertical=True)
+
+    assert len(filters) == 1
+    assert "text=BÀN THẮNG · 1\\\\\\'" in filters[0]
+
+
+def test_run_vertical_warns_when_no_board(burst_video, tmp_path, monkeypatch, caplog):
+    rendered = _record_render(monkeypatch)
+    out = tmp_path / "out"
+
+    with caplog.at_level(logging.WARNING, logger="sportscut.pipeline"):
+        entries = run(burst_video, out, top=1, min_len=4, max_len=6, vertical=True)
+
+    records = [r for r in caplog.records if r.name == "sportscut.pipeline"]
+    assert len(records) == 1
+    assert records[0].levelno == logging.WARNING
+    message = records[0].getMessage()
+    assert "no scoreboard found in clip_01.mp4" in message
+    assert "--score-box" in message
+    assert [r[3] for r in rendered] == [{}]
+    assert entries[0]["vertical_file"] == "vertical/clip_01.mp4"
+
+
+def test_pipeline_logger_has_null_handler():
+    handlers = logging.getLogger("sportscut.pipeline").handlers
+    assert any(isinstance(h, logging.NullHandler) for h in handlers)
+
+
+def test_run_out_of_frame_box_raises_before_export(burst_video, tmp_path):
+    out = tmp_path / "out"
+    with pytest.raises(PipelineError) as exc:
+        run(burst_video, out, top=1, min_len=4, max_len=6,
+            vertical=True, score_box=(0, 0, 200, 10))
+    assert str(exc.value) == "invalid score box: 0,0,200,10 does not fit the 160x120 frame"
+    assert not (out / "clip_01.mp4").exists()
+
+
+def test_run_score_box_needs_vertical(burst_video, tmp_path):
+    out = tmp_path / "out"
+    with pytest.raises(PipelineError) as exc:
+        run(burst_video, out, top=1, min_len=4, max_len=6, score_box=(0, 0, 20, 10))
+    assert str(exc.value) == "score_box needs vertical=True"
+    assert not (out / "clip_01.mp4").exists()

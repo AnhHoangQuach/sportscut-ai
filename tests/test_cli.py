@@ -247,3 +247,66 @@ def test_cut_forwards_vertical_flag(monkeypatch, capsys, tmp_path, flag, expecte
     assert main(["cut", "match.mp4", "--out", str(tmp_path)] + flag) == 0
     assert calls[0]["vertical"] is expected
     assert capsys.readouterr().out.splitlines() == [str(tmp_path / "clip_01.mp4")]
+
+
+# T-021: cut --score-box (appended)
+@pytest.mark.parametrize("flag, expected", [
+    (["--vertical", "--score-box", "40,16,160,40"], (40, 16, 160, 40)),
+    (["--vertical", "--score-box", " 1,2,3,4 "], (1, 2, 3, 4)),
+    (["--vertical"], None),
+    ([], None),
+])
+def test_cut_forwards_score_box(monkeypatch, tmp_path, flag, expected):
+    calls = []
+
+    def fake_run(video, out, **kwargs):
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr("sportscut.cli.run", fake_run)
+    assert main(["cut", "match.mp4", "--out", str(tmp_path)] + flag) == 0
+    assert calls[0]["score_box"] == expected
+    assert calls[0]["vertical"] is ("--vertical" in flag)
+
+
+@pytest.mark.parametrize("value", ["1,2,3", "a,b,c,d", "-1,2,3,4", "1,2,3,4,5"])
+def test_cut_score_box_format_error_exits_2(monkeypatch, capsys, tmp_path, value):
+    monkeypatch.setattr("sportscut.cli.run", lambda *a, **k: pytest.fail("must not run"))
+    with pytest.raises(SystemExit) as exc:
+        main(["cut", "m.mp4", "--out", str(tmp_path), "--vertical", "--score-box", value])
+    assert exc.value.code == 2
+    assert "expected x,y,w,h as four non-negative integers" in capsys.readouterr().err
+
+
+def test_cut_score_box_needs_vertical(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr("sportscut.cli.run", lambda *a, **k: pytest.fail("must not run"))
+    with pytest.raises(SystemExit) as exc:
+        main(["cut", "m.mp4", "--out", str(tmp_path), "--score-box", "1,2,3,4"])
+    assert exc.value.code == 2
+    assert "--score-box needs --vertical" in capsys.readouterr().err
+
+
+def test_cut_media_error_from_font_exits_1(monkeypatch, capsys, tmp_path):
+    def fake_run(video, out, **kwargs):
+        raise MediaError("no font with Vietnamese support found; install one")
+
+    monkeypatch.setattr("sportscut.cli.run", fake_run)
+    assert main(["cut", "m.mp4", "--out", str(tmp_path), "--vertical"]) == 1
+    assert capsys.readouterr().err == (
+        "sportscut: error: no font with Vietnamese support found; install one\n"
+    )
+
+
+def test_cut_out_of_frame_score_box_exits_1(burst_video, tmp_path):
+    out = tmp_path / "out"
+    result = subprocess.run(
+        [sys.executable, "-m", "sportscut", "cut", str(burst_video), "--out", str(out),
+         "--top", "1", "--min-len", "4", "--max-len", "6", "--vertical",
+         "--score-box", "0,0,200,10"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 1
+    assert result.stderr == (
+        "sportscut: error: invalid score box: 0,0,200,10 does not fit the 160x120 frame\n"
+    )
+    assert not (out / "clip_01.mp4").exists()
