@@ -525,8 +525,17 @@ def test_ac16_protected_implementation_files_are_unchanged_from_main():
     )
     if git is None:
         pytest.skip("git is required for scope check")
+    base = subprocess.run(
+        [git, "merge-base", "main", "HEAD"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if base.returncode != 0 or not base.stdout.strip():
+        pytest.skip("main is required for scope check")
     result = subprocess.run(
-        [git, "diff", "--name-only", "main", "--", *protected],
+        [git, "diff", "--name-only", base.stdout.strip(), "--", *protected],
         cwd=ROOT,
         text=True,
         capture_output=True,

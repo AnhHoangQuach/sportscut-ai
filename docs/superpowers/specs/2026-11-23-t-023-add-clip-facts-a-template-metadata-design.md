@@ -95,3 +95,4 @@ The key order is score, format_ok, fact_recall, hallucination_rate, vi_rate, per
 ## Updated by T-028
 
 Updated by T-028: the format checks at the top of `score_case` are exposed unchanged as `sportscut.commentary.eval_meta.format_problems(meta) -> list[str]` (same messages, same order). `score_case` calls it, so the eval-meta output is unchanged, and `PUT /highlights/{id}/meta` reuses it to return 422 '<where>: <problem>'.
+Updated by T-044 (T-042 review): AC16 diffs against `git merge-base main HEAD` (skip 'main is required for scope check' when unavailable) instead of the moving `main` ref; after T-013 its protected list is sportscut/export.py, pyproject.toml and tests/conftest.py.

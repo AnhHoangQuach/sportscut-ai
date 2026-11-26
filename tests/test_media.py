@@ -11,6 +11,7 @@ from sportscut.media import (
     find_tool,
     has_audio,
     probe_duration,
+    probe_size,
     require_ffmpeg,
     sample_top_band,
 )
@@ -216,3 +217,25 @@ def test_cut_clip_is_accurate_h264(synthetic_video, tmp_path):
     assert [s["codec_name"] for s in streams if s["codec_type"] == "video"] == ["h264"]
     assert [s["codec_name"] for s in streams if s["codec_type"] == "audio"] == ["aac"]
     assert _gray_mean(dest, 0.05) > 192
+
+
+def test_probe_size_of_synthetic_video(synthetic_video):
+    assert probe_size(synthetic_video) == (160, 120)
+
+
+def test_probe_size_missing_file_raises(tmp_path):
+    path = tmp_path / "missing.mp4"
+    with pytest.raises(MediaError) as exc:
+        probe_size(path)
+    assert str(exc.value) == f"media file not found: {path}"
+
+
+def test_probe_size_audio_only_raises(require_ffmpeg, tmp_path):
+    path = tmp_path / "audio.wav"
+    subprocess.run([
+        "ffmpeg", "-v", "error", "-nostdin", "-y", "-f", "lavfi", "-i",
+        "anoisesrc=d=0.1", str(path),
+    ], check=True, capture_output=True)
+    with pytest.raises(MediaError) as exc:
+        probe_size(path)
+    assert str(exc.value) == f"no video stream in {path}"

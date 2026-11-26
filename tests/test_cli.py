@@ -6,6 +6,7 @@ import sys
 import pytest
 
 from sportscut.cli import main
+from sportscut.media import MediaError
 
 
 def test_version_flag_prints_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -170,3 +171,47 @@ def test_eval_player_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str], 
     assert "sportscut eval-player: error:" in captured.err
     if kind == "no_clip":
         assert "build.py" in captured.err
+
+
+def _crop_report():
+    return {
+        "ball_in_crop": 0.5,
+        "players_in_crop": 0.75,
+        "jitter": 0.0,
+        "seconds_per_min": 0.01,
+        "per_clip": [],
+    }
+
+
+def test_eval_crop_json_output(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "sportscut.cli.eval_crop.evaluate_dir", lambda path: _crop_report()
+    )
+    assert main(["eval-crop", "fixture", "--json"]) == 0
+    captured = capsys.readouterr()
+    assert len(captured.out.splitlines()) == 1
+    assert json.loads(captured.out) == _crop_report()
+    assert captured.err == ""
+
+
+def test_eval_crop_indented_output(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "sportscut.cli.eval_crop.evaluate_dir", lambda path: _crop_report()
+    )
+    assert main(["eval-crop", "fixture"]) == 0
+    captured = capsys.readouterr()
+    assert len(captured.out.splitlines()) > 1
+    assert json.loads(captured.out) == _crop_report()
+    assert captured.err == ""
+
+
+@pytest.mark.parametrize("error", [ValueError("bad"), OSError("bad"), MediaError("bad")])
+def test_eval_crop_user_errors(monkeypatch, capsys, error):
+    def fail(path):
+        raise error
+
+    monkeypatch.setattr("sportscut.cli.eval_crop.evaluate_dir", fail)
+    assert main(["eval-crop", "fixture", "--json"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "sportscut eval-crop: error: bad\n"

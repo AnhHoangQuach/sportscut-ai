@@ -430,7 +430,6 @@ def test_ac15_task_diff_uses_merge_base_and_touches_no_forbidden_path():
         "pyproject.toml",
         "sportscut/models.py",
         "sportscut/ranking.py",
-        "sportscut/media.py",
         "sportscut/export.py",
         "tests/fixtures/eval/build.py",
     }

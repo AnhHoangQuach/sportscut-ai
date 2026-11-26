@@ -56,6 +56,29 @@ def probe_duration(path: str | Path) -> float:
         return float(result.stdout.strip())
     except ValueError:
         raise MediaError(f"ffprobe returned no duration for {path}") from None
+
+
+def probe_size(path: str | Path) -> tuple[int, int]:
+    """Return the width and height of the first video stream."""
+    p = Path(path)
+    if not p.is_file():
+        raise MediaError(f"media file not found: {path}")
+    ffprobe = find_tool("ffprobe")
+    args = [
+        ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries",
+        "stream=width,height", "-of", "csv=p=0:s=x", "-i", str(p),
+    ]
+    result = subprocess.run(args, capture_output=True, check=False, text=True)
+    if result.returncode:
+        detail = _failure_detail(result.stderr, result.returncode)
+        raise MediaError(f"ffprobe failed for {path}: {detail}")
+    output = result.stdout.strip()
+    if not output:
+        raise MediaError(f"no video stream in {path}")
+    width, height = output.splitlines()[0].split("x")
+    return int(width), int(height)
+
+
 def extract_audio(path: str | Path) -> np.ndarray:
     p = Path(path)
     if not p.is_file():

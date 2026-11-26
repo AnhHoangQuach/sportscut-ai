@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from sportscut import __version__
+from sportscut import eval_crop
 from sportscut import evaluate
 from sportscut.commentary import eval_meta
 from sportscut.detect import find_highlights
@@ -62,6 +63,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     eval_meta_parser.add_argument("directory", metavar="DIRECTORY")
     eval_meta_parser.add_argument("--json", action="store_true")
+    eval_crop_parser = subparsers.add_parser(
+        "eval-crop", help="evaluate 9:16 crop framing"
+    )
+    eval_crop_parser.add_argument("directory", metavar="DIRECTORY")
+    eval_crop_parser.add_argument("--json", action="store_true")
     player_parser = subparsers.add_parser("player", help="export a reel of one player's touches")
     player_parser.add_argument("video")
     player_parser.add_argument("--team", required=True)
@@ -141,6 +147,15 @@ def main(argv: list[str] | None = None) -> int:
             report = eval_meta.evaluate_meta_dir(args.directory)
         except (ValueError, OSError) as exc:
             print(f"sportscut eval-meta: error: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(report) if args.json else json.dumps(report, indent=2))
+        return 0
+
+    if args.command == "eval-crop":
+        try:
+            report = eval_crop.evaluate_dir(args.directory)
+        except (ValueError, OSError, MediaError) as exc:
+            print(f"sportscut eval-crop: error: {exc}", file=sys.stderr)
             return 2
         print(json.dumps(report) if args.json else json.dumps(report, indent=2))
         return 0

@@ -62,4 +62,10 @@ ffmpeg directly.
 
 Updated by T-030: sportscut.media also owns joining clips with concat_clips (concat demuxer, stream copy of cut_clip outputs).
 
+## Assumptions
+
+- T-017: same exception for the reframing eval set — tests/fixtures/eval_crop/build.py may write git-ignored clip.mp4 files inside tests/fixtures/eval_crop/; pytest builds only in temp dirs and no media is committed.
+
+Updated by T-017: the reframing eval builder may generate ignored fixture clips in its eval directory; automated tests still generate media only in temporary directories.
+
 Updated by T-004: sportscut.media also exposes require_ffmpeg() (both tools on PATH, else MediaError) and has_audio(path) -> bool (ffprobe audio-stream check; ffprobe failures raise MediaError).
