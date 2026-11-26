@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sportscut import media
 from sportscut import reframe
+from sportscut import subtitles
 from sportscut import vertical as vertical_mod
 from sportscut.detect import find_highlights
 from sportscut.events.audio_cues import tag_saves
@@ -31,9 +32,12 @@ def run(
     events: Iterable[str] | None = None,
     vertical: bool = False,
     score_box=None,
+    transcriber=None,
 ) -> list[dict]:
     if top < 1:
         raise PipelineError("top must be >= 1")
+    if transcriber is not None and not vertical:
+        raise PipelineError("transcriber needs vertical=True")
     require_ffmpeg()
     try:
         if not has_audio(video):
@@ -75,6 +79,14 @@ def run(
                 for key, value in (("score_box", box), ("caption", caption))
                 if value is not None
             }
+            if transcriber is not None:
+                try:
+                    cues = subtitles.layout(subtitles.transcribe(clip, transcriber))
+                except subtitles.TranscriptionError as exc:
+                    raise PipelineError(str(exc)) from exc
+                subtitles.write_srt(cues, (Path(out_dir) / rel).with_suffix(".srt"))
+                if cues:
+                    extra["subtitles"] = cues
             vertical_mod.render_vertical(clip, crop_path, Path(out_dir) / rel, **extra)
             entry["vertical_file"] = rel
         manifest.write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")

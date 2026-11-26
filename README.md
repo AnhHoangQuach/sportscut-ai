@@ -334,6 +334,25 @@ sportscut cut match.mp4 --out out --vertical --score-box 40,16,160,40
 Cập nhật (T-045): `plan_crop` nay bám theo cầu thủ bằng camera ảo (xem mục T-019 ở
 trên), nên bản dọc cũng bám theo cầu thủ.
 
+### Phụ đề lời bình luận (--subtitles)
+
+Thêm `--subtitles` (cần `--vertical`) để chép lời bình luận gốc thành phụ đề và in
+vào phần dưới của bản dọc. Tính năng này dùng gói tùy chọn speech-to-text
+(faster-whisper, model `base`). Model được tải về bộ nhớ đệm của Hugging Face ở lần
+dùng đầu tiên, hoặc tải trước bằng `sportscut download-models`:
+
+```bash
+pip install 'sportscut[asr]'
+sportscut download-models
+sportscut cut match.mp4 --out out --vertical --subtitles
+```
+
+Ngôn ngữ được tự nhận dạng cho từng clip, nên bình luận tiếng Việt và tiếng Anh
+đều dùng được. Chỉ âm thanh của các clip đã xuất được chép lời (không chép cả
+trận). Ngoài bản dọc có phụ đề, lệnh ghi thêm file phụ đề `out/vertical/clip_NN.srt`
+(UTF-8, thời gian tính từ đầu clip). Nếu chưa cài `sportscut[asr]`, lệnh in một dòng
+thông báo và vẫn xuất bản dọc, chỉ không có phụ đề.
+
 ## Video dọc 9:16: đo khung cắt (eval-crop)
 
 Tạo bộ video tổng hợp có nhãn rồi đo baseline crop giữa khung hình:
