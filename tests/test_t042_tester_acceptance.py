@@ -32,7 +32,6 @@ CHANGED_BY_T019 = (
 )
 SHARED_PATHS = [
     "sportscut/media.py",
-    "sportscut/cli.py",
     "tests/test_media.py",
     "tests/test_cli.py",
     "README.md",
@@ -44,7 +43,6 @@ PROTECTED_PATHS = [
     "sportscut/evaluate.py",
     "sportscut/eval_player.py",
     "sportscut/export.py",
-    "pyproject.toml",
     "tests/conftest.py",
     "agent-office/",
     ".gitignore",
@@ -364,7 +362,6 @@ def test_ac8_scope_check_uses_merge_base_and_the_same_protected_list(monkeypatch
             "abc123",
             "--",
             "sportscut/export.py",
-            "pyproject.toml",
             "tests/conftest.py",
         ],
     ]

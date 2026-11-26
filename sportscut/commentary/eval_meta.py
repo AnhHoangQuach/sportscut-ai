@@ -6,7 +6,7 @@ from typing import NamedTuple
 
 from sportscut.commentary import meta as meta_module
 from sportscut.commentary.facts import ClipFacts
-from sportscut.commentary.meta import ClipMeta
+from sportscut.commentary.meta import EVENT_LABELS, ClipMeta
 
 VI_CHARS = "àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ"
 FACT_FIELDS = ("minute", "score", "home", "away", "competition")
@@ -113,6 +113,41 @@ def format_problems(meta: ClipMeta) -> list[str]:
     return problems
 
 
+def _unexpected_numbers(facts: ClipFacts, output: str) -> list[str]:
+    facts_text = _normalise(_facts_text(facts))
+    fact_numbers = set(re.findall(r"\d+", facts_text))
+    unexpected = []
+    for number in re.findall(r"\d+", output):
+        if number not in fact_numbers and number not in unexpected:
+            unexpected.append(number)
+    return unexpected
+
+
+def _name_tokens(facts: ClipFacts) -> set[str]:
+    names = " ".join(value for value in (facts.home, facts.away, facts.competition) if value)
+    return set(re.findall(r"[^\W\d_]+", _normalise(names)))
+
+
+def _is_vi(facts: ClipFacts, meta: ClipMeta) -> bool:
+    excluded = _name_tokens(facts)
+    tokens = [t for t in re.findall(r"[^\W\d_]+", _normalise(meta.title + " " + meta.caption)) if t not in excluded]
+    return bool(tokens) and sum(any(char in VI_CHARS for char in token) for token in tokens) / len(tokens) >= 0.3
+
+
+def validate_meta(facts: ClipFacts, meta: ClipMeta) -> list[str]:
+    problems = format_problems(meta)
+    problems += [f"number {n} not in facts" for n in _unexpected_numbers(facts, _output_text(meta))]
+    segments = [seg for text in (meta.title, meta.caption) for seg in re.split(r"[.!?:|]\s+", text)]
+    tokens = [t for seg in segments for t in re.findall(r"[^\W\d_]+", unicodedata.normalize("NFC", seg))[1:]]
+    allowed = _name_tokens(facts)
+    problems += [f"name {t} not in facts" for t in dict.fromkeys(tokens) if t[0].isupper() and t.casefold() not in allowed]
+    body = _normalise(meta.title + "\n" + meta.caption)
+    minute = f"phút {facts.minute}" if facts.minute is not None else None
+    needed = (EVENT_LABELS[facts.event], facts.home, facts.away, facts.competition, minute, facts.score)
+    problems += [f"missing {text}" for text in needed if text is not None and _normalise(text) not in body]
+    return problems + ([] if _is_vi(facts, meta) else ["not vietnamese"])
+
+
 def score_case(case: MetaCase, meta: ClipMeta) -> dict:
     problems = format_problems(meta)
     format_ok = not problems
@@ -120,13 +155,8 @@ def score_case(case: MetaCase, meta: ClipMeta) -> dict:
     output = _output_text(meta)
     met = _met_groups(case, output)
     fact_recall = met / len(case.must_mention)
-    facts_text = _normalise(_facts_text(case.facts))
-    fact_numbers = set(re.findall(r"\d+", facts_text))
-    unexpected = []
-    for number in re.findall(r"\d+", output):
-        if number not in fact_numbers and number not in unexpected:
-            unexpected.append(number)
-            problems.append(f"number {number} not in facts")
+    unexpected = _unexpected_numbers(case.facts, output)
+    problems += [f"number {number} not in facts" for number in unexpected]
     found_forbidden = []
     for needle in case.forbidden:
         if _normalise(needle) in output:
@@ -134,13 +164,7 @@ def score_case(case: MetaCase, meta: ClipMeta) -> dict:
             problems.append(f"forbidden {needle}")
     hallucinated = bool(unexpected or found_forbidden)
 
-    text_tokens = re.findall(r"[^\W\d_]+", _normalise(meta.title + " " + meta.caption))
-    excluded_text = " ".join(
-        value for value in (case.facts.home, case.facts.away, case.facts.competition) if value
-    )
-    excluded = set(re.findall(r"[^\W\d_]+", _normalise(excluded_text)))
-    tokens = [token for token in text_tokens if token not in excluded]
-    vi = bool(tokens) and sum(any(char in VI_CHARS for char in token) for token in tokens) / len(tokens) >= 0.3
+    vi = _is_vi(case.facts, meta)
     if not vi:
         problems.append("not vietnamese")
 
@@ -159,7 +183,9 @@ def score_case(case: MetaCase, meta: ClipMeta) -> dict:
     }
 
 
-def evaluate_meta_dir(path) -> dict:
+def evaluate_meta_dir(path, backend: str = "template") -> dict:
+    if backend not in ("template", "llm"):
+        raise ValueError(f"unknown backend: {backend}")
     root = Path(path)
     if not root.is_dir():
         raise ValueError(f"not a directory: {root}")
@@ -167,7 +193,11 @@ def evaluate_meta_dir(path) -> dict:
     if not cases_path.is_file():
         raise ValueError(f"missing cases.json in {root}")
     cases = load_cases(cases_path)
-    generated = [(case, meta_module.generate_meta(case.facts)) for case in cases]
+    if backend == "template":
+        generated = [(case, meta_module.generate_meta(case.facts)) for case in cases]
+    else:
+        from sportscut.commentary import llm  # a top-level import would be circular
+        generated = list(zip(cases, llm.generate_metas_llm([case.facts for case in cases])))
     results = [score_case(case, output) for case, output in generated]
     count = len(cases)
     total_groups = sum(len(case.must_mention) for case in cases)

@@ -82,6 +82,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     eval_meta_parser.add_argument("directory", metavar="DIRECTORY")
     eval_meta_parser.add_argument("--json", action="store_true")
+    eval_meta_parser.add_argument(
+        "--meta-backend", choices=("template", "llm"), default="template",
+        help="metadata generator to score; llm needs ANTHROPIC_API_KEY and the [llm] extra",
+    )
     eval_crop_parser = subparsers.add_parser(
         "eval-crop", help="evaluate 9:16 crop framing"
     )
@@ -165,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "eval-meta":
         try:
-            report = eval_meta.evaluate_meta_dir(args.directory)
+            report = eval_meta.evaluate_meta_dir(args.directory, backend=args.meta_backend)
         except (ValueError, OSError) as exc:
             print(f"sportscut eval-meta: error: {exc}", file=sys.stderr)
             return 2

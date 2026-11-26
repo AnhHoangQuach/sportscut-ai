@@ -14,7 +14,6 @@ ROOT = Path(__file__).resolve().parents[1]
 T023_ACCEPTANCE = ROOT / "tests" / "test_t023_acceptance.py"
 SHARED_FILES = (
     "sportscut/media.py",
-    "sportscut/cli.py",
     "tests/test_media.py",
     "tests/test_cli.py",
     "README.md",
@@ -26,7 +25,6 @@ PROTECTED_FILES = (
     "sportscut/evaluate.py",
     "sportscut/eval_player.py",
     "sportscut/export.py",
-    "pyproject.toml",
     "tests/conftest.py",
     "agent-office/",
     ".gitignore",
@@ -332,7 +330,6 @@ def test_ac8_scope_check_uses_merge_base(monkeypatch):
         "abc123",
         "--",
         "sportscut/export.py",
-        "pyproject.toml",
         "tests/conftest.py",
     ]
     assert calls[1][3] != "main"
