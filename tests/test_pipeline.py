@@ -160,3 +160,72 @@ def test_run_goals_only_on_fixture(pipeline_eval_set, tmp_path):
     assert all(entry["event"] == "goal" for entry in entries)
     assert all(entry["event_confidence"] == 0.9 for entry in entries)
     assert entries == json.loads((out / "highlights.json").read_text())
+
+
+# T-043: vertical 9:16 rendering (appended)
+import sportscut.reframe  # noqa: E402
+import sportscut.vertical  # noqa: E402
+
+
+def test_run_vertical_writes_9_16_clip_and_manifest_key(burst_video, tmp_path):
+    out = tmp_path / "out"
+
+    entries = run(burst_video, out, top=1, min_len=4, max_len=6, vertical=True)
+
+    assert len(entries) == 1
+    assert list(entries[0]) == [
+        "start", "end", "score", "reason", "event", "event_confidence",
+        "file", "vertical_file",
+    ]
+    assert entries[0]["file"] == "clip_01.mp4"
+    assert entries[0]["vertical_file"] == "vertical/clip_01.mp4"
+    assert entries == json.loads((out / "highlights.json").read_text())
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+         "stream=codec_name,width,height", "-of", "csv=p=0",
+         str(out / "vertical" / "clip_01.mp4")],
+        check=True, capture_output=True, text=True,
+    )
+    assert probe.stdout.strip() == "h264,1080,1920"
+
+
+def test_run_vertical_forwards_plan_crop_result(burst_video, tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    sentinel = object()
+    planned = []
+    rendered = []
+
+    def fake_plan(clip):
+        planned.append(clip)
+        return sentinel
+
+    def fake_render(clip, crop_path, dest):
+        rendered.append((clip, crop_path, dest))
+        return dest
+
+    monkeypatch.setattr(sportscut.reframe, "plan_crop", fake_plan)
+    monkeypatch.setattr(sportscut.vertical, "render_vertical", fake_render)
+
+    entries = run(burst_video, out, top=1, min_len=4, max_len=6, vertical=True)
+
+    assert planned == [out / "clip_01.mp4"]
+    assert rendered == [
+        (out / "clip_01.mp4", sentinel, out / "vertical" / "clip_01.mp4")
+    ]
+    assert entries[0]["vertical_file"] == "vertical/clip_01.mp4"
+
+
+def test_run_default_never_renders_vertical(burst_video, tmp_path, monkeypatch):
+    out = tmp_path / "out"
+
+    def fail(*args, **kwargs):
+        pytest.fail("vertical stage must not run by default")
+
+    monkeypatch.setattr(sportscut.reframe, "plan_crop", fail)
+    monkeypatch.setattr(sportscut.vertical, "render_vertical", fail)
+
+    entries = run(burst_video, out, top=1, min_len=4, max_len=6)
+
+    assert not (out / "vertical").exists()
+    assert entries and all("vertical_file" not in entry for entry in entries)
+    assert entries == json.loads((out / "highlights.json").read_text())

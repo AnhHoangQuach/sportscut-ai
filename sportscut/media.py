@@ -177,3 +177,22 @@ def concat_clips(clips: list[str | Path], dest: str | Path) -> Path:
     finally:
         if list_path is not None:
             list_path.unlink(missing_ok=True)
+
+
+def filter_video(path: str | Path, video_filter: str, dest: str | Path) -> Path:
+    """Re-encode the video through an ffmpeg -vf filter and copy the audio."""
+    p = Path(path)
+    if not p.is_file():
+        raise MediaError(f"media file not found: {path}")
+    ffmpeg = find_tool("ffmpeg")
+    args = [
+        ffmpeg, "-v", "error", "-nostdin", "-y", "-i", str(p),
+        "-map", "0:v:0", "-map", "0:a?", "-vf", video_filter,
+        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+        "-c:a", "copy", "-movflags", "+faststart", str(dest),
+    ]
+    result = subprocess.run(args, capture_output=True, check=False)
+    if result.returncode:
+        detail = _failure_detail(result.stderr, result.returncode)
+        raise MediaError(f"ffmpeg failed for {path}: {detail}")
+    return Path(dest)
