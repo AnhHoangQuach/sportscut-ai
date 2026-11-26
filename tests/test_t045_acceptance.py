@@ -226,6 +226,16 @@ def test_ac9_starts_centre_eases_then_holds(tmp_path, require_ffmpeg):
     assert all(x == plan[1.8] for t, x in plan.items() if t >= 2.0)
 
 
+def test_design3_moving_plan_renders_vertically(tmp_path, require_ffmpeg):
+    # Design 3 / T-043: the 5 Hz moving plan is consumed by the vertical renderer as-is.
+    from sportscut import vertical
+    clip = _clip(tmp_path / "gp.mp4", np.concatenate([_grey(50), _players(50)]))
+    plan = reframe.plan_crop(clip)
+    assert len({x for _, x in plan}) > 1
+    out = vertical.render_vertical(clip, plan, tmp_path / "v" / "gp.mp4")
+    assert media.probe_size(out) == (1080, 1920) and media.probe_duration(out) > 3.5
+
+
 # AC10 / AC11 -------------------------------------------------------------------
 @pytest.fixture(scope="module")
 def built(tmp_path_factory, require_ffmpeg):
@@ -274,7 +284,7 @@ def test_ac12_readme_and_specs():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     cam, crop = readme.index(CAM_HEADING), readme.index(CROP_HEADING)
     assert cam < crop and "\n## " not in readme[crop + 3:]
-    section = readme[cam:crop]
+    section = readme[cam:readme.index("\n## ", cam + 3)]
     for s in ("Ngưỡng jitter: jitter ≤ 0.002", "Trước (T-017, center crop):", "Sau (T-019):",
               "DEAD_ZONE", "EASE", "MAX_PAN"):
         assert s in section, s
@@ -288,7 +298,7 @@ def test_ac12_readme_and_specs():
 
 
 def test_ac12_readme_constants_match_code():
-    section = (ROOT / "README.md").read_text(encoding="utf-8").split(CAM_HEADING, 1)[1].split(CROP_HEADING, 1)[0]
+    section = (ROOT / "README.md").read_text(encoding="utf-8").split(CAM_HEADING, 1)[1].split("\n## ", 1)[0]
     for name in ("DEAD_ZONE", "EASE", "MAX_PAN"):
         assert f"`{name} = {getattr(reframe, name)}`" in section, name
     assert 0.02 <= reframe.DEAD_ZONE <= 0.08 and 0.2 <= reframe.EASE <= 0.6 and 0.1 <= reframe.MAX_PAN <= 0.3
