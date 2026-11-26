@@ -419,16 +419,22 @@ def test_ac6_ac7_builder_video_shape_duration_and_idempotence(
         assert ignored.returncode == 0
 
 
-def test_ac15_cli_json_matches_independent_baseline(built_eval_dir: Path) -> None:
+def test_ac15_cli_json_matches_independent_baseline(
+    built_eval_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     result = _run_cli("eval-crop", str(built_eval_dir), "--json")
     assert result.returncode == 0, result.stderr
     assert len(result.stdout.splitlines()) == 1
     report = json.loads(result.stdout)
     assert list(report) == list(TOP_LEVEL_KEYS)
     assert len(report["per_clip"]) == 4
-    assert report["jitter"] == 0.0
-    assert report["ball_in_crop"] == _independent_center_crop_score(built_eval_dir)
-    assert report["ball_in_crop"] < 0.95
+    assert report["jitter"] <= 0.002
+
+    monkeypatch.setattr(reframe, "plan_crop", reframe.center_plan)
+    baseline = eval_crop.evaluate_dir(built_eval_dir)
+    assert baseline["jitter"] == 0.0
+    assert baseline["ball_in_crop"] == _independent_center_crop_score(built_eval_dir)
+    assert baseline["ball_in_crop"] < 0.95
 
 
 def test_ac16_ball_following_oracle_reaches_one(
@@ -450,7 +456,7 @@ def test_ac17_cli_pretty_output_and_nonexistent_error(built_eval_dir: Path) -> N
     pretty = _run_cli("eval-crop", str(built_eval_dir))
     assert pretty.returncode == 0, pretty.stderr
     assert len(pretty.stdout.splitlines()) > 1
-    assert json.loads(pretty.stdout)["jitter"] == 0.0
+    assert json.loads(pretty.stdout)["jitter"] <= 0.002
 
     missing = _run_cli("eval-crop", "/nonexistent-t017", "--json")
     assert missing.returncode == 2

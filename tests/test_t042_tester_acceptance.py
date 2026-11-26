@@ -23,6 +23,13 @@ PORTED_PATHS = [
     "docs/superpowers/specs/2026-11-23-t-017-add-a-measurable-9-16-reframing-design.md",
     "docs/superpowers/plans/2026-11-23-t-017-add-a-measurable-9-16-reframing.md",
 ]
+CHANGED_BY_T019 = (
+    "sportscut/reframe.py",
+    "tests/test_reframe.py",
+    "tests/test_eval_crop_fixtures.py",
+    "tests/test_t017_acceptance.py",
+    "docs/superpowers/specs/2026-11-23-t-017-add-a-measurable-9-16-reframing-design.md",
+)
 SHARED_PATHS = [
     "sportscut/media.py",
     "tests/test_media.py",
@@ -184,7 +191,8 @@ def test_ac2_scoring_linearly_interpolates_the_crop_plan(tmp_path, monkeypatch):
 
 def test_ac2_reviewed_files_and_probe_size_match_the_reviewed_commit():
     git = _git()
-    ported = _run(git, "diff", "--quiet", "office/T-017-r2", "--", *PORTED_PATHS)
+    unchanged = [p for p in PORTED_PATHS if p not in CHANGED_BY_T019]
+    ported = _run(git, "diff", "--quiet", "office/T-017-r2", "--", *unchanged)
     assert ported.returncode == 0, ported.stderr or ported.stdout
 
     reviewed = _run(git, "show", "314d171:sportscut/media.py")
@@ -266,8 +274,8 @@ def test_ac4_empty_and_missing_directories_are_user_errors(tmp_path, capsys):
     assert absent.err.startswith("sportscut eval-crop: error: not a directory")
 
 
-def test_ac5_eval_crop_cli_matches_the_readme_baseline(tmp_path, capsys):
-    from sportscut import cli
+def test_ac5_eval_crop_cli_matches_the_readme_baseline(tmp_path, capsys, monkeypatch):
+    from sportscut import cli, eval_crop, reframe
 
     _require_ffmpeg()
     build = _load_module(
@@ -276,6 +284,7 @@ def test_ac5_eval_crop_cli_matches_the_readme_baseline(tmp_path, capsys):
     build.build_all(tmp_path)
     capsys.readouterr()
 
+    monkeypatch.setattr(eval_crop.reframe, "plan_crop", reframe.center_plan)
     assert cli.main(["eval-crop", str(tmp_path), "--json"]) == 0
     captured = capsys.readouterr()
     assert captured.err == ""

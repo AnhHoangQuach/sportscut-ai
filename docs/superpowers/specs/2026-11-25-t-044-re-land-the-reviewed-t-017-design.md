@@ -55,3 +55,4 @@ Port the finished and reviewed commits from office/T-042 (0987533 feat, 64c51ea 
 - `docs/superpowers/specs/2026-11-23-t-036-add-ffmpeg-media-helpers-and-synthetic-design.md`
 - `docs/superpowers/specs/2026-11-23-t-023-add-clip-facts-a-template-metadata-design.md`
 - `docs/superpowers/specs/2026-11-23-t-013-tag-goals-from-scoreboard-region-changes-design.md`
+Updated by T-045: E4. `test_e_eval_crop_cli_on_built_fixtures_matches_readme` keeps the subprocess CLI run and its shape checks, adds `jitter <= 0.002`, and checks the README baseline values (0.2821, 0.4024, jitter 0.0, all non-timing fields) in-process with `reframe.plan_crop` patched to `reframe.center_plan`.

@@ -241,6 +241,36 @@ def test_probe_size_audio_only_raises(require_ffmpeg, tmp_path):
     assert str(exc.value) == f"no video stream in {path}"
 
 
+from sportscut.media import sample_frames  # noqa: E402  (T-045, append-only)
+
+
+def test_sample_frames_shape_and_content(synthetic_video):
+    frames = sample_frames(synthetic_video, 5, 80, 60)
+    assert isinstance(frames, np.ndarray) and frames.dtype == np.uint8
+    assert frames.ndim == 4 and frames.shape[1:] == (60, 80, 3)
+    assert 29 <= frames.shape[0] <= 31
+    assert all(frames[i].mean() < 30 for i in range(14))
+    assert all(frames[i].mean() > 225 for i in range(16, frames.shape[0]))
+
+
+def test_sample_frames_missing_file(monkeypatch, tmp_path):
+    path = tmp_path / "missing.mp4"
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("ffmpeg ran"))
+    with pytest.raises(MediaError) as exc:
+        sample_frames(path, 5, 80, 60)
+    assert str(exc.value) == f"media file not found: {path}"
+
+
+def test_sample_frames_audio_only_raises(require_ffmpeg, tmp_path):
+    path = tmp_path / "audio.m4a"
+    subprocess.run([
+        "ffmpeg", "-v", "error", "-nostdin", "-y", "-f", "lavfi", "-i",
+        "anullsrc=d=1", "-c:a", "aac", str(path),
+    ], check=True, capture_output=True)
+    with pytest.raises(MediaError, match="^" + re.escape(f"ffmpeg failed for {path}: ")):
+        sample_frames(path, 5, 80, 60)
+
+
 from sportscut.media import filter_video  # noqa: E402  (T-043, appended)
 
 

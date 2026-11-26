@@ -259,7 +259,7 @@ def test_d_readme_keeps_main_web_section():
 # (e) Building the fixtures and running eval-crop reproduces the baseline ----
 
 
-def test_e_eval_crop_cli_on_built_fixtures_matches_readme(tmp_path):
+def test_e_eval_crop_cli_on_built_fixtures_matches_readme(tmp_path, monkeypatch):
     if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
         pytest.skip("ffmpeg/ffprobe are required")
     build = _load("eval_crop_build_t044", EVAL_CROP_BUILD)
@@ -279,10 +279,16 @@ def test_e_eval_crop_cli_on_built_fixtures_matches_readme(tmp_path):
     assert list(report) == [
         "ball_in_crop", "players_in_crop", "jitter", "seconds_per_min", "per_clip"
     ]
-    assert report["ball_in_crop"] == 0.2821
-    assert report["players_in_crop"] == 0.4024
-    assert report["jitter"] == 0.0
-    assert _without_timings(report) == _without_timings(_readme_baseline())
+    assert report["jitter"] <= 0.002
+
+    from sportscut import eval_crop, reframe
+
+    monkeypatch.setattr(reframe, "plan_crop", reframe.center_plan)
+    baseline = eval_crop.evaluate_dir(tmp_path)
+    assert baseline["ball_in_crop"] == 0.2821
+    assert baseline["players_in_crop"] == 0.4024
+    assert baseline["jitter"] == 0.0
+    assert _without_timings(baseline) == _without_timings(_readme_baseline())
 
 
 # (f) AC10: no two-dot `main` in scope/diff tests ---------------------------

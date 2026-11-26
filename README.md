@@ -268,6 +268,35 @@ sportscut serve
 
 Trang trả về lỗi 404 nếu `JOB_ID` không tồn tại.
 
+## Camera ảo bám cầu thủ (T-019)
+
+`reframe.plan_crop` không còn cắt giữa khung hình mà bám theo cầu thủ. Mỗi mẫu 5 Hz, khung
+hình được thu nhỏ còn rộng 320 px. Mặt sân được tìm bằng mặt nạ màu cỏ HSV (hue 60–180°).
+Khối điểm không phải màu xanh nằm bên trong sân (sau khi co 3x3) được tính là cầu thủ. Mục
+tiêu là trọng tâm của cửa sổ rộng bằng khung crop chứa nhiều khối nhất. Camera đi theo mục
+tiêu với vùng chết, làm mượt hàm mũ và tốc độ lia tối đa. Khi không thấy sân, camera giữ
+nguyên vị trí; nếu từ đầu clip chưa có phép đo nào thì camera đứng ở giữa. Baseline cũ vẫn
+còn là `reframe.center_plan`.
+
+Hằng số cuối cùng: `DEAD_ZONE = 0.06`, `EASE = 0.2`, `MAX_PAN = 0.1` (tỷ lệ chiều rộng khung
+hình mỗi giây).
+
+Ngưỡng jitter: jitter ≤ 0.002 (trung bình |sai phân bậc 2| trên lưới 5 Hz / chiều rộng khung)
+
+Trước (T-017, center crop):
+
+```text
+{"ball_in_crop": 0.2821, "players_in_crop": 0.4024, "jitter": 0.0, "seconds_per_min": 0.304, "per_clip": [{"clip": "long_pass", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 0.0333, "players_in_crop": 0.25, "jitter": 0.0, "seconds_per_min": 0.2907}, {"clip": "occluded", "duration": 12.0, "labels": 60, "ball_labels": 54, "player_boxes": 180, "ball_in_crop": 0.6111, "players_in_crop": 0.8722, "jitter": 0.0, "seconds_per_min": 0.2859}, {"clip": "slow_dribble", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 0.5167, "players_in_crop": 0.2542, "jitter": 0.0, "seconds_per_min": 0.2888}, {"clip": "white_distractor", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 180, "ball_in_crop": 0.0, "players_in_crop": 0.3333, "jitter": 0.0, "seconds_per_min": 0.3506}]}
+```
+
+Sau (T-019):
+
+```text
+{"ball_in_crop": 0.5812, "players_in_crop": 0.5988, "jitter": 0.001658, "seconds_per_min": 1.2652, "per_clip": [{"clip": "long_pass", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 0.6, "players_in_crop": 0.5, "jitter": 0.001355, "seconds_per_min": 1.28}, {"clip": "occluded", "duration": 12.0, "labels": 60, "ball_labels": 54, "player_boxes": 180, "ball_in_crop": 0.7222, "players_in_crop": 0.7389, "jitter": 0.001839, "seconds_per_min": 1.2681}, {"clip": "slow_dribble", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 1.0, "players_in_crop": 0.6542, "jitter": 0.000765, "seconds_per_min": 1.2507}, {"clip": "white_distractor", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 180, "ball_in_crop": 0.0167, "players_in_crop": 0.5167, "jitter": 0.002673, "seconds_per_min": 1.2619}]}
+```
+
+Thời gian lập kế hoạch cho clip 60 s 1280x720 (testsrc2): 1.1 s (giới hạn 6.0 s).
+
 ## Video dọc 9:16 cho TikTok/Reels (cut --vertical)
 
 Thêm `--vertical` vào lệnh `cut` để xuất thêm một bản dọc 9:16 cho mỗi clip:
@@ -301,6 +330,9 @@ vùng bảng tỉ số bằng `--score-box x,y,w,h` (tính theo pixel của vide
 ```bash
 sportscut cut match.mp4 --out out --vertical --score-box 40,16,160,40
 ```
+
+Cập nhật (T-045): `plan_crop` nay bám theo cầu thủ bằng camera ảo (xem mục T-019 ở
+trên), nên bản dọc cũng bám theo cầu thủ.
 
 ## Video dọc 9:16: đo khung cắt (eval-crop)
 

@@ -130,6 +130,7 @@ def test_build_is_idempotent_and_force_reencodes(eval_crop_set):
 
 
 def test_center_crop_baseline_and_oracle(eval_crop_set, monkeypatch):
+    monkeypatch.setattr(reframe, 'plan_crop', reframe.center_plan)
     baseline = eval_crop.evaluate_dir(eval_crop_set)
     assert list(baseline) == [
         "ball_in_crop", "players_in_crop", "jitter", "seconds_per_min", "per_clip"
