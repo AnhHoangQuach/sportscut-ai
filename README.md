@@ -283,6 +283,27 @@ Sau (T-019):
 
 Thời gian lập kế hoạch cho clip 60 s 1280x720 (testsrc2): 1.1 s (giới hạn 6.0 s).
 
+## Video dọc 9:16 cho TikTok/Reels (cut --vertical)
+
+Thêm `--vertical` vào lệnh `cut` để xuất thêm một bản dọc 9:16 cho mỗi clip:
+
+```bash
+sportscut cut match.mp4 --out out --vertical
+```
+
+Ngoài `out/clip_NN.mp4`, lệnh ghi thêm `out/vertical/clip_NN.mp4` (1080x1920,
+H.264, giữ nguyên âm thanh) và in đường dẫn bản dọc ngay sau đường dẫn clip. Mỗi
+mục trong `out/highlights.json` có thêm khóa cuối `vertical_file`, ví dụ
+`"vertical_file": "vertical/clip_01.mp4"`. Không có `--vertical` thì kết quả
+giữ nguyên như trước.
+
+Khung cắt luôn lấy hết chiều cao và chạy theo đường crop của `plan_crop`. Hiện
+`plan_crop` vẫn là crop tĩnh ở giữa khung hình; khi các task bám theo bóng và cầu
+thủ hoàn thành, bản dọc sẽ tự bám theo mà không cần đổi lệnh.
+
+Cập nhật (T-045): `plan_crop` nay bám theo cầu thủ bằng camera ảo (xem mục T-019 ở
+trên), nên bản dọc cũng bám theo cầu thủ.
+
 ## Video dọc 9:16: đo khung cắt (eval-crop)
 
 Tạo bộ video tổng hợp có nhãn rồi đo baseline crop giữa khung hình:

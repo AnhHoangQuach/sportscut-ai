@@ -70,4 +70,6 @@ Updated by T-030: sportscut.media also owns joining clips with concat_clips (con
 
 Updated by T-017: the reframing eval builder may generate ignored fixture clips in its eval directory; automated tests still generate media only in temporary directories.
 
+Updated by T-018: sportscut.media also owns filter_video(path, video_filter, dest), which re-encodes video through an ffmpeg -vf filter (libx264 veryfast, yuv420p) and stream-copies audio, so vertical.py never calls ffmpeg directly.
+
 Updated by T-004: sportscut.media also exposes require_ffmpeg() (both tools on PATH, else MediaError) and has_audio(path) -> bool (ffprobe audio-stream check; ffprobe failures raise MediaError).

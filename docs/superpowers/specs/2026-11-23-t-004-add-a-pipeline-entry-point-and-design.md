@@ -50,3 +50,7 @@ Add `sportscut/pipeline.py` with `run(video, out_dir, top, min_len, max_len) -> 
 ## Updated by T-039
 
 AC3 and AC7 (PipelineError and CLI messages for missing, non-video and silent inputs) hold when ffmpeg and ffprobe are on PATH. Without them, AC4 applies first: `run` calls `require_ffmpeg()` before any input check and raises MediaError. The tests for AC3 and AC7 therefore request the conftest `require_ffmpeg` fixture and skip with `ffmpeg and ffprobe are required on PATH`, while the AC4 tests keep running.
+
+## Updated by T-018
+
+Updated by T-018 (implemented in T-043): `run(video, out_dir, top=10, min_len=10, max_len=30, events=None, vertical=False)` gains `vertical=False`. With `vertical=True`, each exported clip is reframed with `reframe.plan_crop` and rendered by `vertical.render_vertical` to `<out_dir>/vertical/clip_NN.mp4` (1080x1920, H.264, audio copied), and each manifest entry gains `vertical_file` (`vertical/clip_NN.mp4`) as its last key; highlights.json is rewritten with it. `sportscut cut ... --vertical` prints the vertical path after each clip path. With vertical off (the default) nothing is rendered, no `vertical/` directory is created, and AC1/AC6 hold unchanged.

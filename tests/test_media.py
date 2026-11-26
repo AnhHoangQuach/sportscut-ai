@@ -269,3 +269,44 @@ def test_sample_frames_audio_only_raises(require_ffmpeg, tmp_path):
     ], check=True, capture_output=True)
     with pytest.raises(MediaError, match="^" + re.escape(f"ffmpeg failed for {path}: ")):
         sample_frames(path, 5, 80, 60)
+
+
+from sportscut.media import filter_video  # noqa: E402  (T-043, appended)
+
+
+def test_filter_video_missing_file_raises(tmp_path):
+    path = tmp_path / "missing.mp4"
+    with pytest.raises(MediaError) as exc:
+        filter_video(path, "scale=32:24", tmp_path / "o.mp4")
+    assert str(exc.value) == f"media file not found: {path}"
+
+
+def test_filter_video_scales_and_copies_audio(synthetic_video, tmp_path):
+    dest = tmp_path / "o.mp4"
+    assert filter_video(synthetic_video, "scale=32:24", dest) == dest
+    assert probe_size(dest) == (32, 24)
+    args = ["ffprobe", "-v", "error", "-show_entries",
+            "stream=codec_type,codec_name", "-of", "json", "-i", str(dest)]
+    streams = json.loads(subprocess.run(
+        args, check=True, capture_output=True, text=True
+    ).stdout)["streams"]
+    assert [s["codec_name"] for s in streams if s["codec_type"] == "video"] == ["h264"]
+    assert [s["codec_name"] for s in streams if s["codec_type"] == "audio"] == ["aac"]
+
+
+def test_filter_video_invalid_filter_raises(synthetic_video, tmp_path):
+    with pytest.raises(MediaError, match=r"^ffmpeg failed for .+: .+"):
+        filter_video(synthetic_video, "nosuchfilter", tmp_path / "o.mp4")
+
+
+def test_only_media_module_imports_subprocess():
+    root = Path(__file__).resolve().parents[1] / "sportscut"
+    importers = sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if re.search(r"^\s*(import subprocess|from subprocess import)", path.read_text(encoding="utf-8"), re.M)
+    )
+    # events/incidents.py predates T-043 (T-015 decision, DECISIONS.md) and is
+    # out of this task's scope; T-043 must add no new importer.
+    assert importers == ["events/incidents.py", "media.py"]
+    assert "vertical.py" not in importers
