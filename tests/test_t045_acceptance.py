@@ -61,6 +61,9 @@ def _numstat(base: str) -> dict[str, tuple[int, int]]:
 
 # AC1 / AC13 --------------------------------------------------------------------
 def test_ac1_ac13_forbidden_paths_untouched_and_append_only():
+    branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    if not branch.startswith("office/T-045"):
+        pytest.skip("T-045 scope check runs only on its own office/T-045 branch")
     base = _merge_base()
     stat = _numstat(base)
     forbidden = ("sportscut/eval_crop.py", "sportscut/cli.py", "sportscut/pipeline.py", "sportscut/evaluate.py",
