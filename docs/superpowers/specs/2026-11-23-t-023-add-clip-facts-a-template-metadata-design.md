@@ -105,3 +105,7 @@ returns no problems; otherwise that clip falls back to the template. `score_case
 
 Updated by T-028: the format checks at the top of `score_case` are exposed unchanged as `sportscut.commentary.eval_meta.format_problems(meta) -> list[str]` (same messages, same order). `score_case` calls it, so the eval-meta output is unchanged, and `PUT /highlights/{id}/meta` reuses it to return 422 '<where>: <problem>'.
 Updated by T-044 (T-042 review): AC16 diffs against `git merge-base main HEAD` (skip 'main is required for scope check' when unavailable) instead of the moving `main` ref; after T-013 its protected list is sportscut/export.py, pyproject.toml and tests/conftest.py.
+
+## Updated by T-026
+
+Updated by T-026: the name and Vietnamese checks are exposed unchanged as `eval_meta._unknown_names(facts, texts)` and `eval_meta._is_vi_text(facts, text)` (`validate_meta` and `_is_vi` call them, so their output is unchanged), and `sportscut.commentary.script.validate_script` reuses them. `evaluate_meta_dir(path, backend="template", script=False)` gains `script=True` (CLI `eval-meta --script`): each case is scored as a timed commentary script at clip lengths 10.0 and 30.0 (`SCRIPT_CLIP_LENS`) with report keys `score, script_fits, fact_recall, hallucination_rate, vi_rate, per_case` (16 items for the fixture). Without `--script` the report is byte-identical to before.

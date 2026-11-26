@@ -82,6 +82,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="burn commentary subtitles into --vertical clips (needs the [asr] extra)",
     )
+    cut_parser.add_argument(
+        "--voiceover",
+        action="store_true",
+        help="also write OUT/clip_NN.script.json: a timed Vietnamese commentary script "
+        "per clip (voice-over audio comes later)",
+    )
     eval_player_parser = subparsers.add_parser("eval-player", help="evaluate player-touch detection")
     eval_player_parser.add_argument("directory")
     eval_player_parser.add_argument("--json", action="store_true")
@@ -96,6 +102,10 @@ def main(argv: list[str] | None = None) -> int:
     eval_meta_parser.add_argument(
         "--meta-backend", choices=("template", "llm"), default="template",
         help="metadata generator to score; llm needs ANTHROPIC_API_KEY and the [llm] extra",
+    )
+    eval_meta_parser.add_argument(
+        "--script", action="store_true",
+        help="score timed commentary scripts (10 s and 30 s clips) instead of metadata",
     )
     eval_crop_parser = subparsers.add_parser(
         "eval-crop", help="evaluate 9:16 crop framing"
@@ -185,7 +195,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "eval-meta":
         try:
-            report = eval_meta.evaluate_meta_dir(args.directory, backend=args.meta_backend)
+            report = eval_meta.evaluate_meta_dir(
+                args.directory, backend=args.meta_backend, script=args.script
+            )
         except (ValueError, OSError) as exc:
             print(f"sportscut eval-meta: error: {exc}", file=sys.stderr)
             return 2
@@ -230,6 +242,7 @@ def main(argv: list[str] | None = None) -> int:
                 vertical=args.vertical,
                 score_box=args.score_box,
                 transcriber=transcriber,
+                voiceover=args.voiceover,
             )
         except (PipelineError, MediaError) as exc:
             print(f"sportscut: error: {exc}", file=sys.stderr)
@@ -238,6 +251,8 @@ def main(argv: list[str] | None = None) -> int:
             print(Path(args.out) / entry["file"])
             if "vertical_file" in entry:
                 print(Path(args.out) / entry["vertical_file"])
+            if "script_file" in entry:
+                print(Path(args.out) / entry["script_file"])
         return 0
 
     try:
