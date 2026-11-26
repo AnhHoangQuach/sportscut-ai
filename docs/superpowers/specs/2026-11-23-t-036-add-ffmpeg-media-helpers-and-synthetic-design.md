@@ -62,6 +62,8 @@ ffmpeg directly.
 
 Updated by T-030: sportscut.media also owns joining clips with concat_clips (concat demuxer, stream copy of cut_clip outputs).
 
+- (updated by T-019) `media.sample_frames(path, fps, width, height)` returns RGB uint8 frames (n, height, width, 3) sampled at `fps` and scaled with `flags=area` through one ffmpeg rawvideo pipe (like `sample_top_band`). A missing file raises `media file not found: <path>` before ffmpeg runs, a non-zero exit (including audio-only input) raises `ffmpeg failed for <path>: ...`, and a trailing partial frame is dropped. Landed by T-045.
+
 ## Assumptions
 
 - T-017: same exception for the reframing eval set — tests/fixtures/eval_crop/build.py may write git-ignored clip.mp4 files inside tests/fixtures/eval_crop/; pytest builds only in temp dirs and no media is committed.

@@ -125,6 +125,25 @@ def sample_top_band(path: str | Path) -> np.ndarray:
         count, BAND_H, BAND_W
     )
 
+
+def sample_frames(path: str | Path, fps: float, width: int, height: int) -> np.ndarray:
+    """RGB frames sampled at `fps`, scaled to width x height: uint8 array (n, height, width, 3)."""
+    p = Path(path)
+    if not p.is_file():
+        raise MediaError(f"media file not found: {path}")
+    args = [
+        find_tool("ffmpeg"), "-v", "error", "-nostdin", "-i", str(p), "-an", "-sn",
+        "-vf", f"fps={fps},scale={width}:{height}:flags=area",
+        "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
+    ]
+    result = subprocess.run(args, capture_output=True, check=False)
+    if result.returncode:
+        detail = _failure_detail(result.stderr, result.returncode)
+        raise MediaError(f"ffmpeg failed for {path}: {detail}")
+    frame = width * height * 3
+    n = len(result.stdout) // frame
+    return np.frombuffer(result.stdout, np.uint8)[: n * frame].reshape(n, height, width, 3)
+
 def cut_clip(path: str | Path, start: float, end: float, dest: str | Path) -> Path:
     p = Path(path)
     if not p.is_file():

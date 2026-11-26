@@ -75,3 +75,6 @@ Goal of R-004: `sportscut cut match.mp4 --vertical` also writes 1080x1920 (9:16)
 - `docs/superpowers/specs/2026-11-23-t-029-build-the-player-touch-eval-synthetic-design.md`
 - `docs/superpowers/specs/2026-11-23-t-004-add-a-pipeline-entry-point-and-design.md`
 - `docs/superpowers/specs/2026-11-23-t-010-add-event-types-to-segments-and-design.md`
+- (updated by T-019) `reframe.plan_crop` now follows the players: a green-field HSV mask, the non-green mass inside the field, the centroid of the crop-wide window with the most mass, then a dead zone, easing and max pan speed on the 5 Hz grid. It holds when there is no measurement and starts at the centre. The plan contract (non-empty, t strictly increasing on the 5 Hz grid, x in [cw/2, width-cw/2]) is unchanged. Landed by T-045.
+- (updated by T-019) The centre-crop baseline lives on as `reframe.center_plan` (the old plan_crop body, decodes no frames). Tests that pin baseline values (jitter 0.0, ball_in_crop 0.2821, players_in_crop 0.4024) monkeypatch `reframe.plan_crop` to `reframe.center_plan`; CLI runs of the new plan check jitter <= 0.002.
+- (updated by T-019) AC5 (static plan on `synthetic_video`) still holds: that clip has no field, so plan_crop returns width/2 everywhere.

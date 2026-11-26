@@ -6,6 +6,7 @@ import subprocess
 import types
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 
@@ -42,6 +43,13 @@ PORTED_PATHS = (
     "tests/test_t017_acceptance.py",
     "docs/superpowers/specs/2026-11-23-t-017-add-a-measurable-9-16-reframing-design.md",
     "docs/superpowers/plans/2026-11-23-t-017-add-a-measurable-9-16-reframing.md",
+)
+CHANGED_BY_T019 = (
+    "sportscut/reframe.py",
+    "tests/test_reframe.py",
+    "tests/test_eval_crop_fixtures.py",
+    "tests/test_t017_acceptance.py",
+    "docs/superpowers/specs/2026-11-23-t-017-add-a-measurable-9-16-reframing-design.md",
 )
 
 
@@ -123,6 +131,9 @@ def test_ac1_ac2_public_crop_contract_and_short_duration(monkeypatch):
 
     monkeypatch.setattr(reframe.media, "probe_duration", lambda path: 0.4)
     monkeypatch.setattr(reframe.media, "probe_size", lambda path: (640, 360))
+    monkeypatch.setattr(
+        reframe.media, "sample_frames", lambda *a, **k: np.zeros((0, 2, 2, 3), np.uint8)
+    )
     assert reframe.plan_crop("short-silent.mp4") == [
         (0.0, 320.0),
         (0.2, 320.0),
@@ -164,7 +175,8 @@ def test_ac2_scoring_linearly_interpolates_plan(tmp_path, monkeypatch):
 
 
 def test_ac2_ported_files_and_probe_size_match_reviewed_t017():
-    result = _git("diff", "--quiet", "office/T-017-r2", "--", *PORTED_PATHS)
+    unchanged = [p for p in PORTED_PATHS if p not in CHANGED_BY_T019]
+    result = _git("diff", "--quiet", "office/T-017-r2", "--", *unchanged)
     assert result.returncode == 0, result.stderr
 
     reviewed = _git("show", "314d171:sportscut/media.py")
@@ -269,15 +281,16 @@ def test_ac4_empty_eval_directory_is_a_user_error(tmp_path, capsys):
     assert captured.err.startswith("sportscut eval-crop: error:")
 
 
-def test_ac5_eval_crop_matches_readme_baseline(tmp_path):
+def test_ac5_eval_crop_matches_readme_baseline(tmp_path, monkeypatch):
     if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
         pytest.skip("ffmpeg and ffprobe are required on PATH")
-    from sportscut import eval_crop
+    from sportscut import eval_crop, reframe
 
     build = _load_module(
         "t042_eval_crop_build", ROOT / "tests" / "fixtures" / "eval_crop" / "build.py"
     )
     build.build_all(tmp_path)
+    monkeypatch.setattr(eval_crop.reframe, "plan_crop", reframe.center_plan)
     report = eval_crop.evaluate_dir(tmp_path)
     expected = _read_readme_crop_baseline()
 
