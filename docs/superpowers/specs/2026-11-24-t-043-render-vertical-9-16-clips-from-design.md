@@ -81,3 +81,11 @@ This keeps cli.py append-only for the T-042 shared-file tests.
 - `docs/superpowers/specs/2026-11-24-t-042-land-the-t-017-9-16-design.md`
 - `docs/superpowers/specs/2026-11-23-t-014-tag-saves-using-whistle-detection-and-design.md`
 - `docs/superpowers/specs/2026-11-24-t-041-add-the-theo-d-i-c-design.md`
+
+## Updated by T-021
+
+Updated by T-021:
+- `render_vertical(clip, crop_path, out, score_box=None, caption=None)` and `vertical_filter(crop_path, width, height, score_box=None, caption=None, fontfile=None)` take an optional scoreboard box (cropped from the source on every frame and overlaid scaled up in the top band) and an optional event caption (drawn with drawtext; render_vertical then resolves the font with `media.find_font()`). With neither, the calls and the filter string are byte-identical to T-043.
+- vertical.py now also finds the score box (`find_score_box`, via `media.sample_top_band`, `scoreboard.find_box` and `media.probe_size`), still with no external tool calls of its own.
+- The pipeline passes `score_box` and `caption` keyword arguments to render_vertical only when they are not None, so a clip with neither still gets exactly three positional arguments.
+- A clip with no detected board is logged at WARNING on `sportscut.pipeline`, which has a NullHandler, so nothing reaches stderr unless logging is configured.

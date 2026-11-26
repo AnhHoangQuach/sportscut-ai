@@ -280,3 +280,95 @@ def test_only_media_module_imports_subprocess():
     # out of this task's scope; T-043 must add no new importer.
     assert importers == ["events/incidents.py", "media.py"]
     assert "vertical.py" not in importers
+
+
+# T-021: find_font through fontconfig (appended)
+import sportscut.media as media_mod  # noqa: E402
+from sportscut.media import find_font  # noqa: E402
+
+
+class _Done:
+    def __init__(self, stdout="", returncode=0, stderr=""):
+        self.stdout, self.returncode, self.stderr = stdout, returncode, stderr
+
+
+def _fake_fontconfig(monkeypatch, fc_list, fc_match, missing=()):
+    calls = []
+
+    def which(name):
+        return None if name in missing else f"/bin/{name}"
+
+    def run(args, **kwargs):
+        calls.append((args, kwargs))
+        return fc_list if args[0] == "/bin/fc-list" else fc_match
+
+    monkeypatch.setattr(media_mod.shutil, "which", which)
+    monkeypatch.setattr(media_mod.subprocess, "run", run)
+    return calls
+
+
+@pytest.mark.parametrize("tool", ["fc-list", "fc-match"])
+def test_find_font_tool_missing_raises(monkeypatch, tmp_path, tool):
+    font = tmp_path / "a.ttf"
+    font.write_bytes(b"x")
+    _fake_fontconfig(monkeypatch, _Done(f"{font}\n"), _Done(f"{font}\n"), missing=(tool,))
+    with pytest.raises(MediaError) as exc:
+        find_font()
+    assert str(exc.value) == f"{tool} not found on PATH; install fontconfig to draw captions"
+
+
+def test_find_font_no_existing_font_raises(monkeypatch, tmp_path):
+    listed = f"{tmp_path / 'gone.ttf'}\n\n"
+    _fake_fontconfig(monkeypatch, _Done(listed), _Done(""))
+    with pytest.raises(MediaError) as exc:
+        find_font()
+    assert str(exc.value) == (
+        "no font with Vietnamese support found; install one (for example "
+        "DejaVu Sans or Noto Sans) and check with: fc-list :lang=vi"
+    )
+
+
+def test_find_font_fc_list_failure_raises(monkeypatch):
+    _fake_fontconfig(monkeypatch, _Done("", 1, "boom\n"), _Done(""))
+    with pytest.raises(MediaError) as exc:
+        find_font()
+    assert str(exc.value) == "fc-list failed: boom"
+
+
+def test_find_font_follows_fc_match_order(monkeypatch, tmp_path):
+    a, b = tmp_path / "A.ttf", tmp_path / "B.ttf"
+    a.write_bytes(b"x")
+    b.write_bytes(b"x")
+    calls = _fake_fontconfig(
+        monkeypatch,
+        _Done(f"{a}\n {b} \n"),
+        _Done(f"{tmp_path / 'other.ttf'}\n{b}\n{a}\n"),
+    )
+    assert find_font() == b
+    assert [args for args, _ in calls] == [
+        ["/bin/fc-list", "--format", "%{file}\n", ":lang=vi"],
+        ["/bin/fc-match", "-s", "--format", "%{file}\n", "sans-serif:lang=vi"],
+    ]
+    assert all(
+        kwargs == {"capture_output": True, "check": False, "text": True}
+        for _, kwargs in calls
+    )
+
+
+@pytest.mark.parametrize("fc_match", [_Done("", 1, "bad"), _Done("/nowhere.ttf\n")])
+def test_find_font_falls_back_to_sorted_first(monkeypatch, tmp_path, fc_match):
+    a, b = tmp_path / "A.ttf", tmp_path / "B.ttf"
+    a.write_bytes(b"x")
+    b.write_bytes(b"x")
+    _fake_fontconfig(monkeypatch, _Done(f"{b}\n{a}\n"), fc_match)
+    assert find_font() == a
+
+
+def test_find_font_real_fontconfig():
+    if shutil.which("fc-list") is None or shutil.which("fc-match") is None:
+        pytest.skip("fontconfig is not on PATH")
+    try:
+        font = find_font()
+    except MediaError as exc:
+        pytest.skip(str(exc))
+    assert font.is_file()
