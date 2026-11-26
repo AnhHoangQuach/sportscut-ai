@@ -144,6 +144,7 @@ def sample_frames(path: str | Path, fps: float, width: int, height: int) -> np.n
     n = len(result.stdout) // frame
     return np.frombuffer(result.stdout, np.uint8)[: n * frame].reshape(n, height, width, 3)
 
+
 def cut_clip(path: str | Path, start: float, end: float, dest: str | Path) -> Path:
     p = Path(path)
     if not p.is_file():
