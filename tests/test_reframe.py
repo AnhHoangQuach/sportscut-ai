@@ -223,3 +223,206 @@ def test_plan_crop_starts_centre_then_eases(require_ffmpeg, tmp_path):
 def test_plan_crop_holds_when_field_lost(require_ffmpeg, tmp_path):
     plan = dict(reframe.plan_crop(_clip(tmp_path, [PLAYERS] * 50 + [GREY_FRAME] * 50)))
     assert all(x == plan[1.8] for t, x in plan.items() if t >= 2.0)
+
+
+# --- T-020: ball detection drives the crop, player cluster as fallback ------
+WHITE = (255, 255, 255)
+
+
+def _white(frame, r0, r1, c0, c1, colour=WHITE):
+    frame[r0:r1, c0:c1] = colour
+    return frame
+
+
+def test_field_mask_inside_region_and_none():
+    frame = _field()
+    frame[0:30] = GREY
+    frame[:, 0:20] = GREY
+    expected = np.zeros((180, 320), bool)
+    expected[30:180, 20:320] = True
+    mask = reframe.field_mask(frame)
+    assert mask.dtype == bool and (mask == expected).all()
+    grey = np.full((180, 320, 3), 128, np.uint8)
+    assert reframe.field_mask(grey) is None
+    sparse = grey.copy()
+    sparse[:, :64] = FIELD
+    assert reframe.field_mask(sparse) is None
+
+
+@pytest.mark.parametrize(("max_pan", "expected"), [
+    ([0.1, 0.5, 0.5], [101.0, 165.0, 229.0]),
+    ([0.5, 0.1, 0.5], [101.0, 113.8, 177.8]),
+])
+def test_smooth_path_per_sample_gains_exact(max_pan, expected):
+    path = reframe.smooth_path(
+        [101.0, 539.0, 539.0], 640, 202,
+        dead_zone=[0, 0, 0], ease=[1, 1, 0.5], max_pan=max_pan,
+    )
+    assert len(path) == 3 and all(abs(a - b) < 1e-9 for a, b in zip(path, expected))
+
+
+@pytest.mark.parametrize("name", ["dead_zone", "ease", "max_pan"])
+def test_smooth_path_sequence_length_mismatch_raises(name):
+    with pytest.raises(ValueError):
+        reframe.smooth_path([101.0, 300.0, 400.0], 640, 202, **{name: [0.1, 0.1]})
+
+
+def test_smooth_path_scalar_equals_constant_sequences():
+    rng = np.random.default_rng(0)
+    values = rng.uniform(0, 640, 200)
+    targets = [None if hole else float(v) for v, hole in zip(values, rng.random(200) < 0.2)]
+    scalar = _smooth(targets)
+    seq = _smooth(targets, dead_zone=[0.03] * 200, ease=[0.5] * 200, max_pan=[0.2] * 200)
+    assert seq == scalar
+
+
+def _close(got, expected):
+    return len(got) == len(expected) and all(
+        all(abs(a - b) < 1e-9 for a, b in zip(g, e)) for g, e in zip(got, expected)
+    )
+
+
+def test_ball_candidates_single_3x3():
+    got = reframe.ball_candidates(_white(_field(), 88, 91, 98, 101))
+    assert _close(got, [(99.5, 89.5, 1.0)])
+
+
+def test_ball_candidates_two_blobs_order():
+    frame = _white(_white(_field(), 88, 91, 98, 101), 120, 123, 250, 253)
+    got = reframe.ball_candidates(frame)
+    assert _close(got, [(99.5, 89.5, 1.0), (251.5, 121.5, 1.0)])
+
+
+def test_ball_candidates_4x4_score():
+    got = reframe.ball_candidates(_white(_field(), 60, 64, 200, 204))
+    assert _close(got, [(202.0, 62.0, 0.64)])
+
+
+def _outside_field():
+    frame = _field()
+    frame[0:30] = GREY
+    return _white(frame, 10, 13, 150, 153)
+
+
+@pytest.mark.parametrize("frame", [
+    _white(_field(), 0, 180, 159, 161),
+    _white(_field(), 80, 95, 100, 107),
+    _white(_field(), 80, 88, 100, 108),
+    _white(_field(), 88, 91, 98, 101, RED),
+    _white(_field(), 88, 91, 98, 101, GREY),
+    _outside_field(),
+    np.full((180, 320, 3), 128, np.uint8),
+], ids=["line", "white_7x15", "white_8x8", "red", "grey", "outside_field", "all_grey"])
+def test_ball_candidates_rejects(frame):
+    assert reframe.ball_candidates(frame) == []
+
+
+def test_track_ball_steady():
+    samples = [[(10, 10, 1)], [(20, 10, 1)], [(30, 10, 1)]]
+    assert reframe.track_ball(samples, 15) == [(10, 10), (20, 10), (30, 10)]
+
+
+def test_track_ball_constant_velocity_beats_nearer_distractor():
+    samples = [[(0, 0, 1)], [(40, 0, 1)], [(80, 0, 1)], [(90, 0, 1), (120, 0, 1)]]
+    assert reframe.track_ball(samples, 50) == [(0, 0), (40, 0), (80, 0), (120, 0)]
+
+
+def test_track_ball_gated_miss_holds():
+    samples = [[(100, 100, 1)], [(100, 100, 1)], [(300, 100, 1)]]
+    assert reframe.track_ball(samples, 50) == [(100, 100)] * 3
+
+
+def test_track_ball_lost_then_reacquire():
+    samples = [[(5, 5, 1)], [], [], [], [(300, 40, 1)]]
+    got = reframe.track_ball(samples, 50, lost_after=3)
+    assert got == [(5, 5), (5, 5), (5, 5), None, (300, 40)]
+
+
+def test_track_ball_velocity_across_gap():
+    samples = [[(0, 0, 1)], [(10, 0, 1)], [], [(30, 0, 1)]]
+    assert reframe.track_ball(samples, 12) == [(0, 0), (10, 0), (10, 0), (30, 0)]
+
+
+def test_track_ball_acquires_highest_score():
+    assert reframe.track_ball([[(10, 0, 0.5), (200, 0, 0.9)]], 50) == [(200, 0)]
+
+
+def test_track_ball_empty():
+    assert reframe.track_ball([], 50) == []
+
+
+def test_blend_weights_ramp_and_edges():
+    ball = [None, "b", "b", "b", "b", "b", None, None]
+    assert reframe.blend_weights(ball, 0.25) == [0.0, 0.25, 0.5, 0.75, 1.0, 1.0, 0.75, 0.5]
+    assert reframe.blend_weights(["b", None], 0.25) == [1.0, 0.75]
+    assert reframe.blend_weights([], 0.25) == []
+
+
+def test_framed_x_clamp_window_and_fallbacks():
+    frame = _field(rects=[(40, 56, 100, 108), (40, 56, 116, 124), (100, 116, 250, 258)])
+    assert abs(reframe.framed_x(frame, 101, 60.0, 40.0) - 100.0) < 1e-9
+    assert abs(reframe.framed_x(frame, 101, 240.0, 60.0) - 254.0) < 1e-9
+    grey = np.full((180, 320, 3), 128, np.uint8)
+    for plain in (_field(), grey):
+        assert abs(reframe.framed_x(plain, 101, 150.0, 60.0) - 150.0) < 1e-9
+
+
+def _ball_frame(base, ball_x=None, ball_y=180):
+    frame = base.copy()
+    if ball_x is not None:
+        yy, xx = np.ogrid[-4:5, -4:5]
+        frame[ball_y - 4 : ball_y + 5, ball_x - 4 : ball_x + 5][xx * xx + yy * yy <= 16] = 255
+    return frame
+
+
+def _ball_clip(tmp_path, seconds, base, ball_at):
+    frames = [_ball_frame(base, ball_at(n / 25)) for n in range(round(seconds * 25))]
+    return _clip(tmp_path, frames)
+
+
+MAX_BALL_STEP = reframe.BALL_MAX_PAN * 640 / 5 + 1e-6
+
+
+def _steps_capped(plan):
+    return (np.abs(np.diff([x for _, x in plan])) <= MAX_BALL_STEP).all()
+
+
+def test_plan_crop_no_ball_equals_t045_plan(require_ffmpeg, tmp_path, monkeypatch, synthetic_video):
+    base = PLAYERS.copy()
+    base[:, 319:321] = 255
+    clip = _clip(tmp_path, [base] * 100)
+    after = reframe.plan_crop(clip)
+    assert reframe.plan_crop(clip) == after
+    assert reframe.plan_crop(synthetic_video) == [(t, 80.0) for t in reframe.sample_times(6.0)]
+    monkeypatch.setattr(reframe, "ball_candidates", lambda frame: [])
+    assert reframe.plan_crop(clip) == after
+
+
+def test_plan_crop_follows_moving_ball(require_ffmpeg, tmp_path):
+    base = _field(360, 640, rects=[(60, 90, 40, 54)])
+    plan = reframe.plan_crop(_ball_clip(tmp_path, 4, base, lambda t: round(120 + 100 * t)))
+    assert len(plan) == 20
+    assert all(abs(x - (120 + 100 * t)) <= 101 for t, x in plan)
+    assert _steps_capped(plan)
+
+
+def _pass_x(t):
+    return 100 if t < 2.0 else min(540, round(100 + 440 * (t - 2.0) / 1.2))
+
+
+def test_plan_crop_pass_catches_up(require_ffmpeg, tmp_path):
+    plan = reframe.plan_crop(_ball_clip(tmp_path, 6, _field(360, 640), _pass_x))
+    assert len(plan) == 30
+    assert all(abs(x - _pass_x(t)) <= 101 for t, x in plan if t <= 2.0 or t >= 5.0)
+    assert _steps_capped(plan)
+
+
+def test_plan_crop_ball_lost_falls_back_smoothly(require_ffmpeg, tmp_path):
+    plan = reframe.plan_crop(
+        _ball_clip(tmp_path, 6, PLAYERS, lambda t: 500 if t < 2.0 else None)
+    )
+    xs = dict(plan)
+    assert all(abs(x - 500) <= 101 for t, x in plan if t <= 1.8)
+    later = [x for t, x in plan if t >= 2.0]
+    assert (np.diff(later) <= 0).all() and xs[5.8] < xs[2.0]
+    assert _steps_capped(plan)
