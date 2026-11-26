@@ -216,3 +216,42 @@ def filter_video(path: str | Path, video_filter: str, dest: str | Path) -> Path:
         detail = _failure_detail(result.stderr, result.returncode)
         raise MediaError(f"ffmpeg failed for {path}: {detail}")
     return Path(dest)
+
+
+def _fontconfig_tool(name: str) -> str:
+    tool = shutil.which(name)
+    if tool is None:
+        raise MediaError(f"{name} not found on PATH; install fontconfig to draw captions")
+    return tool
+
+
+def find_font() -> Path:
+    """Return a font file that covers Vietnamese, resolved through fontconfig."""
+    fc_list = _fontconfig_tool("fc-list")
+    fc_match = _fontconfig_tool("fc-match")
+    result = subprocess.run(
+        [fc_list, "--format", "%{file}\n", ":lang=vi"],
+        capture_output=True, check=False, text=True,
+    )
+    if result.returncode:
+        raise MediaError(
+            f"fc-list failed: {_failure_detail(result.stderr, result.returncode)}"
+        )
+    candidates = {
+        line.strip() for line in result.stdout.splitlines()
+        if line.strip() and Path(line.strip()).is_file()
+    }
+    if not candidates:
+        raise MediaError(
+            "no font with Vietnamese support found; install one (for example "
+            "DejaVu Sans or Noto Sans) and check with: fc-list :lang=vi"
+        )
+    ranked = subprocess.run(
+        [fc_match, "-s", "--format", "%{file}\n", "sans-serif:lang=vi"],
+        capture_output=True, check=False, text=True,
+    )
+    if not ranked.returncode:
+        for line in ranked.stdout.splitlines():
+            if line.strip() in candidates:
+                return Path(line.strip())
+    return Path(sorted(candidates)[0])
