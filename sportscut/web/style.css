@@ -134,3 +134,8 @@ video {
 #player-section {
   margin-top: 2rem;
 }
+
+#meta { margin-top: 2rem; }
+.meta-item label { display: block; }
+.meta-item input, .meta-item textarea { width: 100%; }
+.meta-item button { width: auto; }

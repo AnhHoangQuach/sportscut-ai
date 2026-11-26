@@ -66,3 +66,7 @@ Add `GET /jobs/{job_id}`, which serves `preview.html`; its JS loads `GET /highli
 - The preview shows event badges plus event filter chips and the `Tất cả`,
   `Chỉ bàn thắng`, and `Top 5 pha hay` presets. Filtering is view-only, so Save
   still validates and sends the complete segment list.
+
+## Updated by T-028
+
+Updated by T-028: the preview has a 'Tiêu đề, mô tả và hashtag' section (`section#meta`, one block for the reel and one per clip, 'Sao chép' and 'Lưu tiêu đề và hashtag'), backed by `GET`/`PUT /highlights/{job_id}/meta`. A `metafmt.js` script loads between `filters.js` and `preview.js`. The segment row has a hidden 'Lồng tiếng' toggle (`button.voiceover`) shown only when a highlight carries `voiceover_url`. A successful segments save also reloads the metadata, because re-cut clips get new file names.

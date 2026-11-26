@@ -1,5 +1,6 @@
 const T = globalThis.SportsCutTime
 const F = globalThis.SportsCutFilter
+const M = globalThis.SportsCutMeta
 const player = document.querySelector("#player")
 const currentTime = document.querySelector("#current-time")
 const segmentList = document.querySelector("#segments")
@@ -14,15 +15,21 @@ const eventChips = Array.from(document.querySelectorAll(".chip"))
 const presetGoals = document.querySelector("#preset-goals")
 const presetTop5 = document.querySelector("#preset-top5")
 const filterCount = document.querySelector("#filter-count")
+const metaSection = document.querySelector("#meta")
+const metaList = document.querySelector("#meta-list")
+const metaTemplate = document.querySelector("#meta-row")
+const saveMeta = document.querySelector("#save-meta")
 const pathMatch = location.pathname.match(/^\/jobs\/([^/]+)\/?$/)
 save.disabled = true
 addSegment.disabled = true
+saveMeta.disabled = true
 
 let jobId = null
 let duration = 0
 let segments = []
 let playUntil = null
 let selection = F.PRESETS.all
+let metaClips = []
 
 function showError(message) {
   error.textContent = message
@@ -44,8 +51,9 @@ function acceptResponse(data) {
       || !Array.isArray(data.highlights)) throw new Error("invalid response")
   duration = data.duration
   segments = data.highlights.map(
-    ({ start, end, score, reason, event, clip_url }) => ({
+    ({ start, end, score, reason, event, clip_url, voiceover_url }) => ({
       start, end, score, reason, event: F.normalizeEvent(event), clip_url,
+      voiceover_url,
     }),
   )
 }
@@ -138,6 +146,16 @@ function render() {
       clipPlayer.src = seg.clip_url
       clip.hidden = false
       clipPlayer.hidden = false
+      const sources = M.clipSources(seg)
+      if (sources.length > 1) {
+        const voiceover = row.querySelector(".voiceover")
+        voiceover.hidden = false
+        voiceover.addEventListener("click", () => {
+          const pressed = voiceover.getAttribute("aria-pressed") !== "true"
+          voiceover.setAttribute("aria-pressed", String(pressed))
+          clipPlayer.src = sources[pressed ? 1 : 0].url
+        })
+      }
     }
     segmentList.append(row)
   })
@@ -214,6 +232,7 @@ save.addEventListener("click", async () => {
     }
     acceptResponse(data)
     render()
+    loadMeta()
     status.textContent = `Đã lưu ${segments.length} đoạn.`
   } catch (_exception) {
     showError("Không thể kết nối hoặc phản hồi từ máy chủ không hợp lệ.")
@@ -238,10 +257,82 @@ async function loadJob() {
     jobTitle.textContent = data.source_name ?? data.source_url
     player.src = `/highlights/${encodeURIComponent(jobId)}/source`
     render()
+    loadMeta()
   } catch (_exception) {
     showError("Không thể kết nối hoặc phản hồi từ máy chủ không hợp lệ.")
   }
 }
+
+function readMeta(row) {
+  const value = (selector) => row.querySelector(selector).value
+  return { title: value(".meta-title"), caption: value(".meta-caption"), hashtags: M.parseHashtags(value(".meta-hashtags")) }
+}
+
+function acceptMeta(data) {
+  if (!data?.reel || typeof data.reel !== "object" || !Array.isArray(data.clips)) throw new Error("invalid response")
+  metaClips = data.clips
+  metaList.replaceChildren(...[data.reel, ...data.clips].map((meta, index) => {
+    const row = metaTemplate.content.firstElementChild.cloneNode(true)
+    row.querySelector(".meta-name").textContent = index === 0 ? "Cả video (reel)" : `Đoạn ${index}`
+    row.querySelector(".meta-title").value = meta.title
+    row.querySelector(".meta-caption").value = meta.caption
+    row.querySelector(".meta-hashtags").value = M.formatHashtags(meta.hashtags)
+    row.querySelector(".copy").addEventListener("click", () => copyMeta(row))
+    return row
+  }))
+  metaSection.hidden = false
+}
+
+async function copyMeta(row) {
+  try {
+    await navigator.clipboard.writeText(M.copyText(readMeta(row)))
+    status.textContent = "Đã sao chép."
+    status.hidden = false
+  } catch (_exception) {
+    showError("Không sao chép được. Hãy chọn chữ và sao chép thủ công.")
+  }
+}
+
+async function loadMeta() {
+  try {
+    const response = await fetch(`/highlights/${encodeURIComponent(jobId)}/meta`)
+    const data = await response.json()
+    if (!response.ok) {
+      showError(`Lỗi ${response.status}: ${responseMessage(data, "Không thể tải tiêu đề.")}`)
+      return
+    }
+    acceptMeta(data)
+    saveMeta.disabled = false
+  } catch (_exception) {
+    showError("Không thể kết nối hoặc phản hồi từ máy chủ không hợp lệ.")
+  }
+}
+
+saveMeta.addEventListener("click", async () => {
+  error.textContent = ""
+  error.hidden = true
+  const rows = Array.from(metaList.children)
+  const clips = metaClips.map((clip, index) => ({ file: clip.file, ...readMeta(rows[index + 1]) }))
+  const body = { reel: readMeta(rows[0]), clips }
+  saveMeta.disabled = true
+  try {
+    const response = await fetch(`/highlights/${encodeURIComponent(jobId)}/meta`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    })
+    const data = await response.json()
+    if (!response.ok) {
+      showError(`Lỗi ${response.status}: ${responseMessage(data, "Không thể lưu.")}`)
+      return
+    }
+    acceptMeta(data)
+    status.textContent = "Đã lưu tiêu đề và hashtag."
+    status.hidden = false
+  } catch (_exception) {
+    showError("Không thể kết nối hoặc phản hồi từ máy chủ không hợp lệ.")
+  } finally {
+    saveMeta.disabled = false
+  }
+})
 
 try {
   jobId = pathMatch ? decodeURIComponent(pathMatch[1]) : null

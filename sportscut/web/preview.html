@@ -5,6 +5,7 @@
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/timefmt.js" defer></script>
   <script src="/static/filters.js" defer></script>
+  <script src="/static/metafmt.js" defer></script>
   <script src="/static/preview.js" defer></script>
 </head><body><main class="preview">
   <p><a href="/">← Tải video khác</a></p>
@@ -37,9 +38,22 @@
     <button type="button" class="delete">Xóa</button>
     <a class="clip" download hidden>Tải clip</a>
     <video class="clip-player" controls preload="none" hidden></video>
+    <button type="button" class="voiceover" aria-pressed="false" hidden>Lồng tiếng</button>
   </li></template>
   <button type="button" id="add-segment">Thêm đoạn tại thời điểm hiện tại</button>
   <button type="button" id="save">Lưu</button>
+  <section id="meta" hidden>
+    <h2>Tiêu đề, mô tả và hashtag</h2>
+    <ol id="meta-list"></ol>
+    <button type="button" id="save-meta" disabled>Lưu tiêu đề và hashtag</button>
+  </section>
+  <template id="meta-row"><li class="meta-item">
+    <h3 class="meta-name"></h3>
+    <label>Tiêu đề <input class="meta-title" type="text"></label>
+    <label>Mô tả <textarea class="meta-caption" rows="3"></textarea></label>
+    <label>Hashtag <input class="meta-hashtags" type="text" placeholder="#BongDa #Highlight"></label>
+    <button type="button" class="copy">Sao chép</button>
+  </li></template>
   <p id="status" role="status" hidden></p>
   <p id="error" role="alert" aria-live="assertive" hidden></p>
 </main></body></html>

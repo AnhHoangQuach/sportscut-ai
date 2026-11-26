@@ -91,3 +91,7 @@ The key order is score, format_ok, fact_recall, hallucination_rate, vi_rate, per
 - `docs/superpowers/specs/2026-11-23-t-010-add-event-types-to-segments-and-design.md`
 - `docs/superpowers/specs/2026-11-23-t-003-export-segments-as-mp4-clips-plus-design.md`
 - `docs/superpowers/specs/2026-11-23-t-002-detect-highlight-segments-from-audio-excitement-design.md`
+
+## Updated by T-028
+
+Updated by T-028: the format checks at the top of `score_case` are exposed unchanged as `sportscut.commentary.eval_meta.format_problems(meta) -> list[str]` (same messages, same order). `score_case` calls it, so the eval-meta output is unchanged, and `PUT /highlights/{id}/meta` reuses it to return 422 '<where>: <problem>'.

@@ -511,9 +511,16 @@ STUB_RE = re.compile(
 IMPORT_RE = re.compile(r"^\s*from sportscut\.events import [a-z_, ]+$")
 
 
+# Updated by T-028: T-015 is merged (squash commit dc06807, parent 0c613ee), so
+# merge-base(main, HEAD) no longer shows its stub lines on any later branch.
+# Pin the diff to T-015's own change; the current-file checks below still run.
+T015_PARENT = "0c613ee27e00a932c64a2da6c43c10f4a7ee14c2"
+T015_COMMIT = "dc0680766116b53ae10049c6078750054c05ec6d"
+
+
 @pytest.mark.parametrize("path", sorted(STUB_FILES))
 def test_ac11_existing_tests_only_gain_a_pass_through_stub(path):
-    diff = _git("diff", "-U0", _base(), "--", path).splitlines()
+    diff = _git("diff", "-U0", T015_PARENT, T015_COMMIT, "--", path).splitlines()
     removed = [l[1:] for l in diff if l.startswith("-") and not l.startswith("---")]
     added = [l[1:] for l in diff if l.startswith("+") and not l.startswith("+++")]
     assert all(IMPORT_RE.match(line) for line in removed), removed

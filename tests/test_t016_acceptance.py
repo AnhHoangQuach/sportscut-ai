@@ -377,6 +377,7 @@ def test_t016_preview_and_upload_pages_expose_accessible_filter_controls(
         "/static/style.css",
         "/static/timefmt.js",
         "/static/filters.js",
+        "/static/metafmt.js",
         "/static/preview.js",
     ]
     scripts = preview.find(tag="script")

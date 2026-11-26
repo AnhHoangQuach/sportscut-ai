@@ -14,11 +14,14 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from sportscut import export, media, pipeline, reel, sources
+from sportscut.commentary.eval_meta import format_problems
+from sportscut.commentary.facts import ClipFacts
+from sportscut.commentary.meta import ClipMeta, generate_meta
 from sportscut.media import MediaError
-from sportscut.models import Segment
+from sportscut.models import EVENT_TYPES, Segment
 from sportscut.player import PlayerQuery
 from sportscut.pipeline import PipelineError
 from sportscut.ranking import parse_events
@@ -32,6 +35,12 @@ CLIPS_DIR = "clips"
 DOWNLOAD_DIR = "download"
 JOB_FILE = "job.json"
 PLAYER_DIR = "player"
+META_FILE = "meta.json"
+REEL_DEFAULT = ClipMeta(
+    "Tổng hợp highlight trận đấu",
+    "Tổng hợp những khoảnh khắc đáng chú ý trong trận đấu. Cùng xem lại nhé!",
+    ("#BongDa", "#Highlight", "#TongHop"),
+)
 WEB_DIR = resources.files("sportscut").joinpath("web")
 
 app = FastAPI(title="SportsCut")
@@ -71,6 +80,23 @@ class SegmentEdits(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     segments: list[SegmentEdit] = Field(max_length=50)
+
+
+class MetaText(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str
+    caption: str
+    hashtags: list[str]
+
+
+class ClipMetaText(MetaText):
+    file: str
+
+
+class MetaEdits(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reel: MetaText
+    clips: list[ClipMetaText] = Field(max_length=50)
 
 
 def _data_dir() -> Path:
@@ -588,3 +614,53 @@ def get_clip(job_id: str, name: str) -> FileResponse:
     except (_JobNotFound, OSError, KeyError, TypeError):
         raise HTTPException(404, "not found") from None
     return FileResponse(path, media_type="video/mp4")
+
+
+def _default_clip_meta(entry: dict) -> dict:
+    event = entry.get("event", "other")
+    return generate_meta(ClipFacts(event if event in EVENT_TYPES else "other")).to_dict()
+
+
+def _meta_body(job_id: str, job: dict, edits: MetaEdits | None) -> dict[str, object]:
+    saved = {clip.file: clip.model_dump(exclude={"file"}) for clip in edits.clips} if edits else {}
+    reel_meta = edits.reel.model_dump() if edits else REEL_DEFAULT.to_dict()
+    return {"job_id": job_id, "reel": reel_meta, "clips": [
+        {"file": entry["file"], **saved.get(entry["file"], _default_clip_meta(entry))}
+        for entry in job["segments"]
+    ]}
+
+
+@app.get("/highlights/{job_id}/meta")
+def get_meta(job_id: str) -> dict[str, object]:
+    try:
+        job_dir, job = _load_job(job_id)
+    except _JobNotFound:
+        raise HTTPException(404, "not found") from None
+    try:
+        edits = MetaEdits.model_validate_json((job_dir / META_FILE).read_bytes())
+    except (OSError, ValidationError):
+        edits = None
+    return _meta_body(job_id, job, edits)
+
+
+def _meta_problems(where: str, item: MetaText) -> list[str]:
+    meta = ClipMeta(item.title, item.caption, tuple(item.hashtags))
+    return [f"{where}: {problem}" for problem in format_problems(meta)]
+
+
+@app.put("/highlights/{job_id}/meta")
+def put_meta(job_id: str, edits: MetaEdits) -> dict[str, object]:
+    try:
+        job_dir, job = _load_job(job_id)
+    except _JobNotFound:
+        raise HTTPException(404, "not found") from None
+    if [clip.file for clip in edits.clips] != [entry["file"] for entry in job["segments"]]:
+        raise HTTPException(422, "clips must match the job's clips")
+    problems = _meta_problems("reel", edits.reel) + [
+        problem for index, clip in enumerate(edits.clips, 1)
+        for problem in _meta_problems(f"clip {index}", clip)
+    ]
+    if problems:
+        raise HTTPException(422, "; ".join(problems))
+    _write_job(job_dir / META_FILE, edits.model_dump())
+    return _meta_body(job_id, job, edits)

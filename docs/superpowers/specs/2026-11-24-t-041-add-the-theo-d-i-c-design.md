@@ -60,3 +60,7 @@ Verify: `python -m pytest -q` shows 0 failed; the numstat stays under 380 non-do
 - `docs/superpowers/specs/2026-11-23-t-008-serve-a-web-upload-page-for-design.md`
 - `docs/superpowers/specs/2026-11-24-t-040-add-post-players-and-get-players-design.md`
 - `docs/superpowers/specs/2026-11-23-t-016-add-event-badges-and-ch-b-design.md`
+
+## Updated by T-028
+
+Updated by T-028: the T-028 plan asked to pin test_ac9_ac10_scope_and_size to the T-041 commit 373a8438. T-015 (Tech Lead, round 1) had already rewritten that test to check only the project-wide frozen paths against the merge base, so it no longer fails on later branches. T-028 leaves the test unchanged (see the Deviations section of the T-028 plan).
