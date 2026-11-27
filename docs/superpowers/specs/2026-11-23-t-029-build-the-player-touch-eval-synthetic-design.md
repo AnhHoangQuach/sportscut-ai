@@ -93,3 +93,4 @@ Goal of R-006: `sportscut player match.mp4 --team red --number 10 --out DIR` wri
 
 - `docs/superpowers/specs/2026-11-23-t-036-add-ffmpeg-media-helpers-and-synthetic-design.md`
 - T-031 (2026-11-27): detect_touches now returns touch candidates by any player (team/number None); find_touches still returns [] until T-032/T-033. The T-029 README baseline is kept as history.
+- T-032 (2026-11-27): detect_touches fills Touch.team from two shirt-colour clusters; find_touches returns every touch by the queried team (number ignored until T-033), superseding T-031 AC10 (find_touches == []).

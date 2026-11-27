@@ -61,3 +61,4 @@ Implement touch candidates in `sportscut/player.py`. Read frames at 5 fps, scale
 - `docs/superpowers/specs/2026-11-23-t-020-detect-the-ball-and-let-it-design.md`
 - `docs/superpowers/specs/2026-11-25-t-045-follow-the-players-with-a-smoothed-design.md`
 - `docs/superpowers/specs/2026-11-23-t-030-add-sportscut-player-cli-that-cuts-design.md`
+- T-032 (2026-11-27): detect_touches fills Touch.team from two shirt-colour clusters; find_touches returns every touch by the queried team (number ignored until T-033), superseding T-031 AC10 (find_touches == []).
