@@ -107,3 +107,7 @@ With `transcriber=None`, `sportscut.subtitles.transcribe` and `write_srt` are ne
 - `docs/superpowers/specs/2026-11-23-t-004-add-a-pipeline-entry-point-and-design.md`
 - `docs/superpowers/specs/2026-11-23-t-036-add-ffmpeg-media-helpers-and-synthetic-design.md`
 - `docs/superpowers/specs/2026-11-23-t-035-scaffold-sportscut-packaging-version-cli-and-design.md`
+
+## Updated by T-027
+
+Updated by T-027: `sportscut download-models --tts` downloads the Vietnamese Piper voice `vi_VN-vais1000-medium` (.onnx + .onnx.json) into `$XDG_CACHE_HOME/sportscut/piper` (default `~/.cache/sportscut/piper`) and prints `downloaded Piper voice vi_VN-vais1000-medium to <path>`; a failure prints `sportscut download-models: error: <exc>` and exits 1. `download-models` without `--tts` keeps its exact T-022 behaviour (faster-whisper model, same stdout/stderr). The `[tts]` extra follows the same lazy-import, `default_*() -> None` and stderr-notice pattern as `[asr]`.

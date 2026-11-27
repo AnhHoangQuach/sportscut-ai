@@ -147,3 +147,7 @@ The test helper band_rms(samples, 16000, f, t0, t1) zeroes rfft bins outside f±
 - Check the README and spec appendices (AC16).
 - Check eval f1 and the eval-meta outputs equal main, and run the git-scope checks gated to office/T-027 branches (AC17).
 - Confirm each new test fails when the duck gain is set to 1.0 or when the voice is placed 1 s late.
+
+## Deviations
+
+- README: the T-026 sentence `Âm thanh lồng tiếng sẽ có ở task sau.` is **kept**, not replaced. A new line `Từ T-027 đã có âm thanh lồng tiếng: xem mục kế tiếp.` is inserted right after it, then the new `### Lồng tiếng bình luận (--voiceover)` subsection. Reason: `tests/test_t042_round2_acceptance.py::test_ac3_shared_files_are_append_only` and `tests/test_t042_tester_acceptance.py::test_ac3_shared_files_are_append_only_and_existing_commands_work` are not branch-gated and require 0 deleted lines in README.md against the merge-base; replacing the sentence deletes 2 lines and fails both. Pre-existing tests may not be edited (AC17), so README stays insert-only. AC16 still holds literally: the original sentence is split by a newline (`sẽ có\nở task sau.`), so the string `sẽ có ở task sau` does not occur in README.md.

@@ -53,3 +53,7 @@ Add `commentary/script.py` with `write_script(facts, clip_len, backend) -> list[
 - `docs/superpowers/specs/2026-11-23-t-023-add-clip-facts-a-template-metadata-design.md`
 - `docs/superpowers/specs/2026-11-26-t-046-re-land-the-reviewed-t-025-design.md`
 - `docs/superpowers/specs/2026-11-23-t-004-add-a-pipeline-entry-point-and-design.md`
+
+## Updated by T-027
+
+Updated by T-027: the script lines now drive audio. With `cut --voiceover` and the `[tts]` extra installed, each clip's `(start, text)` lines from `write_script` are synthesized by Piper (`sportscut.commentary.voiceover`), placed at their scripted times (a line that runs long delays the next one, audio past the clip end is dropped) and mixed over the clip with the original audio lowered by 12 dB during speech. The result is `OUT/clip_NN.vo.mp4` (and `OUT/vertical/clip_NN.vo.mp4` with `--vertical`); manifest keys `voiceover_file` / `vertical_voiceover_file` follow `script_file`. `_write_script` now also returns the lines; the script.json file is unchanged. Without the extra, `--voiceover` prints a one-line stderr notice, still writes the scripts and exits 0, exactly as in T-026.
