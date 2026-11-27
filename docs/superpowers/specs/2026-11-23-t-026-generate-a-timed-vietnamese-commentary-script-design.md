@@ -57,3 +57,7 @@ Add `commentary/script.py` with `write_script(facts, clip_len, backend) -> list[
 ## Updated by T-027
 
 Updated by T-027: the script lines now drive audio. With `cut --voiceover` and the `[tts]` extra installed, each clip's `(start, text)` lines from `write_script` are synthesized by Piper (`sportscut.commentary.voiceover`), placed at their scripted times (a line that runs long delays the next one, audio past the clip end is dropped) and mixed over the clip with the original audio lowered by 12 dB during speech. The result is `OUT/clip_NN.vo.mp4` (and `OUT/vertical/clip_NN.vo.mp4` with `--vertical`); manifest keys `voiceover_file` / `vertical_voiceover_file` follow `script_file`. `_write_script` now also returns the lines; the script.json file is unchanged. Without the extra, `--voiceover` prints a one-line stderr notice, still writes the scripts and exits 0, exactly as in T-026.
+
+### Updated by T-048
+
+Updated by T-048: scripts written by the pipeline now use `facts_from_entry(entry, match)`, where `match` is the new `pipeline.run(match=None)` keyword fed by the `cut` match options (`--home`, `--away`, `--competition`, `--kickoff`, `--match-info`). A script names the teams, the competition, the score or the minute only when they are given (the minute needs a kickoff at or before the clip). Without match info the scripts are byte-identical to before; the script.json record keys and the `template` backend are unchanged.

@@ -63,3 +63,7 @@ Request R-005. Re-lands the first slice of the dropped T-024 (read its spec plus
 - `docs/superpowers/specs/2026-11-27-t-050-add-several-deterministic-vietnamese-phrasings-per-design.md`
 - `docs/superpowers/specs/2026-11-23-t-027-add-an-offline-vietnamese-tts-voice-design.md`
 - `docs/superpowers/specs/2026-11-24-t-042-land-the-t-017-9-16-design.md`
+
+## Updated by T-048
+
+Updated by T-048: `sportscut cut --meta` now exists. It takes the same match options as `meta` (shared helper `_add_match_options`; the inline parsing moved to `_match_from_args` with no behaviour change) plus `--meta-backend`, and after the cut it calls `publish.write_meta(OUT, match, backend)` and prints `OUT/captions.txt` and `OUT/reel.json` after the clip paths. The out-of-scope line saying pipeline.py stays untouched is superseded: `pipeline.run` gained `match=None` so `--voiceover` scripts use the same match info. publish.py and the `meta` command output are unchanged.
