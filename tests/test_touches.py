@@ -184,11 +184,13 @@ def eval_player_set(require_ffmpeg, tmp_path_factory) -> Path:
 def test_eval_player_gate(eval_player_set: Path) -> None:
     report = evaluate_dir(eval_player_set)
     assert report["touch_f1_any"] >= 0.9
-    assert report["f1"] == report["precision"] == report["recall"] == 0.0
+    assert report["f1"] > 0.0
     for name in build.CASES:
         clip = eval_player_set / name / "clip.mp4"
+        detected = player.detect_touches(clip)
         for entry in build.case_labels(name)["players"]:
-            assert player.find_touches(clip, player.PlayerQuery(entry["team"], entry["number"])) == []
+            for touch in player.find_touches(clip, player.PlayerQuery(entry["team"], entry["number"])):
+                assert touch in detected and touch.team == entry["team"]
 
 
 def test_cli_debug_candidates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

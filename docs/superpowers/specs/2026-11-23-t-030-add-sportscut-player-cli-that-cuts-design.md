@@ -108,3 +108,10 @@ Wire `sportscut player VIDEO --team T --number N --out DIR [--pre 3 --post 2 --m
 - `POST /players` now wraps `make_player_reel` for either a new upload or an
   existing API job, and the manifest-authorized reel route serves its current
   mp4. The earlier HTTP-API exclusion applied to T-030's CLI scope only.
+
+## Updated by T-032
+
+- Updated by T-032 (2026-11-27): find_touches is no longer the T-029 stub. It returns every touch by the
+  queried team (`--team` name or #rrggbb mapped to the nearest shirt-colour cluster; number ignored until
+  T-033), so `sportscut player` now writes a non-empty reel. A team colour equally close to both clusters
+  raises ValueError, which reuses this spec's exit-2 / HTTP 422 path. The CLI contract above is unchanged.

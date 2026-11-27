@@ -291,6 +291,54 @@ Lọc clip theo sự kiện và chỉ giữ các pha được xếp hạng cao n
 sportscut cut match.mp4 --out clips --events goal --top 5
 ```
 
+## Đội theo màu áo (T-032)
+
+`detect_touches` giờ gán **đội** cho mỗi lần chạm bóng theo màu áo. Mỗi giây lấy một khung, gom các điểm ảnh
+cầu thủ có **độ bão hoà màu cao** (bỏ chữ số trắng, quả bóng, vạch vôi, quần đen, bóng đổ) rồi chia chúng
+thành nhóm màu bằng k-means trong không gian HSV. Nhóm quá nhỏ (thủ môn, trọng tài, nhiễu ở mép) bị bỏ,
+hai nhóm quá gần nhau được gộp lại; hai nhóm lớn nhất còn lại là **hai đội**, đặt tên theo màu gần nhất
+(`red`, `blue`, ...). Khối cầu thủ chạm bóng thuộc đội có nhiều điểm ảnh áo gần nhất.
+
+- `--team` nhận tên màu (`red`, `sky`, ...) hoặc mã `#rrggbb`, và được ánh xạ tới **đội có màu áo gần nhất**,
+  ví dụ `--team '#c81e1e'` hay `--team orange` chọn đội đỏ, `--team sky` chọn đội xanh.
+- Nếu màu yêu cầu cách đều hai màu áo (chênh lệch ≤ 5 %), lệnh báo lỗi và thoát với mã 2:
+  `sportscut player: error: team colour '#ff00ff' is equally close to both team shirts (red, blue); use --team red, --team blue or a closer #rrggbb`
+  (API `POST /players` trả HTTP 422).
+- Chưa đọc số áo (T-033), nên video tổng hợp hiện chứa **mọi lần chạm bóng của cả đội đó**, chưa lọc theo số áo.
+
+Giới hạn đã biết:
+
+- Hai đội **trùng màu áo** (hoặc màu rất giống nhau) không tách được.
+- Áo **trắng, đen hoặc xám** có độ bão hoà thấp nên không được gom nhóm: `find_touches` trả về rỗng.
+- Clip chỉ thấy **một đội** thì không có đủ hai nhóm màu: `find_touches` trả về rỗng.
+- Hỏi `--team white`/`black` khi hai đội mặc áo màu đậm thường gặp lỗi `equally close`: hãy dùng tên đội hoặc mã `#rrggbb`.
+
+Các hằng số (trong `sportscut/player.py`):
+
+```text
+TEAM_MIN_SAT = 0.25     # độ bão hoà tối thiểu của điểm ảnh áo
+TEAM_K = 4              # số nhóm k-means trước khi bỏ/gộp
+TEAM_MIN_SHARE = 0.1    # tỉ lệ điểm ảnh tối thiểu để một nhóm là một đội
+TEAM_MERGE = 0.15       # gộp hai nhóm gần hơn mức này
+TEAM_EVERY = 5          # lấy 1 trên 5 mẫu 5 Hz = 1 khung/giây
+TEAM_TIE = 0.05         # chênh lệch khoảng cách tương đối coi là 'cách đều'
+TEAM_MIN_PIXELS = 50    # số điểm ảnh áo tối thiểu
+TEAM_MAX_PIXELS = 20000 # số điểm ảnh tối đa đưa vào k-means
+TEAM_ITERS = 20         # số vòng lặp k-means tối đa
+```
+
+Trước T-032:
+
+```json
+{"f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 0.9737, "team_accuracy": 0.0, "id_accuracy": 0.0, "seconds_per_min": 2.1447, "per_clip": [{"clip": "dribble", "duration": 20.0, "touches": 13, "queries": 4, "f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 1.0, "team_accuracy": 0.0, "id_accuracy": 0.0, "seconds_per_min": 2.3045}, {"clip": "near_miss", "duration": 20.0, "touches": 6, "queries": 5, "f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 1.0, "team_accuracy": 0.0, "id_accuracy": 0.0, "seconds_per_min": 2.0644}, {"clip": "number_hidden", "duration": 20.0, "touches": 8, "queries": 3, "f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 1.0, "team_accuracy": 0.0, "id_accuracy": 0.0, "seconds_per_min": 2.2837}, {"clip": "short_passes", "duration": 24.0, "touches": 12, "queries": 6, "f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 0.9091, "team_accuracy": 0.0, "id_accuracy": 0.0, "seconds_per_min": 2.0537}]}
+```
+
+Sau T-032:
+
+```json
+{"f1": 0.5827, "precision": 0.4205, "recall": 0.9487, "touch_f1_any": 0.9737, "team_accuracy": 1.0, "id_accuracy": 0.0, "seconds_per_min": 2.6874, "per_clip": [{"clip": "dribble", "duration": 20.0, "touches": 13, "queries": 4, "f1": 0.6667, "precision": 0.5, "recall": 1.0, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 0.0, "seconds_per_min": 2.8867}, {"clip": "near_miss", "duration": 20.0, "touches": 6, "queries": 5, "f1": 0.5, "precision": 0.3333, "recall": 1.0, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 0.0, "seconds_per_min": 2.597}, {"clip": "number_hidden", "duration": 20.0, "touches": 8, "queries": 3, "f1": 0.7273, "precision": 0.5714, "recall": 1.0, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 0.0, "seconds_per_min": 2.7184}, {"clip": "short_passes", "duration": 24.0, "touches": 12, "queries": 6, "f1": 0.4762, "precision": 0.3333, "recall": 0.8333, "touch_f1_any": 0.9091, "team_accuracy": 1.0, "id_accuracy": 0.0, "seconds_per_min": 2.6266}]}
+```
+
 ## API HTTP
 
 Cài phần phụ thuộc API và chạy server cục bộ:
