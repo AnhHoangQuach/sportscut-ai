@@ -105,3 +105,65 @@ def generate_metas_llm(facts_list, client=None) -> list[ClipMeta]:
             continue
         result.append(meta.generate_meta(facts))
     return result
+
+
+SCRIPT_PROMPT = """You write Vietnamese football commentary for one highlight clip.
+The input JSON has the event label, optional minute, home, away, competition and score, the clip length \
+and the event moment (peak, in seconds), plus before_max_syllables and at_after_max_syllables.
+Reply with JSON only (no prose, no code fence): {"before": str|null, "at": str, "after": str|null}.
+- "at" is spoken at the event moment and contains the label.
+- "before" is context spoken before the moment and must not reveal the event.
+- Keep "before" within before_max_syllables and "at" plus "after" within at_after_max_syllables \
+(one syllable per Vietnamese word, one per digit).
+- Write Vietnamese with diacritics.
+- Use no number and no name that is not in the facts.
+- Never say who scored.
+- Capitalise only the first word of a sentence and the given names."""
+
+
+def _parse_roles(text: str) -> dict | None:
+    text = text.strip()
+    if fenced := re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL):
+        text = fenced.group(1)
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("at"), str) or not _nfc(data["at"]).strip():
+        return None
+    roles = {"at": _nfc(data["at"]).strip()}
+    for key in ("before", "after"):
+        value = data.get(key)
+        if value is not None and not isinstance(value, str):
+            return None
+        roles[key] = (_nfc(value).strip() or None) if value is not None else None
+    return {key: roles[key] for key in ("before", "at", "after")}
+
+
+def script_roles_llm(facts, limits: dict, client=None) -> dict | None:
+    if client is None:
+        key = os.environ.get(KEY_ENV, "").strip()
+        if not key:
+            logger.warning("ANTHROPIC_API_KEY is not set; template fallback")
+            return None
+        try:
+            import anthropic
+        except ImportError:
+            logger.warning("the llm backend needs the [llm] extra (pip install 'sportscut[llm]'); template fallback")
+            return None
+    facts_fields = {k: v for k, v in vars(facts).items() if v is not None}
+    content = json.dumps({"label": EVENT_LABELS[facts.event], **facts_fields, **limits}, ensure_ascii=False)
+    request = {"model": model_name(), "max_tokens": 1024, "system": SCRIPT_PROMPT,
+               "messages": [{"role": "user", "content": content}]}
+    try:
+        if client is None:
+            client = anthropic.Anthropic(api_key=key, timeout=TIMEOUT_SEC)
+        response = client.messages.create(**request)
+        text = "".join(block.text for block in response.content if getattr(block, "type", None) == "text")
+    except Exception as exc:  # never log str(exc): it may echo request details
+        logger.warning("LLM script request failed (%s); template fallback", type(exc).__name__)
+        return None
+    roles = _parse_roles(text)
+    if roles is None:
+        logger.warning("LLM script response is not valid; template fallback")
+    return roles

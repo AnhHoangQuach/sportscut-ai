@@ -84,3 +84,7 @@ AC15 LIVE GATE: if ANTHROPIC_API_KEY is absent, write 'LIVE EVAL NOT RUN: no ANT
 - `docs/superpowers/specs/2026-11-24-t-041-add-the-theo-d-i-c-design.md`
 - `docs/superpowers/specs/2026-11-25-t-044-re-land-the-reviewed-t-017-design.md`
 - `docs/superpowers/specs/2026-11-24-t-042-land-the-t-017-9-16-design.md`
+
+## Updated by T-026
+
+Updated by T-026: `llm.py` gains `SCRIPT_PROMPT` and `script_roles_llm(facts, limits, client=None) -> dict | None`, which asks for `{"before", "at", "after"}` commentary roles for one clip with the same key, import, exception and no-secret logging rules as `generate_metas_llm` (warnings end with `template fallback`). `generate_metas_llm`, `build_request`, `parse_response` and `SYSTEM_PROMPT` are unchanged. The returned roles are placed and checked by `script.validate_script`; a rejected script falls back to the template.
