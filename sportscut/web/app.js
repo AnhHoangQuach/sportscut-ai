@@ -39,6 +39,13 @@ form.addEventListener("submit", async (event) => {
   if (min_len) formData.append("min_len", min_len)
   if (max_len) formData.append("max_len", max_len)
   if (events) formData.append("events", events)
+  const match = ["home", "away", "competition"]
+    .map((name) => [name, document.querySelector(`#${name}`).value.trim()])
+    .filter(([, value]) => value)
+  if (match.length) {
+    formData.append("meta", "true")
+    for (const [name, value] of match) formData.append(name, value)
+  }
 
   submit.disabled = true
   form.setAttribute("aria-busy", "true")

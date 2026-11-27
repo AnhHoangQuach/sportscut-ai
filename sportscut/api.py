@@ -17,8 +17,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from sportscut import export, media, pipeline, reel, sources
+from sportscut.commentary import publish
 from sportscut.commentary.eval_meta import format_problems
-from sportscut.commentary.facts import ClipFacts
+from sportscut.commentary.facts import ClipFacts, facts_from_entry
 from sportscut.commentary.meta import ClipMeta, generate_meta
 from sportscut.media import MediaError
 from sportscut.models import EVENT_TYPES, Segment
@@ -230,18 +231,26 @@ def _highlights(
 
 def _job_response(
     request: Request, job_id: str, job: dict[str, object],
-    entries: list[dict] | None = None,
+    entries: list[dict] | None = None, *, job_dir: Path,
 ) -> dict[str, object]:
     if entries is None:
         entries = job["segments"]
         assert isinstance(entries, list)
-    return {
+    response = {
         "job_id": job_id,
         "source_name": job["source_name"],
         "source_url": job["source_url"],
         "duration": job["duration"],
         "highlights": _highlights(request, job_id, entries),
     }
+    stored = _stored_meta(job_dir)
+    if stored[1] is not None:
+        body = _meta_body(job_id, job, _saved_edits(job_dir), stored)
+        texts = {clip.pop("file"): clip for clip in body["clips"]}
+        for item, entry in zip(response["highlights"], entries):
+            item.update(texts[entry["file"]])
+        response["reel"] = body["reel"]
+    return response
 
 
 def _manifest(job_id: str) -> list[dict]:
@@ -330,7 +339,7 @@ def get_job(
                 entry for entry in entries
                 if entry.get("event", "other") in selected_events
             ]
-        return _job_response(request, job_id, job, entries)
+        return _job_response(request, job_id, job, entries, job_dir=job_dir)
     if (job_dir / INPUT_NAME).exists():
         raise HTTPException(404, "not found")
     entries = _manifest(job_id)
@@ -351,6 +360,12 @@ def create_highlights(
     min_len: float = Form(10, gt=0, allow_inf_nan=False),
     max_len: float = Form(30, gt=0, allow_inf_nan=False),
     events: str | None = Form(None),
+    meta: bool = Form(False),
+    home: str | None = Form(None),
+    away: str | None = Form(None),
+    competition: str | None = Form(None),
+    kickoff: float | None = Form(None, allow_inf_nan=False),
+    meta_backend: Literal["template", "llm"] | None = Form(None),
 ) -> dict[str, object]:
     if url is not None and not url.strip():
         url = None
@@ -362,6 +377,17 @@ def create_highlights(
     if events is not None and events.strip():
         try:
             selected_events = parse_events(events)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+    home, away, competition = ((value or "").strip() or None for value in (home, away, competition))
+    match = {k: v for k, v in (
+        ("home", home), ("away", away), ("competition", competition), ("kickoff", kickoff)
+    ) if v is not None} or None
+    if not meta and (match is not None or meta_backend is not None):
+        raise HTTPException(422, "home, away, competition, kickoff and meta_backend need meta")
+    if match is not None:
+        try:
+            facts_from_entry({"start": 0, "end": 1, "event": "other"}, match)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
     if url is not None:
@@ -385,6 +411,8 @@ def create_highlights(
             input_path, job_dir / CLIPS_DIR,
             top=top, min_len=min_len, max_len=max_len, events=selected_events,
         )
+        if meta and entries:
+            publish.write_meta(job_dir / CLIPS_DIR, match, meta_backend or "template")
         job: dict[str, object] = {
             "source_name": (file.filename or "upload") if file is not None else None,
             "source_url": url,
@@ -408,7 +436,7 @@ def create_highlights(
     except Exception:
         shutil.rmtree(job_dir, ignore_errors=True)
         raise
-    return _job_response(request, job_id, job)
+    return _job_response(request, job_id, job, job_dir=job_dir)
 
 
 @app.post("/players")
@@ -591,7 +619,7 @@ def put_segments(request: Request, job_id: str, edits: SegmentEdits):
     for entry in job["segments"]:
         if entry["file"] not in current_files:
             (clips_dir / entry["file"]).unlink(missing_ok=True)
-    return _job_response(request, job_id, new_job)
+    return _job_response(request, job_id, new_job, job_dir=job_dir)
 
 
 @app.get("/highlights/{job_id}/clips/{name}", name="get_clip")
@@ -621,9 +649,42 @@ def _default_clip_meta(entry: dict) -> dict:
     return generate_meta(ClipFacts(event if event in EVENT_TYPES else "other")).to_dict()
 
 
-def _meta_body(job_id: str, job: dict, edits: MetaEdits | None) -> dict[str, object]:
-    saved = {clip.file: clip.model_dump(exclude={"file"}) for clip in edits.clips} if edits else {}
-    reel_meta = edits.reel.model_dump() if edits else REEL_DEFAULT.to_dict()
+def _saved_edits(job_dir: Path) -> MetaEdits | None:
+    try:
+        return MetaEdits.model_validate_json((job_dir / META_FILE).read_bytes())
+    except (OSError, ValidationError):
+        return None
+
+
+def _read_json(path: Path) -> object:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _meta_text(value: object) -> dict | None:
+    try:
+        return MetaText.model_validate(value).model_dump()
+    except ValidationError:
+        return None
+
+
+def _stored_meta(job_dir: Path) -> tuple[dict[str, dict], dict | None]:
+    entries = _read_json(job_dir / CLIPS_DIR / "highlights.json")
+    clips = {
+        entry["file"]: text for entry in (entries if isinstance(entries, list) else [])
+        if isinstance(entry, dict) and isinstance(entry.get("file"), str)
+        and (text := _meta_text({key: entry.get(key) for key in publish.META_KEYS}))
+    }
+    return clips, _meta_text(_read_json(job_dir / CLIPS_DIR / publish.REEL_NAME))
+
+
+def _meta_body(job_id: str, job: dict, edits: MetaEdits | None, stored: tuple) -> dict[str, object]:
+    saved, reel_meta = stored
+    if edits:
+        saved = {**saved, **{clip.file: clip.model_dump(exclude={"file"}) for clip in edits.clips}}
+    reel_meta = edits.reel.model_dump() if edits else reel_meta or REEL_DEFAULT.to_dict()
     return {"job_id": job_id, "reel": reel_meta, "clips": [
         {"file": entry["file"], **saved.get(entry["file"], _default_clip_meta(entry))}
         for entry in job["segments"]
@@ -636,11 +697,7 @@ def get_meta(job_id: str) -> dict[str, object]:
         job_dir, job = _load_job(job_id)
     except _JobNotFound:
         raise HTTPException(404, "not found") from None
-    try:
-        edits = MetaEdits.model_validate_json((job_dir / META_FILE).read_bytes())
-    except (OSError, ValidationError):
-        edits = None
-    return _meta_body(job_id, job, edits)
+    return _meta_body(job_id, job, _saved_edits(job_dir), _stored_meta(job_dir))
 
 
 def _meta_problems(where: str, item: MetaText) -> list[str]:
@@ -663,4 +720,4 @@ def put_meta(job_id: str, edits: MetaEdits) -> dict[str, object]:
     if problems:
         raise HTTPException(422, "; ".join(problems))
     _write_job(job_dir / META_FILE, edits.model_dump())
-    return _meta_body(job_id, job, edits)
+    return _meta_body(job_id, job, edits, _stored_meta(job_dir))
