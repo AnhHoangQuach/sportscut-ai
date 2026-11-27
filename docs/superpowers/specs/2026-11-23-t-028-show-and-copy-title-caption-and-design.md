@@ -78,3 +78,5 @@ All existing T-009/T-016 preview.js tests pass unchanged.
 - `docs/superpowers/specs/2026-11-23-t-016-add-event-badges-and-ch-b-design.md (Updated by T-028: the script order becomes timefmt.js, filters.js, metafmt.js, preview.js)`
 - `docs/superpowers/specs/2026-11-23-t-023-add-clip-facts-a-template-metadata-design.md (Updated by T-028: the format checks are exposed as eval_meta.format_problems and reused by PUT /highlights/{id}/meta)`
 - `docs/superpowers/specs/2026-11-24-t-041-add-the-theo-d-i-c-design.md (Updated by T-028: the AC9/AC10 scope and size test is pinned to the T-041 commit 373a8438)`
+
+Updated by T-050: the default clip meta from `generate_meta(ClipFacts(event))` now uses the hashed phrasing pick (see the T-023 spec's '## Updated by T-050'): the AC3 goal clip gives title 'Khoảnh khắc ghi bàn trong trận đấu' and caption 'Một bàn thắng đáng nhớ trong trận đấu. Hãy cùng xem lại nhé!', and the 'other' clip gives title 'Khoảnh khắc ấn tượng trong trận đấu' (caption unchanged); hashtags are unchanged.

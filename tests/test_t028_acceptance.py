@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 from sportscut import api
 WEB = Path(api.__file__).parent / "web"
 REEL = {"title": "Tổng hợp highlight trận đấu", "caption": "Tổng hợp những khoảnh khắc đáng chú ý trong trận đấu. Cùng xem lại nhé!", "hashtags": ["#BongDa", "#Highlight", "#TongHop"]}
-GOAL = {"title": "Bàn thắng trong trận đấu", "caption": "Bàn thắng trong trận đấu. Cùng xem lại khoảnh khắc này!", "hashtags": ["#BongDa", "#BanThang", "#Highlight"]}
-OTHER = {"title": "Khoảnh khắc đáng chú ý trong trận đấu", "caption": "Khoảnh khắc đáng chú ý trong trận đấu. Cùng xem lại khoảnh khắc này!", "hashtags": ["#BongDa", "#KhoanhKhac", "#Highlight"]}
+GOAL = {"title": "Khoảnh khắc ghi bàn trong trận đấu", "caption": "Một bàn thắng đáng nhớ trong trận đấu. Hãy cùng xem lại nhé!", "hashtags": ["#BongDa", "#BanThang", "#Highlight"]}
+OTHER = {"title": "Khoảnh khắc ấn tượng trong trận đấu", "caption": "Khoảnh khắc đáng chú ý trong trận đấu. Cùng xem lại khoảnh khắc này!", "hashtags": ["#BongDa", "#KhoanhKhac", "#Highlight"]}
 EDIT = {"reel": {"title": "Tổng hợp U23 Việt Nam", "caption": "Những pha bóng hay nhất.", "hashtags": ["#BongDa", "#U23", "#VietNam"]}, "clips": [
     {"file": "clip_01.mp4", "title": "Siêu phẩm phút cuối", "caption": "Không thể tin nổi!", "hashtags": ["#BongDa", "#BanThang", "#Highlight"]},
     {"file": "clip_02.mp4", "title": "Khoảnh khắc đáng nhớ", "caption": "Xem lại nào.", "hashtags": ["#BongDa", "#KhoanhKhac", "#Highlight", "#VietNam"]}]}

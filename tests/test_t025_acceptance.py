@@ -108,7 +108,7 @@ def test_ac11_evaluate_meta_dir_llm(name, monkeypatch):
     fake_anthropic(monkeypatch, TEXT[name])
     report = eval_meta.evaluate_meta_dir(FIX, backend="llm")
     assert [report[k] for k in HEADLINE] == [1.0, 1.0, 1.0, 0.0, 1.0]
-    expected = [m.title for m in REC["good"]] if name == "good" else ["Bàn thắng: Hà Nội FC vs Hải Phòng, phút 23"]
+    expected = [m.title for m in REC["good"]] if name == "good" else ["Pha lập công: Hà Nội FC vs Hải Phòng, phút 23"]
     assert [c["title"] for c in report["per_case"]][: len(expected)] == expected
     with pytest.raises(ValueError, match="unknown backend: gpt"):
         eval_meta.evaluate_meta_dir(FIX, backend="gpt")
