@@ -118,7 +118,7 @@ def test_ac5_real_set_touch_shape(detections):
     for name, touches in detections.items():
         assert touches and [t.t for t in touches] == sorted(t.t for t in touches), name
         for t in touches:
-            assert t.team is None and t.number is None and 0 < t.confidence <= 1
+            assert t.team in {"red", "blue"} and t.number is None and 0 < t.confidence <= 1
             assert abs(t.t * 5 - round(t.t * 5)) < 1e-6 and t.t == round(t.t, 4)
             assert len(t.bbox) == 4 and all(type(v) is int for v in t.bbox)
 def test_ac6_closeups_and_missing_file(synthetic_video, tmp_path):
@@ -133,7 +133,7 @@ def test_ac7_eval_player_gate(eval_set, capsys):
     assert main(["eval-player", str(eval_set), "--json"]) == 0
     out = capsys.readouterr().out; report = json.loads(out)
     assert out.count("\n") == 1 and report["touch_f1_any"] >= 0.9
-    assert report["f1"] == report["precision"] == report["recall"] == 0.0
+    assert report["f1"] > 0.0
     assert 0 < report["seconds_per_min"] <= 6.0
 def test_ac8_near_miss_not_counted(detections):
     moments = near_miss_moments()
@@ -152,11 +152,10 @@ def test_ac9_debug_candidates(eval_set, detections, capsys):
         assert entry["candidates"] == [t.to_dict() for t in detections[entry["clip"]]]
     assert all("candidates" not in e for e in plain["per_clip"])
 def test_ac10_find_touches_empty(eval_set, detections, monkeypatch):
-    assert player.find_touches(eval_set / "near_miss" / "clip.mp4", load_labels(eval_set / "near_miss" / "labels.json")[1][0]) == []
     for name in build.CASES:
-        monkeypatch.setattr(player, "detect_touches", lambda v, n=name: detections[n])
         for q in load_labels(eval_set / name / "labels.json")[1]:
-            assert player.find_touches(eval_set / name / "clip.mp4", q) == []
+            for t in player.find_touches(eval_set / name / "clip.mp4", q):
+                assert t in detections[name] and t.team == q.team
 def test_ac10_ac12_scope_and_unchanged_api():
     assert _git("ls-files", "*.mp4") == ""
     base = _own_base()

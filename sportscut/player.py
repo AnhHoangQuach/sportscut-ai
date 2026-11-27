@@ -20,6 +20,20 @@ TOUCH_NMS = 0.4       # suppression radius in seconds (fixed)
 TEAM_NAMES = (
     "black", "blue", "green", "orange", "pink", "purple", "red", "sky", "white", "yellow"
 )
+TEAM_RGB = {
+    "black": (0, 0, 0), "blue": (0, 0, 255), "green": (0, 128, 0), "orange": (255, 165, 0),
+    "pink": (255, 105, 180), "purple": (128, 0, 128), "red": (255, 0, 0),
+    "sky": (135, 206, 235), "white": (255, 255, 255), "yellow": (255, 255, 0),
+}
+TEAM_MIN_SAT = 0.25       # min HSV saturation of a shirt pixel (tunable 0.15..0.40)
+TEAM_K = 4                # k-means clusters before dropping/merging (tunable 3..5)
+TEAM_MIN_SHARE = 0.1      # min share of pixels for a cluster to be a team (tunable 0.05..0.20)
+TEAM_MERGE = 0.15         # merge clusters closer than this, feature units (tunable 0.05..0.30)
+TEAM_EVERY = 5            # every 5th 5 Hz sample = 1 Hz (fixed)
+TEAM_TIE = 0.05           # relative distance gap counted as 'equally far' (fixed)
+TEAM_MIN_PIXELS = 50      # fixed
+TEAM_MAX_PIXELS = 20000   # fixed
+TEAM_ITERS = 20           # fixed
 
 
 def normalize_team(team: str) -> str:
@@ -65,6 +79,135 @@ class Touch:
             "confidence": float(self.confidence),
             "bbox": None if self.bbox is None else [int(value) for value in self.bbox],
         }
+
+
+def colour_features(rgb: np.ndarray) -> np.ndarray:
+    """Map uint8 RGB (N, 3) to the HSV cone [s*cos(2*pi*h), s*sin(2*pi*h), v]."""
+    rgb = np.asarray(rgb, np.float64).reshape(-1, 3) / 255
+    r, g, b = rgb[:, 0], rgb[:, 1], rgb[:, 2]
+    high = rgb.max(axis=1)
+    d = high - rgb.min(axis=1)
+    safe_d = np.where(d == 0, 1.0, d)
+    sat = np.where(high == 0, 0.0, d / np.where(high == 0, 1.0, high))
+    hue = np.where(
+        high == r,
+        np.mod((g - b) / safe_d, 6),
+        np.where(high == g, (b - r) / safe_d + 2, (r - g) / safe_d + 4),
+    ) / 6
+    angle = 2 * np.pi * np.where(d == 0, 0.0, hue)
+    return np.stack([sat * np.cos(angle), sat * np.sin(angle), high], axis=1)
+
+
+def kmeans(points: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
+    """Deterministic k-means: farthest-point initialisation, then Lloyd iterations."""
+    points = np.asarray(points, np.float64)
+    first = int(np.argmin(np.linalg.norm(points - points.mean(axis=0), axis=1)))
+    centroids = [points[first]]
+    nearest = np.linalg.norm(points - points[first], axis=1)
+    for _ in range(1, k):
+        index = int(np.argmax(nearest))
+        centroids.append(points[index])
+        nearest = np.minimum(nearest, np.linalg.norm(points - points[index], axis=1))
+    centroids = np.array(centroids)
+    labels = np.full(len(points), -1)
+    for _ in range(TEAM_ITERS):
+        dist = np.linalg.norm(points[:, None, :] - centroids[None, :, :], axis=2)
+        new = dist.argmin(axis=1)
+        if np.array_equal(new, labels):
+            break
+        labels = new
+        for j in range(k):
+            if np.any(labels == j):
+                centroids[j] = points[labels == j].mean(axis=0)
+    return centroids, labels
+
+
+@dataclass(frozen=True)
+class TeamColours:
+    centroids: tuple[tuple[float, float, float], tuple[float, float, float]]  # larger team first
+    names: tuple[str, str]                                                    # distinct TEAM_NAMES
+
+
+def shirt_pixels(frame: np.ndarray, box: tuple[int, int, int, int] | None = None) -> np.ndarray:
+    """Colour features of saturated player-mask pixels, optionally inside box (x, y, w, h)."""
+    mask = reframe.player_mask(frame)
+    if mask is None:
+        return np.zeros((0, 3))
+    if box is not None:
+        x, y, w, h = box
+        inside = np.zeros_like(mask)
+        inside[max(0, y) : y + h, max(0, x) : x + w] = True
+        mask = mask & inside
+    feats = colour_features(frame[mask])
+    return feats[np.hypot(feats[:, 0], feats[:, 1]) >= TEAM_MIN_SAT]
+
+
+_TEAM_FEATS = colour_features(np.array(list(TEAM_RGB.values()), np.uint8))
+
+
+def name_teams(centroids: np.ndarray) -> tuple[str, str]:
+    """The ordered pair of distinct TEAM_NAMES closest to the two centroids."""
+    d = np.linalg.norm(np.asarray(centroids)[:2, None, :] - _TEAM_FEATS[None, :, :], axis=2)
+    best, pair = math.inf, ("", "")
+    for a, name_a in enumerate(TEAM_NAMES):
+        for b, name_b in enumerate(TEAM_NAMES):
+            if a != b and d[0, a] + d[1, b] < best:
+                best, pair = d[0, a] + d[1, b], (name_a, name_b)
+    return pair
+
+
+def team_colours(frames: np.ndarray) -> TeamColours | None:
+    """Two team shirt colours from saturated player pixels sampled at 1 Hz, or None."""
+    pooled = [shirt_pixels(frame) for frame in frames[::TEAM_EVERY]]
+    points = np.concatenate(pooled) if pooled else np.zeros((0, 3))
+    if len(points) < TEAM_MIN_PIXELS:
+        return None
+    points = points[:: math.ceil(len(points) / TEAM_MAX_PIXELS)]
+    centroids, labels = kmeans(points, TEAM_K)
+    sizes = np.bincount(labels, minlength=TEAM_K)
+    order = sorted(range(TEAM_K), key=lambda j: (-sizes[j], j))
+    kept: list[list] = []  # [centroid, size]
+    for j in order:
+        if sizes[j] < TEAM_MIN_SHARE * len(points):
+            continue
+        near = [c for c in kept if np.linalg.norm(c[0] - centroids[j]) < TEAM_MERGE]
+        if near:
+            c = near[0]
+            c[0] = (c[0] * c[1] + centroids[j] * sizes[j]) / (c[1] + sizes[j])
+            c[1] += sizes[j]
+        else:
+            kept.append([centroids[j].copy(), int(sizes[j])])
+    if len(kept) < 2:
+        return None
+    pair = np.array([c[0] for c in sorted(kept, key=lambda c: -c[1])[:2]])
+    return TeamColours(tuple(tuple(float(v) for v in c) for c in pair), name_teams(pair))
+
+
+def team_of(frame: np.ndarray, box: tuple[int, int, int, int], colours: TeamColours | None) -> str | None:
+    """Majority team of the saturated shirt pixels in box (tie: the larger team)."""
+    pixels = shirt_pixels(frame, box) if colours is not None else np.zeros((0, 3))
+    if not len(pixels):
+        return None
+    centroids = np.array(colours.centroids)
+    nearest = np.linalg.norm(pixels[:, None, :] - centroids[None, :, :], axis=2).argmin(axis=1)
+    votes = np.bincount(nearest, minlength=2)
+    return colours.names[1] if votes[1] > votes[0] else colours.names[0]
+
+
+def pick_team(team: str, colours: TeamColours) -> str:
+    """Map a team name or #rrggbb to the closest of the two detected team colours."""
+    if team in colours.names:
+        return team
+    rgb = TEAM_RGB.get(team) or tuple(int(team[i : i + 2], 16) for i in (1, 3, 5))
+    feat = colour_features(np.array([rgb], np.uint8))[0]
+    d0, d1 = (float(np.linalg.norm(feat - np.array(c))) for c in colours.centroids)
+    n0, n1 = colours.names
+    if abs(d0 - d1) <= TEAM_TIE * max(d0, d1):
+        raise ValueError(
+            f"team colour '{team}' is equally close to both team shirts ({n0}, {n1}); "
+            f"use --team {n0}, --team {n1} or a closer #rrggbb"
+        )
+    return n0 if d0 < d1 else n1
 
 
 def player_blobs(frame: np.ndarray) -> list[tuple[int, int, int, int]]:
@@ -139,8 +282,8 @@ def _box_gap(point: tuple[float, float], box: tuple[int, int, int, int]) -> floa
     return math.hypot(max(bx - x, 0.0, x - (bx + bw)), max(by - y, 0.0, y - (by + bh)))
 
 
-def detect_touches(video: str | os.PathLike[str]) -> list[Touch]:
-    """Touch candidates by any player: ball kicks next to a player blob (wide shots only)."""
+def _analyse(video: str | os.PathLike[str]) -> tuple[list[Touch], TeamColours | None]:
+    """One pass: touch candidates labelled with a team, plus the match's two team colours."""
     width, height = media.probe_size(video)
     aw = min(reframe.ANALYSIS_WIDTH, width)
     ah = max(2, 2 * round(height * aw / width / 2))
@@ -151,6 +294,7 @@ def detect_touches(video: str | os.PathLike[str]) -> list[Touch]:
         pos if pos is not None and any((c[0], c[1]) == pos for c in cands[i]) else None
         for i, pos in enumerate(track)
     ]
+    colours = team_colours(frames)
     k = width / aw
     raw = []
     for i, strength in find_kicks(hits, aw):
@@ -162,16 +306,23 @@ def detect_touches(video: str | os.PathLike[str]) -> list[Touch]:
         x, y, w, h = blobs[best]
         if gaps[best] <= REACH * h:
             raw.append(Touch(
-                t=round(i / reframe.SAMPLE_HZ, 4), team=None, number=None,
+                t=round(i / reframe.SAMPLE_HZ, 4),
+                team=team_of(frames[i], blobs[best], colours), number=None,
                 confidence=round(strength, 4),
                 bbox=(round(x * k), round(y * k), round(w * k), round(h * k)),
             ))
-    return suppress_touches(raw)
+    return suppress_touches(raw), colours
+
+
+def detect_touches(video: str | os.PathLike[str]) -> list[Touch]:
+    """Touch candidates by any player: ball kicks next to a player blob (wide shots only)."""
+    return _analyse(video)[0]
 
 
 def find_touches(video: str | os.PathLike[str], query: PlayerQuery) -> list[Touch]:
-    return [
-        touch
-        for touch in detect_touches(video)
-        if touch.team == query.team and touch.number == query.number
-    ]
+    """Every touch by the queried team (the number is ignored until T-033)."""
+    touches, colours = _analyse(video)
+    if colours is None:
+        return []
+    team = pick_team(query.team, colours)
+    return [touch for touch in touches if touch.team == team]
