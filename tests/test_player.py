@@ -3,6 +3,7 @@ import json
 import numpy as np
 import pytest
 
+from sportscut.media import MediaError
 from sportscut.player import PlayerQuery, Touch, detect_touches, find_touches, normalize_team
 
 
@@ -43,7 +44,8 @@ def test_touch_to_dict_and_validation() -> None:
 
 
 def test_detect_touches_stub_and_find_filters(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert detect_touches("x.mp4") == []
+    with pytest.raises(MediaError):
+        detect_touches("x.mp4")
     values = [
         Touch(1, "red", 10, 1, None),
         Touch(2, "red", 7, 1, None),

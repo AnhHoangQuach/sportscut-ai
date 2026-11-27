@@ -97,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     eval_player_parser = subparsers.add_parser("eval-player", help="evaluate player-touch detection")
     eval_player_parser.add_argument("directory")
     eval_player_parser.add_argument("--json", action="store_true")
+    eval_player_parser.add_argument("--debug", action="store_true", help="add each clip's touch candidates to the report")
     eval_parser = subparsers.add_parser("eval", help="evaluate highlight detection")
     eval_parser.add_argument("directory", metavar="DIRECTORY")
     eval_parser.add_argument("--json", action="store_true")
@@ -188,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "eval-player":
         try:
-            report = evaluate_dir(args.directory)
+            report = evaluate_dir(args.directory, debug=args.debug)
         except (ValueError, OSError, MediaError) as exc:
             print(f"sportscut eval-player: error: {exc}", file=sys.stderr)
             return 2
