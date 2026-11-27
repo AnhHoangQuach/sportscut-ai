@@ -181,9 +181,9 @@ def test_ac5_exact_template_outputs_for_full_and_bare_facts():
         ClipFacts("goal", 23, "Hà Nội FC", "Hải Phòng", "V.League 2026", "1-0")
     )
     assert full == ClipMeta(
-        "Bàn thắng: Hà Nội FC vs Hải Phòng, phút 23",
-        "Bàn thắng trong trận Hà Nội FC gặp Hải Phòng ở phút 23 tại "
-        "V.League 2026. Tỉ số: 1-0. Cùng xem lại khoảnh khắc này!",
+        "Pha lập công: Hà Nội FC vs Hải Phòng, phút 23",
+        "Một bàn thắng đáng nhớ trong trận Hà Nội FC gặp Hải Phòng ở phút 23 tại "
+        "V.League 2026. Tỉ số: 1-0. Hãy cùng xem lại nhé!",
         (
             "#BongDa",
             "#BanThang",
@@ -194,7 +194,7 @@ def test_ac5_exact_template_outputs_for_full_and_bare_facts():
         ),
     )
     assert generate_meta(ClipFacts("other")) == ClipMeta(
-        "Khoảnh khắc đáng chú ý trong trận đấu",
+        "Khoảnh khắc ấn tượng trong trận đấu",
         "Khoảnh khắc đáng chú ý trong trận đấu. Cùng xem lại khoảnh khắc này!",
         ("#BongDa", "#KhoanhKhac", "#Highlight"),
     )
@@ -210,13 +210,12 @@ def test_ac6_title_fallbacks_and_every_fixture_output_stays_in_bounds():
         "3-2",
     )
     assert generate_meta(long_names).title == (
-        "Bàn thắng: Câu lạc bộ Bóng đá Công an Hà Nội vs "
-        "Becamex Bình Dương Football Club"
+        "Khoảnh khắc ghi bàn, phút 120"
     )
-    assert len(generate_meta(long_names).title) == 80
-    assert generate_meta(ClipFacts("red_card", 88)).title == "Thẻ đỏ, phút 88"
+    assert len(generate_meta(long_names).title) == 29
+    assert generate_meta(ClipFacts("red_card", 88)).title == "Tấm thẻ đỏ, phút 88"
     one_team = generate_meta(ClipFacts("goal", home="Arsenal"))
-    assert one_team.title == "Bàn thắng: Arsenal"
+    assert one_team.title == "Siêu phẩm: Arsenal"
     assert "trong trận đấu của Arsenal" in one_team.caption
 
     for case in load_cases(FIXTURE / "cases.json"):

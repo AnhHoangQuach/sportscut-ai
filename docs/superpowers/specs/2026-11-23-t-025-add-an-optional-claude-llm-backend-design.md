@@ -99,3 +99,5 @@ The T-023 baseline JSON line is unchanged. The T-023 spec has an '## Updated by 
 - `docs/superpowers/specs/2026-11-23-t-014-tag-saves-using-whistle-detection-and-design.md`
 - `docs/superpowers/specs/2026-11-24-t-041-add-the-theo-d-i-c-design.md`
 - `docs/superpowers/specs/2026-11-23-t-015-tag-red-cards-and-controversial-incidents-design.md`
+
+Updated by T-050: the template title of the full goal facts (hallucinated.json case) is now 'Pha lập công: Hà Nội FC vs Hải Phòng, phút 23' (hashed phrasing pick, see the T-023 spec's '## Updated by T-050').
