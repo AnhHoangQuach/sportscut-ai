@@ -178,8 +178,8 @@ def test_eval_player_cli_baseline_json(eval_player_set: Path, capsys: pytest.Cap
     report = json.loads(captured.out)
     assert set(report) == {"f1", "precision", "recall", "touch_f1_any", "team_accuracy", "id_accuracy", "seconds_per_min", "per_clip"}
     assert [item["clip"] for item in report["per_clip"]] == sorted(build.CASES)
-    assert report["f1"] == report["touch_f1_any"] == 0.0
-    assert report["team_accuracy"] is report["id_accuracy"] is None
+    assert report["f1"] == 0.0 and report["touch_f1_any"] >= 0.9
+    assert report["team_accuracy"] == report["id_accuracy"] == 0.0
 
 
 def test_eval_player_indent_output(eval_player_set: Path, capsys: pytest.CaptureFixture[str]) -> None:

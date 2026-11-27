@@ -130,6 +130,43 @@ Baseline đo trong T-029:
 Mục tiêu tiếp theo: `touch_f1_any ≥ 0.9` (T-031), `team_accuracy ≥ 0.95`
 (T-032), và `F1 ≥ 0.85` (T-033).
 
+## Phát hiện chạm bóng (T-031)
+
+`detect_touches` giờ tìm các lần chạm bóng của **bất kỳ cầu thủ nào**. Mỗi video được đọc ở 5 khung/giây,
+thu về rộng 320 px, rồi dùng lại bộ dò bóng và mặt nạ sân của camera bám bóng (`reframe.py`). Một lần chạm
+là lúc quả bóng **đổi hướng hoặc đổi tốc độ** rõ rệt (và vẫn tiếp tục lăn) khi nằm sát một khối cầu thủ
+(vùng không phải màu cỏ bên trong sân). Các ứng viên cách nhau dưới 0,4 giây được gộp lại, giữ lần mạnh nhất.
+
+- Bóng lăn ngang qua cầu thủ mà không đổi hướng/tốc độ (tình huống "suýt chạm") **không** tính là chạm.
+- Bóng dừng hẳn cạnh chân cầu thủ không tính là chạm; lần chạm tiếp theo của người nhận mới được tính.
+- Cảnh cận (close-up) không thấy sân thì không có ứng viên nào.
+- Ứng viên chưa có đội và số áo (`team`/`number` là `null`), nên `find_touches` và lệnh `sportscut player`
+  vẫn chưa trả về gì cho tới khi T-032/T-033 xong.
+
+Xem các ứng viên của từng clip (khoá `candidates` trong mỗi mục `per_clip`):
+
+```bash
+python -m sportscut eval-player tests/fixtures/eval_player --json --debug
+```
+
+Các hằng số đã chỉnh (trong `sportscut/player.py`):
+
+```text
+KICK_SPAN = 1         # số mẫu trước/sau dùng để tính vận tốc bóng
+TURN_DEG = 20.0       # góc đổi hướng tối thiểu, độ
+SPEED_JUMP = 0.75     # thay đổi tốc độ tương đối tối thiểu
+MIN_SPEED = 0.015     # tốc độ tối thiểu khi bóng rời chân, phần bề rộng khung/giây
+REACH = 0.75          # khoảng cách bóng–cầu thủ tối đa, nhân chiều cao khối cầu thủ
+BLOB_MIN_AREA = 20    # số điểm ảnh tối thiểu của một khối cầu thủ
+TOUCH_NMS = 0.4       # bán kính gộp ứng viên, giây
+```
+
+Kết quả đo trong T-031:
+
+```json
+{"f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 0.9737, "team_accuracy": 0.0, "id_accuracy": 0.0, "seconds_per_min": 2.0195, "per_clip": [{"clip": "dribble", "duration": 20.0, "touches": 13, "queries": 4, "f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 1.0, "team_accuracy": 0.0, "id_accuracy": 0.0, "seconds_per_min": 2.1604}, {"clip": "near_miss", "duration": 20.0, "touches": 6, "queries": 5, "f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 1.0, "team_accuracy": 0.0, "id_accuracy": 0.0, "seconds_per_min": 1.9514}, {"clip": "number_hidden", "duration": 20.0, "touches": 8, "queries": 3, "f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 1.0, "team_accuracy": 0.0, "id_accuracy": 0.0, "seconds_per_min": 2.0153}, {"clip": "short_passes", "duration": 24.0, "touches": 12, "queries": 6, "f1": 0.0, "precision": 0.0, "recall": 0.0, "touch_f1_any": 0.9091, "team_accuracy": 0.0, "id_accuracy": 0.0, "seconds_per_min": 1.9902}]}
+```
+
 ## Highlight theo sự kiện: đo độ chính xác (eval)
 
 Tạo bộ video tổng hợp và chạy phép đo:

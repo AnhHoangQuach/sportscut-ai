@@ -105,7 +105,7 @@ def load_labels(path) -> tuple[list[tuple[float, player.PlayerQuery]], list[play
     return sorted(touches, key=lambda item: item[0]), sorted(queries, key=lambda q: (q.team, q.number))
 
 
-def evaluate_dir(path) -> dict:
+def evaluate_dir(path, debug: bool = False) -> dict:
     root = Path(path)
     if not root.is_dir():
         raise ValueError(f"not a directory: {root}")
@@ -139,9 +139,12 @@ def evaluate_dir(path) -> dict:
             totals[key] += counts[key]
         total_seconds += seconds
         total_minutes += query_minutes
-        per_clip.append({
+        entry = {
             "clip": case_dir.name, "duration": round(duration, 4),
             "touches": len(touches), "queries": len(queries),
             **metrics(counts, seconds, query_minutes),
-        })
+        }
+        if debug:
+            entry["candidates"] = [touch.to_dict() for touch in detected]
+        per_clip.append(entry)
     return {**metrics(totals, total_seconds, total_minutes), "per_clip": per_clip}
