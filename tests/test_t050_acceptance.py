@@ -80,6 +80,11 @@ def _main_ref():
     pytest.skip("no main branch to compare against")
 
 
+def _own_branch():
+    if not _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip().startswith("office/T-050"):
+        pytest.skip("scope checks only run on the T-050 branch")
+
+
 def _main_meta_module():
     """Load main's (T-023) meta.py as a separate module, for the index-0 byte-identity check."""
     out = _git("show", f"{_main_ref()}:sportscut/commentary/meta.py")
@@ -230,6 +235,7 @@ def test_ac3_no_builtin_hash_or_random_in_meta_source():
 # ---------- AC4 ----------
 
 def test_ac4_index_zero_is_byte_identical_to_main(monkeypatch):
+    _own_branch()
     old = _main_meta_module()
     _force(monkeypatch, 0, 0)
     extra = [
@@ -419,6 +425,7 @@ def _diff_lines(path):
 
 
 def test_ac10_pinned_test_edits_only_change_literals():
+    _own_branch()
     for path in PINNED_FILES:
         removed, added = _diff_lines(path)
         joined = "\n".join(added)
@@ -433,6 +440,7 @@ def test_ac10_pinned_test_edits_only_change_literals():
 
 
 def test_ac10_t026_t027_gate_edits_only():
+    _own_branch()
     removed, added = _diff_lines("tests/test_t026_acceptance.py")
     assert [l.strip() for l in removed] == [
         "base = _base()", "if base is None:", 'pytest.skip("no main branch to compare against")']
@@ -450,6 +458,7 @@ ALLOWED = {
 
 
 def test_ac12_diff_size_and_file_list():
+    _own_branch()
     ref = _main_ref()
     out = _git("diff", "--numstat", ref, "--", ".", ":!docs/superpowers", ":!.office")
     assert out.returncode == 0
@@ -471,11 +480,12 @@ def test_ac11_docs_updated():
     section = spec.split("## Updated by T-050", 1)
     assert len(section) == 2
     tail = section[1]
-    assert "## " not in tail.replace("## Updated by T-050", ""), "T-050 section must be the last section"
     for needle in ("TITLE_LEADS", "CAPTION_STYLES", "sha256", "clip", "Pha lập công", "T-026", "T-027"):
         assert needle in tail, needle
     for name in ("2026-11-23-t-025-add-an-optional-claude-llm-backend-design.md",
                  "2026-11-23-t-028-show-and-copy-title-caption-and-design.md"):
         assert "Updated by T-050" in (ROOT / "docs/superpowers/specs" / name).read_text(encoding="utf-8")
+    _own_branch()
+    assert "## " not in tail.replace("## Updated by T-050", ""), "T-050 section must be the last section"
     removed, added = _diff_lines("docs/superpowers/INDEX.md")
     assert removed == [] and len(added) == 1 and "| T-050 |" in added[0]

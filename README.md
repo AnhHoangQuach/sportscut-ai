@@ -128,6 +128,26 @@ không bao giờ được commit vào repo. Không cài extra thì `--voiceover`
 dẫn cài đặt ra stderr. Lưu ý: piper-tts dùng giấy phép GPL-3.0; người dùng tự cài nó như một extra
 tùy chọn, SportsCut không đóng gói kèm.
 
+## Xuất tiêu đề, caption, hashtag cho clip đã cắt (sportscut meta)
+
+Sau khi `sportscut cut` đã ghi `out/highlights.json`, lệnh `sportscut meta` viết tiêu đề, caption và
+hashtag tiếng Việt cho từng clip:
+
+```bash
+sportscut meta out --home 'Hà Nội FC' --away 'Hải Phòng' --competition 'V.League 2026' --kickoff 0
+sportscut meta out --match-info match.json --meta-backend llm
+```
+
+File `--match-info` là một object JSON với các khóa `home`, `away`, `competition`, `score` (dạng `2-1`)
+và `kickoff` (số giây tính từ đầu video); cờ dòng lệnh luôn thắng giá trị trong file.
+Số phút ("phút") chỉ được ghi khi có `--kickoff` (hoặc `kickoff` trong file); không có thông tin đội
+thì văn bản không nêu tên đội nào.
+
+Kết quả: mỗi clip trong `highlights.json` có thêm `title`, `caption`, `hashtags`; `captions.txt` có
+một khối cho mỗi clip (tên file, tiêu đề, caption, hashtag) để dán thẳng; `reel.json` có một bộ
+tiêu đề, caption, hashtag cho cả loạt clip. Backend `llm` gửi một request cho cả trận; clip nào bị
+từ chối sẽ dùng template và ghi `template fallback` ra stderr.
+
 ## Theo dõi cầu thủ: đo độ chính xác (eval-player)
 
 Tạo bộ video tổng hợp và chạy phép đo:

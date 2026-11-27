@@ -9,6 +9,7 @@ from sportscut import eval_crop
 from sportscut import evaluate
 from sportscut import subtitles
 from sportscut.commentary import eval_meta
+from sportscut.commentary import publish
 from sportscut.commentary import voiceover
 from sportscut.detect import find_highlights
 from sportscut.eval_player import evaluate_dir
@@ -119,6 +120,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     eval_crop_parser.add_argument("directory", metavar="DIRECTORY")
     eval_crop_parser.add_argument("--json", action="store_true")
+    meta_parser = subparsers.add_parser("meta", help="write titles, captions and hashtags for the clips in OUT_DIR")
+    meta_parser.add_argument("out_dir", metavar="OUT_DIR")
+    for flag, what in (("--home", "home team"), ("--away", "away team"), ("--competition", "competition")):
+        meta_parser.add_argument(flag, help=f"{what} name")
+    meta_parser.add_argument("--kickoff", type=float, help="kickoff time in seconds into the video; the minute needs it")
+    meta_parser.add_argument("--match-info", help="match.json with home, away, competition, score, kickoff; flags win")
+    meta_parser.add_argument(
+        "--meta-backend", choices=("template", "llm"), default="template",
+        help="metadata generator to score; llm needs ANTHROPIC_API_KEY and the [llm] extra",
+    )
     player_parser = subparsers.add_parser("player", help="export a reel of one player's touches")
     player_parser.add_argument("video")
     player_parser.add_argument("--team", required=True)
@@ -247,6 +258,25 @@ def main(argv: list[str] | None = None) -> int:
             print(f"sportscut download-models: error: {exc}", file=sys.stderr)
             return 1
         print(f"downloaded faster-whisper base model to {path}")
+        return 0
+
+    if args.command == "meta":
+        try:
+            match = {}
+            if args.match_info:
+                try:
+                    match = json.loads(Path(args.match_info).read_text(encoding="utf-8"))
+                except (OSError, ValueError) as exc:
+                    raise ValueError(f"cannot read {args.match_info}: {exc}") from exc
+                if not isinstance(match, dict):
+                    raise ValueError(f"{args.match_info}: expected a JSON object")
+            match.update({k: getattr(args, k) for k in ("home", "away", "competition", "kickoff") if getattr(args, k) is not None})
+            publish.write_meta(args.out_dir, match or None, backend=args.meta_backend)
+        except (ValueError, OSError) as exc:
+            print(f"sportscut meta: error: {exc}", file=sys.stderr)
+            return 1
+        for name in (publish.MANIFEST_NAME, publish.CAPTIONS_NAME, publish.REEL_NAME):
+            print(Path(args.out_dir) / name)
         return 0
 
     if args.command == "cut":
