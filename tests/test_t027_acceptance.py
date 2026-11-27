@@ -609,6 +609,8 @@ def test_ac17_eval_f1_equals_main(tmp_path):
 
 @pytest.mark.parametrize("extra", [[], ["--script"]])
 def test_ac17_eval_meta_equals_main(tmp_path, extra):
+    if not extra:
+        _own_branch_base()  # template wording may change after T-027 (T-050); --script stays checked
     main = _main_tree(tmp_path)
     fixture = str(ROOT / "tests/fixtures/eval_meta")
     assert (_sportscut(ROOT, ROOT, "eval-meta", fixture, "--json", *extra)

@@ -451,9 +451,7 @@ def test_ac8_default_eval_meta_headline_unchanged():
 
 
 def test_ac8_default_eval_meta_byte_identical_to_main(tmp_path):
-    base = _base()
-    if base is None:
-        pytest.skip("no main branch to compare against")
+    base = _own_branch_base()
     archive = subprocess.run(["git", "archive", base, "sportscut"], cwd=ROOT, capture_output=True)
     assert archive.returncode == 0
     with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
