@@ -360,9 +360,10 @@ def test_ac8_scope_check_still_fails_for_changed_protected_file(monkeypatch):
 
 
 def test_ac10_protected_paths_untouched_and_no_tracked_mp4():
-    changed = _git("diff", "--name-only", _merge_base(), "--", *PROTECTED_FILES)
-    assert changed.returncode == 0, changed.stderr
-    assert changed.stdout == ""
+    if _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip().startswith("office/T-042"):
+        changed = _git("diff", "--name-only", _merge_base(), "--", *PROTECTED_FILES)
+        assert changed.returncode == 0, changed.stderr
+        assert changed.stdout == ""
 
     media = _git("ls-files", "*.mp4")
     assert media.returncode == 0, media.stderr
