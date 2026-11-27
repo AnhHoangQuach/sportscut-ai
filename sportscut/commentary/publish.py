@@ -19,12 +19,8 @@ def reel_meta(facts_list: list[ClipFacts]) -> ClipMeta:
     teams = f"{home} vs {away}" if home and away else home or away
     titles = ([f"Tổng hợp highlight: {teams}"] if teams else []) + ["Tổng hợp highlight trận đấu"]
     title = next(t for t in titles if 10 <= len(t) <= 80)
-    if home and away:
-        match_text = f" trong trận {home} gặp {away}"
-    elif home or away:
-        match_text = f" trong trận đấu của {home or away}"
-    else:
-        match_text = " trong trận đấu"
+    match_text = (f" trong trận {home} gặp {away}" if home and away
+                  else f" trong trận đấu của {home or away}" if home or away else " trong trận đấu")
 
     def caption(with_counts: bool) -> str:
         text = f"Tổng hợp {len(facts_list)} khoảnh khắc đáng chú ý" + match_text

@@ -120,19 +120,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     eval_crop_parser.add_argument("directory", metavar="DIRECTORY")
     eval_crop_parser.add_argument("--json", action="store_true")
-    meta_parser = subparsers.add_parser(
-        "meta", help="write titles, captions and hashtags for the clips in OUT_DIR"
-    )
+    meta_parser = subparsers.add_parser("meta", help="write titles, captions and hashtags for the clips in OUT_DIR")
     meta_parser.add_argument("out_dir", metavar="OUT_DIR")
-    meta_parser.add_argument("--home", help="home team name")
-    meta_parser.add_argument("--away", help="away team name")
-    meta_parser.add_argument("--competition", help="competition name")
-    meta_parser.add_argument(
-        "--kickoff", type=float, help="kickoff time in seconds into the video; the minute needs it"
-    )
-    meta_parser.add_argument(
-        "--match-info", help="match.json with home, away, competition, score, kickoff; flags win"
-    )
+    for flag, what in (("--home", "home team"), ("--away", "away team"), ("--competition", "competition")):
+        meta_parser.add_argument(flag, help=f"{what} name")
+    meta_parser.add_argument("--kickoff", type=float, help="kickoff time in seconds into the video; the minute needs it")
+    meta_parser.add_argument("--match-info", help="match.json with home, away, competition, score, kickoff; flags win")
     meta_parser.add_argument(
         "--meta-backend", choices=("template", "llm"), default="template",
         help="metadata generator to score; llm needs ANTHROPIC_API_KEY and the [llm] extra",
@@ -277,9 +270,7 @@ def main(argv: list[str] | None = None) -> int:
                     raise ValueError(f"cannot read {args.match_info}: {exc}") from exc
                 if not isinstance(match, dict):
                     raise ValueError(f"{args.match_info}: expected a JSON object")
-            for key in ("home", "away", "competition", "kickoff"):
-                if getattr(args, key) is not None:
-                    match[key] = getattr(args, key)
+            match.update({k: getattr(args, k) for k in ("home", "away", "competition", "kickoff") if getattr(args, k) is not None})
             publish.write_meta(args.out_dir, match or None, backend=args.meta_backend)
         except (ValueError, OSError) as exc:
             print(f"sportscut meta: error: {exc}", file=sys.stderr)
