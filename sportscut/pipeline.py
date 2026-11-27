@@ -8,6 +8,7 @@ from sportscut import reframe
 from sportscut import subtitles
 from sportscut import vertical as vertical_mod
 from sportscut.commentary import script
+from sportscut.commentary import voiceover as voiceover_mod
 from sportscut.commentary.facts import facts_from_entry
 from sportscut.detect import find_highlights
 from sportscut.events.audio_cues import tag_saves
@@ -36,11 +37,14 @@ def run(
     score_box=None,
     transcriber=None,
     voiceover: bool = False,
+    synthesizer=None,
 ) -> list[dict]:
     if top < 1:
         raise PipelineError("top must be >= 1")
     if transcriber is not None and not vertical:
         raise PipelineError("transcriber needs vertical=True")
+    if synthesizer is not None and not voiceover:
+        raise PipelineError("synthesizer needs voiceover=True")
     require_ffmpeg()
     try:
         if not has_audio(video):
@@ -94,13 +98,29 @@ def run(
             entry["vertical_file"] = rel
     if voiceover:
         for entry in entries:
-            _write_script(Path(out_dir), entry)
+            lines = _write_script(Path(out_dir), entry)
+            if synthesizer is not None:
+                _write_voiceover(Path(out_dir), entry, lines, synthesizer)
     if vertical or voiceover:
         manifest.write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")
     return entries
 
 
-def _write_script(out_dir: Path, entry: dict) -> None:
+def _write_voiceover(out_dir: Path, entry: dict, lines, synthesizer) -> None:
+    stem = Path(entry["file"]).stem
+    targets = [(out_dir / entry["file"], out_dir / f"{stem}.vo.mp4")]
+    if "vertical_file" in entry:
+        targets.append((out_dir / entry["vertical_file"], out_dir / "vertical" / f"{stem}.vo.mp4"))
+    try:
+        voiceover_mod.make_voiceover(lines, synthesizer, targets)
+    except voiceover_mod.SynthesisError as exc:
+        raise PipelineError(f"{entry['file']}: {exc}") from exc
+    entry["voiceover_file"] = f"{stem}.vo.mp4"
+    if "vertical_file" in entry:
+        entry["vertical_voiceover_file"] = f"vertical/{stem}.vo.mp4"
+
+
+def _write_script(out_dir: Path, entry: dict) -> list[tuple[float, str]]:
     clip = out_dir / entry["file"]
     clip_len = entry["end"] - entry["start"]
     peak = script.audio_peak(media.extract_audio(clip), clip_len)
@@ -116,3 +136,4 @@ def _write_script(out_dir: Path, entry: dict) -> None:
     name = f"{Path(entry['file']).stem}.script.json"
     (out_dir / name).write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     entry["script_file"] = name
+    return lines
