@@ -105,6 +105,28 @@ Kết quả đo trong T-026 (template, mỗi ca ở clip 10 s và 30 s):
 `sportscut cut VIDEO --out OUT --voiceover` ghi thêm `OUT/clip_NN.script.json` cho mỗi clip
 (`clip`, `clip_len`, `peak`, `backend`, `lines` với `start`/`end`/`text`). Âm thanh lồng tiếng sẽ có
 ở task sau.
+Từ T-027 đã có âm thanh lồng tiếng: xem mục kế tiếp.
+
+### Lồng tiếng bình luận (--voiceover)
+
+Kịch bản trên được đọc thành giọng tiếng Việt bằng Piper, chạy offline trên CPU, rồi trộn vào clip.
+Âm thanh gốc được hạ khoảng 12 dB trong lúc có lời bình (thêm 0,15 s trước và sau mỗi câu), ngoài
+khoảng đó giữ nguyên. Câu nào đọc dài hơn dự kiến thì câu sau được lùi lại để không chồng nhau; phần
+vượt quá cuối clip bị bỏ.
+
+```bash
+pip install 'sportscut[tts]'
+sportscut download-models --tts
+sportscut cut match.mp4 --out out --voiceover --vertical
+```
+
+Kết quả là `out/clip_NN.vo.mp4`, và `out/vertical/clip_NN.vo.mp4` khi có `--vertical`; manifest
+`highlights.json` ghi thêm `voiceover_file` và `vertical_voiceover_file`. Clip gốc `clip_NN.mp4`
+không bị thay đổi. Giọng `vi_VN-vais1000-medium` được tải một lần vào `~/.cache/sportscut/piper`
+(hoặc `$XDG_CACHE_HOME/sportscut/piper`), lần chạy `cut` đầu tiên tự tải nếu chưa có; file giọng
+không bao giờ được commit vào repo. Không cài extra thì `--voiceover` chỉ ghi kịch bản và in hướng
+dẫn cài đặt ra stderr. Lưu ý: piper-tts dùng giấy phép GPL-3.0; người dùng tự cài nó như một extra
+tùy chọn, SportsCut không đóng gói kèm.
 
 ## Theo dõi cầu thủ: đo độ chính xác (eval-player)
 

@@ -9,6 +9,7 @@ from sportscut import eval_crop
 from sportscut import evaluate
 from sportscut import subtitles
 from sportscut.commentary import eval_meta
+from sportscut.commentary import voiceover
 from sportscut.detect import find_highlights
 from sportscut.eval_player import evaluate_dir
 from sportscut.media import MediaError
@@ -20,6 +21,10 @@ from sportscut.reel import MANIFEST_NAME, make_player_reel
 NOTICE = (
     "sportscut: notice: subtitles need the [asr] extra: pip install 'sportscut[asr]'; "
     "vertical clips are rendered without subtitles"
+)
+VO_NOTICE = (
+    "sportscut: notice: voice-over needs the [tts] extra: pip install 'sportscut[tts]'; "
+    "only the commentary scripts are written"
 )
 
 
@@ -85,8 +90,9 @@ def main(argv: list[str] | None = None) -> int:
     cut_parser.add_argument(
         "--voiceover",
         action="store_true",
-        help="also write OUT/clip_NN.script.json: a timed Vietnamese commentary script "
-        "per clip (voice-over audio comes later)",
+        help="also write OUT/clip_NN.script.json and a Vietnamese voice-over copy "
+        "OUT/clip_NN.vo.mp4 (and vertical/clip_NN.vo.mp4 with --vertical); "
+        "audio needs the [tts] extra",
     )
     eval_player_parser = subparsers.add_parser("eval-player", help="evaluate player-touch detection")
     eval_player_parser.add_argument("directory")
@@ -124,8 +130,13 @@ def main(argv: list[str] | None = None) -> int:
     serve_parser = subparsers.add_parser("serve", help="serve the highlights HTTP API")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8000)
-    subparsers.add_parser(
+    download_parser = subparsers.add_parser(
         "download-models", help="download the speech-to-text model used by cut --subtitles"
+    )
+    download_parser.add_argument(
+        "--tts",
+        action="store_true",
+        help="download the Vietnamese Piper voice used by cut --voiceover instead",
     )
 
     args = parser.parse_args(argv)
@@ -214,6 +225,15 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report) if args.json else json.dumps(report, indent=2))
         return 0
 
+    if args.command == "download-models" and args.tts:
+        try:
+            path = voiceover.download_voice()
+        except Exception as exc:
+            print(f"sportscut download-models: error: {exc}", file=sys.stderr)
+            return 1
+        print(f"downloaded Piper voice {voiceover.VOICE} to {path}")
+        return 0
+
     if args.command == "download-models":
         try:
             path = subtitles.download_models()
@@ -235,6 +255,11 @@ def main(argv: list[str] | None = None) -> int:
             transcriber = subtitles.default_transcriber()
             if transcriber is None:
                 print(NOTICE, file=sys.stderr)
+        synthesizer = None
+        if args.voiceover:
+            synthesizer = voiceover.default_synthesizer()
+            if synthesizer is None:
+                print(VO_NOTICE, file=sys.stderr)
         try:
             entries = run(
                 args.video, args.out, top=args.top,
@@ -244,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
                 score_box=args.score_box,
                 transcriber=transcriber,
                 voiceover=args.voiceover,
+                synthesizer=synthesizer,
             )
         except (PipelineError, MediaError) as exc:
             print(f"sportscut: error: {exc}", file=sys.stderr)
@@ -254,6 +280,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(Path(args.out) / entry["vertical_file"])
             if "script_file" in entry:
                 print(Path(args.out) / entry["script_file"])
+            for key in ("voiceover_file", "vertical_voiceover_file"):
+                if key in entry:
+                    print(Path(args.out) / entry[key])
         return 0
 
     try:

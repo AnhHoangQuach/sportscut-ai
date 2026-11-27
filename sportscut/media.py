@@ -255,3 +255,21 @@ def find_font() -> Path:
             if line.strip() in candidates:
                 return Path(line.strip())
     return Path(sorted(candidates)[0])
+
+
+def mix_audio(path: str | Path, voice: str | Path, audio_filter: str, dest: str | Path) -> Path:
+    """Copy the video of `path` and replace its audio with `audio_filter` applied to [0:a] and [1:a] (voice)."""
+    for item in (path, voice):
+        if not Path(item).is_file():
+            raise MediaError(f"media file not found: {item}")
+    args = [
+        find_tool("ffmpeg"), "-v", "error", "-nostdin", "-y", "-i", str(path), "-i", str(voice),
+        "-filter_complex", audio_filter, "-map", "0:v:0", "-map", "[a]", "-c:v", "copy",
+        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(dest),
+    ]
+    Path(dest).parent.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(args, capture_output=True, check=False)
+    if result.returncode:
+        detail = _failure_detail(result.stderr, result.returncode)
+        raise MediaError(f"ffmpeg failed for {path}: {detail}")
+    return Path(dest)
