@@ -10,6 +10,7 @@ from sportscut.commentary.meta import EVENT_LABELS, ClipMeta
 
 VI_CHARS = "àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ"
 FACT_FIELDS = ("minute", "score", "home", "away", "competition")
+SCRIPT_CLIP_LENS = (10.0, 30.0)
 
 
 class MetaCase(NamedTuple):
@@ -128,19 +129,27 @@ def _name_tokens(facts: ClipFacts) -> set[str]:
     return set(re.findall(r"[^\W\d_]+", _normalise(names)))
 
 
-def _is_vi(facts: ClipFacts, meta: ClipMeta) -> bool:
+def _is_vi_text(facts: ClipFacts, text: str) -> bool:
     excluded = _name_tokens(facts)
-    tokens = [t for t in re.findall(r"[^\W\d_]+", _normalise(meta.title + " " + meta.caption)) if t not in excluded]
+    tokens = [t for t in re.findall(r"[^\W\d_]+", _normalise(text)) if t not in excluded]
     return bool(tokens) and sum(any(char in VI_CHARS for char in token) for token in tokens) / len(tokens) >= 0.3
+
+
+def _is_vi(facts: ClipFacts, meta: ClipMeta) -> bool:
+    return _is_vi_text(facts, meta.title + " " + meta.caption)
+
+
+def _unknown_names(facts: ClipFacts, texts: list[str]) -> list[str]:
+    segments = [seg for text in texts for seg in re.split(r"[.!?:|]\s+", text)]
+    tokens = [t for seg in segments for t in re.findall(r"[^\W\d_]+", unicodedata.normalize("NFC", seg))[1:]]
+    allowed = _name_tokens(facts)
+    return [t for t in dict.fromkeys(tokens) if t[0].isupper() and t.casefold() not in allowed]
 
 
 def validate_meta(facts: ClipFacts, meta: ClipMeta) -> list[str]:
     problems = format_problems(meta)
     problems += [f"number {n} not in facts" for n in _unexpected_numbers(facts, _output_text(meta))]
-    segments = [seg for text in (meta.title, meta.caption) for seg in re.split(r"[.!?:|]\s+", text)]
-    tokens = [t for seg in segments for t in re.findall(r"[^\W\d_]+", unicodedata.normalize("NFC", seg))[1:]]
-    allowed = _name_tokens(facts)
-    problems += [f"name {t} not in facts" for t in dict.fromkeys(tokens) if t[0].isupper() and t.casefold() not in allowed]
+    problems += [f"name {t} not in facts" for t in _unknown_names(facts, [meta.title, meta.caption])]
     body = _normalise(meta.title + "\n" + meta.caption)
     minute = f"phút {facts.minute}" if facts.minute is not None else None
     needed = (EVENT_LABELS[facts.event], facts.home, facts.away, facts.competition, minute, facts.score)
@@ -183,7 +192,61 @@ def score_case(case: MetaCase, meta: ClipMeta) -> dict:
     }
 
 
-def evaluate_meta_dir(path, backend: str = "template") -> dict:
+def score_script_case(case: MetaCase, clip_len: float, lines) -> dict:
+    from sportscut.commentary import script  # a top-level import would be circular
+    texts = [text for _, text in lines]
+    text = "\n".join(texts)
+    output = _normalise(text)
+    problems = script.fit_problems(lines, clip_len)
+    script_fits = not problems
+    fact_recall = _met_groups(case, output) / len(case.must_mention)
+    unexpected = _unexpected_numbers(case.facts, output)
+    problems += [f"number {number} not in facts" for number in unexpected]
+    found_forbidden = [needle for needle in case.forbidden if _normalise(needle) in output]
+    problems += [f"forbidden {needle}" for needle in found_forbidden]
+    hallucinated = bool(unexpected or found_forbidden)
+    vi = _is_vi_text(case.facts, text)
+    if not vi:
+        problems.append("not vietnamese")
+    score = fact_recall if script_fits and not hallucinated and vi else 0.0
+    return {
+        "id": case.id,
+        "clip_len": clip_len,
+        "score": round(score, 4),
+        "script_fits": script_fits,
+        "fact_recall": round(fact_recall, 4),
+        "hallucinated": hallucinated,
+        "vi": vi,
+        "problems": problems,
+        "lines": [{"start": start, "text": line} for start, line in lines],
+    }
+
+
+def _evaluate_scripts(cases: list[MetaCase], backend: str) -> dict:
+    from sportscut.commentary import script  # a top-level import would be circular
+    results, raw_scores, met_groups = [], [], 0
+    for case in cases:
+        for clip_len in SCRIPT_CLIP_LENS:
+            lines = script.write_script(case.facts, clip_len, backend)
+            result = score_script_case(case, clip_len, lines)
+            met = _met_groups(case, _normalise("\n".join(text for _, text in lines)))
+            met_groups += met
+            ok = result["script_fits"] and not result["hallucinated"] and result["vi"]
+            raw_scores.append(met / len(case.must_mention) if ok else 0.0)
+            results.append(result)
+    count = len(results)
+    total_groups = sum(len(case.must_mention) for case in cases) * len(SCRIPT_CLIP_LENS)
+    return {
+        "score": round(sum(raw_scores) / count, 4),
+        "script_fits": round(sum(item["script_fits"] for item in results) / count, 4),
+        "fact_recall": round(met_groups / total_groups, 4),
+        "hallucination_rate": round(sum(item["hallucinated"] for item in results) / count, 4),
+        "vi_rate": round(sum(item["vi"] for item in results) / count, 4),
+        "per_case": results,
+    }
+
+
+def evaluate_meta_dir(path, backend: str = "template", script: bool = False) -> dict:
     if backend not in ("template", "llm"):
         raise ValueError(f"unknown backend: {backend}")
     root = Path(path)
@@ -193,6 +256,8 @@ def evaluate_meta_dir(path, backend: str = "template") -> dict:
     if not cases_path.is_file():
         raise ValueError(f"missing cases.json in {root}")
     cases = load_cases(cases_path)
+    if script:
+        return _evaluate_scripts(cases, backend)
     if backend == "template":
         generated = [(case, meta_module.generate_meta(case.facts)) for case in cases]
     else:

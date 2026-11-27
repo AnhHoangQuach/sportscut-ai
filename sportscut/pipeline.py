@@ -7,6 +7,8 @@ from sportscut import media
 from sportscut import reframe
 from sportscut import subtitles
 from sportscut import vertical as vertical_mod
+from sportscut.commentary import script
+from sportscut.commentary.facts import facts_from_entry
 from sportscut.detect import find_highlights
 from sportscut.events.audio_cues import tag_saves
 from sportscut.events.incidents import tag_incidents
@@ -33,6 +35,7 @@ def run(
     vertical: bool = False,
     score_box=None,
     transcriber=None,
+    voiceover: bool = False,
 ) -> list[dict]:
     if top < 1:
         raise PipelineError("top must be >= 1")
@@ -89,5 +92,27 @@ def run(
                     extra["subtitles"] = cues
             vertical_mod.render_vertical(clip, crop_path, Path(out_dir) / rel, **extra)
             entry["vertical_file"] = rel
+    if voiceover:
+        for entry in entries:
+            _write_script(Path(out_dir), entry)
+    if vertical or voiceover:
         manifest.write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")
     return entries
+
+
+def _write_script(out_dir: Path, entry: dict) -> None:
+    clip = out_dir / entry["file"]
+    clip_len = entry["end"] - entry["start"]
+    peak = script.audio_peak(media.extract_audio(clip), clip_len)
+    used = peak if peak is not None else script.default_peak(clip_len)
+    lines = script.write_script(facts_from_entry(entry), clip_len, "template", peak=used)
+    record = {
+        "clip": entry["file"],
+        "clip_len": clip_len,
+        "peak": used,
+        "backend": "template",
+        "lines": [{"start": s, "end": s + script.speech_seconds(t), "text": t} for s, t in lines],
+    }
+    name = f"{Path(entry['file']).stem}.script.json"
+    (out_dir / name).write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    entry["script_file"] = name

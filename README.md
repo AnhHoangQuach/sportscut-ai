@@ -84,6 +84,28 @@ nào sai luật eval-meta (định dạng, số/tên ngoài facts, tiếng Việ
 hoặc lỗi mạng thì dùng template và in cảnh báo `template fallback` ra stderr.
 Kết quả chạy thật (T-025): LIVE EVAL NOT RUN: no ANTHROPIC_API_KEY.
 
+### Kịch bản bình luận có mốc thời gian (eval-meta --script, cut --voiceover)
+
+Mỗi clip có 1–3 câu bình luận tiếng Việt đặt quanh khoảnh khắc sự kiện, tức đỉnh âm thanh
+trong clip: câu bối cảnh (phút, hai đội, giải) trước đỉnh, câu nêu sự kiện bắt đầu đúng tại đỉnh,
+câu tỉ số sau đỉnh. Độ dài ước theo 3,5 âm tiết/giây (mỗi từ tiếng Việt và mỗi chữ số là một âm
+tiết), chừa 0,25 s đầu và cuối clip. `script_fits` kiểm tra lời đọc nằm trong clip và các câu không
+chồng nhau. Template và backend LLM đều qua cùng một bước kiểm tra; câu LLM sai luật thì dùng template.
+
+```bash
+python -m sportscut eval-meta tests/fixtures/eval_meta --json --script
+```
+
+Kết quả đo trong T-026 (template, mỗi ca ở clip 10 s và 30 s):
+
+```json
+{"score": 1.0, "script_fits": 1.0, "fact_recall": 1.0, "hallucination_rate": 0.0, "vi_rate": 1.0}
+```
+
+`sportscut cut VIDEO --out OUT --voiceover` ghi thêm `OUT/clip_NN.script.json` cho mỗi clip
+(`clip`, `clip_len`, `peak`, `backend`, `lines` với `start`/`end`/`text`). Âm thanh lồng tiếng sẽ có
+ở task sau.
+
 ## Theo dõi cầu thủ: đo độ chính xác (eval-player)
 
 Tạo bộ video tổng hợp và chạy phép đo:
