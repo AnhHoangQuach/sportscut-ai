@@ -31,7 +31,7 @@ def reel_meta(facts_list: list[ClipFacts]) -> ClipMeta:
     text = caption(True)
     if len(text) > 300:
         text = caption(False)
-    tags = ["#BongDa", "#Highlight", "#TongHop"]
+    tags = ["#BongDa", "#Highlight"]
     tags += [tag for value in (home, away, competition) if value and (tag := hashtag(value))]
     tags += [f"#{EVENT_TAGS[e]}" for e, _ in counts]
     unique = [tag for i, tag in enumerate(tags) if tag.casefold() not in {t.casefold() for t in tags[:i]}]
