@@ -45,6 +45,15 @@
           <input id="max_len" name="max_len" type="number" min="0.1" step="any">
         </div>
       </div>
+      <fieldset id="match-info">
+        <legend>Thông tin trận đấu cho tiêu đề và hashtag (không bắt buộc)</legend>
+        <label for="home">Đội nhà</label>
+        <input id="home" name="home" type="text" maxlength="40">
+        <label for="away">Đội khách</label>
+        <input id="away" name="away" type="text" maxlength="40">
+        <label for="competition">Giải đấu</label>
+        <input id="competition" name="competition" type="text" maxlength="40">
+      </fieldset>
 
       <button id="submit" type="submit">Tạo highlight</button>
       <p id="busy" role="status" hidden>Đang xử lý video, vui lòng chờ…</p>

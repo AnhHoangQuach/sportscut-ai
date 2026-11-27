@@ -92,3 +92,7 @@ Persist each job as `jobs/<uuid>/job.json` (source name or URL, duration, segmen
 
 - The T-012 manifest-only job compatibility described above remains unchanged
   by T-016.
+
+### Updated by T-049
+
+- POST /highlights accepts the optional form fields `meta` (bool, default false), `home`, `away`, `competition` (stripped, blank means absent), `kickoff` (finite float) and `meta_backend` (template|llm, default template). Match fields or meta_backend without meta=true give 422 'home, away, competition, kickoff and meta_backend need meta'; bad match values give 422 with the facts_from_entry message. With meta=true and at least one clip, the job runs `publish.write_meta` on `clips/` after the cut, so the texts live in clips/highlights.json, captions.txt and reel.json (never in job.json). Only when clips/reel.json is a valid {title, caption, hashtags} object do the POST, GET /highlights/{id} and PUT /segments responses append title, caption and hashtags to each highlight (after clip_url) and a top-level `reel` (after highlights); otherwise the responses are unchanged. GET /highlights/{id}/meta resolves in order: meta.json PUT edits, then the stored highlights.json/reel.json metadata, then the generic defaults. The upload page gets fieldset#match-info with #home, #away and #competition (text, maxlength 40); app.js sends meta=true plus the non-blank fields only when at least one is filled. The manifest-only GET path is unchanged.

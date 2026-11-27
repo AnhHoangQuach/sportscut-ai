@@ -1,4 +1,4 @@
-import contextlib, hashlib, inspect, io, json, re, shutil  # noqa: E401  (T-048 Tester acceptance tests)
+import contextlib, hashlib, inspect, io, json, re, shutil, subprocess  # noqa: E401  (T-048 Tester acceptance tests)
 from pathlib import Path
 import pytest
 from sportscut import cli, pipeline
@@ -6,6 +6,9 @@ from sportscut.commentary import publish, script
 from sportscut.commentary.facts import facts_from_entry
 
 ROOT = Path(__file__).resolve().parents[1]
+def _on_own_branch():
+    head = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    return head.startswith("office/T-048")
 FLAGS = ["--home", "Việt Nam", "--away", "Thái Lan", "--kickoff", "0"]
 MATCH = {"home": "Việt Nam", "away": "Thái Lan", "kickoff": 0.0}
 META_FILES = ("highlights.json", publish.CAPTIONS_NAME, publish.REEL_NAME)
@@ -147,4 +150,6 @@ def test_ac11_ac12_docs():
         tail = text.split("## Updated by T-048", 1)
         assert len(tail) == 2 and needle in tail[1] and "\n## " not in tail[1]
     index = (ROOT / "docs/superpowers/INDEX.md").read_text(encoding="utf-8").splitlines()
-    assert sum("| T-048 |" in line for line in index) == 1 and "| T-048 |" in index[-1]
+    assert sum("| T-048 |" in line for line in index) == 1
+    if _on_own_branch():
+        assert "| T-048 |" in index[-1]  # last-row check only holds on T-048's own branch (decision-351/E3 pattern)
