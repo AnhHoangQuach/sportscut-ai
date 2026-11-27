@@ -42,6 +42,26 @@ def _score_box_arg(text):
     return tuple(int(v) for v in text.split(","))
 
 
+def _add_match_options(parser) -> None:
+    for flag, what in (("--home", "home team"), ("--away", "away team"), ("--competition", "competition")):
+        parser.add_argument(flag, help=f"{what} name")
+    parser.add_argument("--kickoff", type=float, help="kickoff time in seconds into the video; the minute needs it")
+    parser.add_argument("--match-info", help="match.json with home, away, competition, score, kickoff; flags win")
+
+
+def _match_from_args(args) -> dict | None:
+    match = {}
+    if args.match_info:
+        try:
+            match = json.loads(Path(args.match_info).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"cannot read {args.match_info}: {exc}") from exc
+        if not isinstance(match, dict):
+            raise ValueError(f"{args.match_info}: expected a JSON object")
+    match.update({k: getattr(args, k) for k in ("home", "away", "competition", "kickoff") if getattr(args, k) is not None})
+    return match or None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="sportscut",
@@ -95,6 +115,18 @@ def main(argv: list[str] | None = None) -> int:
         "OUT/clip_NN.vo.mp4 (and vertical/clip_NN.vo.mp4 with --vertical); "
         "audio needs the [tts] extra",
     )
+    cut_parser.add_argument(
+        "--meta",
+        action="store_true",
+        help="also write titles, captions and hashtags: OUT/captions.txt, OUT/reel.json "
+        "and the title, caption, hashtags keys in OUT/highlights.json",
+    )
+    cut_parser.add_argument(
+        "--meta-backend", choices=("template", "llm"), default=None,
+        help="metadata generator for --meta (default template); "
+        "llm needs ANTHROPIC_API_KEY and the [llm] extra",
+    )
+    _add_match_options(cut_parser)
     eval_player_parser = subparsers.add_parser("eval-player", help="evaluate player-touch detection")
     eval_player_parser.add_argument("directory")
     eval_player_parser.add_argument("--json", action="store_true")
@@ -122,10 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     eval_crop_parser.add_argument("--json", action="store_true")
     meta_parser = subparsers.add_parser("meta", help="write titles, captions and hashtags for the clips in OUT_DIR")
     meta_parser.add_argument("out_dir", metavar="OUT_DIR")
-    for flag, what in (("--home", "home team"), ("--away", "away team"), ("--competition", "competition")):
-        meta_parser.add_argument(flag, help=f"{what} name")
-    meta_parser.add_argument("--kickoff", type=float, help="kickoff time in seconds into the video; the minute needs it")
-    meta_parser.add_argument("--match-info", help="match.json with home, away, competition, score, kickoff; flags win")
+    _add_match_options(meta_parser)
     meta_parser.add_argument(
         "--meta-backend", choices=("template", "llm"), default="template",
         help="metadata generator to score; llm needs ANTHROPIC_API_KEY and the [llm] extra",
@@ -155,6 +184,12 @@ def main(argv: list[str] | None = None) -> int:
         cut_parser.error("--score-box needs --vertical")
     if args.command == "cut" and args.subtitles and not args.vertical:
         cut_parser.error("--subtitles needs --vertical")
+    if args.command == "cut" and not (args.meta or args.voiceover) and any(
+        getattr(args, k) is not None for k in ("home", "away", "competition", "kickoff", "match_info")
+    ):
+        cut_parser.error("--home, --away, --competition, --kickoff and --match-info need --meta or --voiceover")
+    if args.command == "cut" and args.meta_backend is not None and not args.meta:
+        cut_parser.error("--meta-backend needs --meta")
     if args.command is None:
         parser.print_help()
         return 0
@@ -262,16 +297,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "meta":
         try:
-            match = {}
-            if args.match_info:
-                try:
-                    match = json.loads(Path(args.match_info).read_text(encoding="utf-8"))
-                except (OSError, ValueError) as exc:
-                    raise ValueError(f"cannot read {args.match_info}: {exc}") from exc
-                if not isinstance(match, dict):
-                    raise ValueError(f"{args.match_info}: expected a JSON object")
-            match.update({k: getattr(args, k) for k in ("home", "away", "competition", "kickoff") if getattr(args, k) is not None})
-            publish.write_meta(args.out_dir, match or None, backend=args.meta_backend)
+            publish.write_meta(args.out_dir, _match_from_args(args), backend=args.meta_backend)
         except (ValueError, OSError) as exc:
             print(f"sportscut meta: error: {exc}", file=sys.stderr)
             return 1
@@ -280,6 +306,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "cut":
+        try:
+            match = _match_from_args(args)
+        except (ValueError, OSError) as exc:
+            print(f"sportscut: error: {exc}", file=sys.stderr)
+            return 1
         transcriber = None
         if args.subtitles:
             transcriber = subtitles.default_transcriber()
@@ -300,10 +331,19 @@ def main(argv: list[str] | None = None) -> int:
                 transcriber=transcriber,
                 voiceover=args.voiceover,
                 synthesizer=synthesizer,
+                match=match,
             )
         except (PipelineError, MediaError) as exc:
             print(f"sportscut: error: {exc}", file=sys.stderr)
             return 1
+        if args.meta and entries:
+            try:
+                publish.write_meta(args.out, match, backend=args.meta_backend or "template")
+            except (ValueError, OSError) as exc:
+                print(f"sportscut: error: {exc}", file=sys.stderr)
+                return 1
+        elif args.meta:
+            print("sportscut: notice: no clips were cut; --meta wrote nothing", file=sys.stderr)
         for entry in entries:
             print(Path(args.out) / entry["file"])
             if "vertical_file" in entry:
@@ -313,6 +353,9 @@ def main(argv: list[str] | None = None) -> int:
             for key in ("voiceover_file", "vertical_voiceover_file"):
                 if key in entry:
                     print(Path(args.out) / entry[key])
+        if args.meta and entries:
+            print(Path(args.out) / publish.CAPTIONS_NAME)
+            print(Path(args.out) / publish.REEL_NAME)
         return 0
 
     try:

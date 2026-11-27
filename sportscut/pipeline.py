@@ -38,6 +38,7 @@ def run(
     transcriber=None,
     voiceover: bool = False,
     synthesizer=None,
+    match=None,
 ) -> list[dict]:
     if top < 1:
         raise PipelineError("top must be >= 1")
@@ -45,6 +46,11 @@ def run(
         raise PipelineError("transcriber needs vertical=True")
     if synthesizer is not None and not voiceover:
         raise PipelineError("synthesizer needs voiceover=True")
+    if match is not None:
+        try:
+            facts_from_entry({"start": 0, "end": 1, "event": "other"}, match)
+        except ValueError as exc:
+            raise PipelineError(str(exc)) from exc
     require_ffmpeg()
     try:
         if not has_audio(video):
@@ -98,7 +104,7 @@ def run(
             entry["vertical_file"] = rel
     if voiceover:
         for entry in entries:
-            lines = _write_script(Path(out_dir), entry)
+            lines = _write_script(Path(out_dir), entry, match)
             if synthesizer is not None:
                 _write_voiceover(Path(out_dir), entry, lines, synthesizer)
     if vertical or voiceover:
@@ -120,12 +126,12 @@ def _write_voiceover(out_dir: Path, entry: dict, lines, synthesizer) -> None:
         entry["vertical_voiceover_file"] = f"vertical/{stem}.vo.mp4"
 
 
-def _write_script(out_dir: Path, entry: dict) -> list[tuple[float, str]]:
+def _write_script(out_dir: Path, entry: dict, match) -> list[tuple[float, str]]:
     clip = out_dir / entry["file"]
     clip_len = entry["end"] - entry["start"]
     peak = script.audio_peak(media.extract_audio(clip), clip_len)
     used = peak if peak is not None else script.default_peak(clip_len)
-    lines = script.write_script(facts_from_entry(entry), clip_len, "template", peak=used)
+    lines = script.write_script(facts_from_entry(entry, match), clip_len, "template", peak=used)
     record = {
         "clip": entry["file"],
         "clip_len": clip_len,

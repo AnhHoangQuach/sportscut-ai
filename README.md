@@ -148,6 +148,21 @@ một khối cho mỗi clip (tên file, tiêu đề, caption, hashtag) để dá
 tiêu đề, caption, hashtag cho cả loạt clip. Backend `llm` gửi một request cho cả trận; clip nào bị
 từ chối sẽ dùng template và ghi `template fallback` ra stderr.
 
+### Tạo luôn khi cắt (cut --meta)
+
+Thêm `--meta` vào `sportscut cut` để viết tiêu đề, caption, hashtag ngay trong lần cắt:
+
+```bash
+sportscut cut match.mp4 --out out --meta --home 'Việt Nam' --away 'Thái Lan' --kickoff 0
+sportscut cut match.mp4 --out out --voiceover --match-info match.json
+```
+
+Các tùy chọn thông tin trận (`--home`, `--away`, `--competition`, `--kickoff`, `--match-info`) giống
+hệt `sportscut meta`; `--meta-backend llm` cũng dùng được. Kết quả giống như chạy `cut` rồi
+`sportscut meta out` (hashtag ví dụ `#VietNam`), và lệnh in thêm đường dẫn `captions.txt`, `reel.json`.
+Với `--voiceover`, các tùy chọn này cũng vào kịch bản bình luận: lời bình chỉ nêu tên đội hay số phút
+khi bạn cung cấp chúng. Không có `--meta` và không có tùy chọn trận thì kết quả không đổi.
+
 ## Theo dõi cầu thủ: đo độ chính xác (eval-player)
 
 Tạo bộ video tổng hợp và chạy phép đo:
