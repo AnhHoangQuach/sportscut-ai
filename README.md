@@ -375,6 +375,54 @@ trận). Ngoài bản dọc có phụ đề, lệnh ghi thêm file phụ đề `
 (UTF-8, thời gian tính từ đầu clip). Nếu chưa cài `sportscut[asr]`, lệnh in một dòng
 thông báo và vẫn xuất bản dọc, chỉ không có phụ đề.
 
+## Camera bám bóng (T-020)
+
+`reframe.plan_crop` nay bám theo bóng và dùng cụm cầu thủ (T-019) làm dự phòng. Trên các
+khung phân tích 5 Hz sẵn có (không giải mã thêm lần nào), bóng được tìm bằng numpy (không
+OpenCV): điểm sáng trắng nằm trong mặt sân, gom thành khối nhỏ gần tròn (hộp 3x3 hoặc 5x5
+đủ đầy) và có một vành rỗng 2 px xung quanh, nên vạch kẻ, áo trắng và khối lớn bị loại.
+Bộ theo dõi giữ ứng viên gần vị trí dự đoán nhất (vận tốc không đổi, trong cổng
+`BALL_GATE`), giữ nguyên vị trí khi lỡ vài mẫu và coi là mất bóng sau `BALL_LOST` mẫu
+liên tiếp. Trọng số tin cậy bóng tăng/giảm `BLEND_STEP` mỗi mẫu. Mục tiêu là cửa sổ
+nhiều cầu thủ nhất mà vẫn giữ bóng cách mép crop ít nhất `BALL_EDGE` chiều rộng crop, được
+trộn với mục tiêu cầu thủ của T-019 theo trọng số đó, nên khi chuyển giữa bóng và cầu thủ
+camera không giật. Cùng bộ làm mượt của T-019 được dùng lại với hệ số theo từng mẫu, nội
+suy giữa hằng số cầu thủ (không đổi) và hằng số bóng. Không có ứng viên bóng thì kết quả
+y hệt camera T-019.
+
+Hằng số cuối cùng:
+
+- `BALL_LEVEL = 160`
+- `BALL_FILL = 0.4`
+- `BALL_GATE = 0.25`
+- `BALL_LOST = 5`
+- `BLEND_STEP = 0.1`
+- `BALL_EDGE = 0.15`
+- `BALL_DEAD_ZONE = 0.01`
+- `BALL_EASE = 0.3`
+- `BALL_MAX_PAN = 0.3`
+
+Đánh đổi: players_in_crop có thể giảm tối đa 0.03 so với T-045, vì trong long_pass và
+white_distractor bóng ở xa cầu thủ, và một crop rộng 202 px có chứa bóng chỉ giữ được tối
+đa 0.625 số cầu thủ theo nhãn.
+
+Trước (T-045, chỉ cầu thủ):
+
+```text
+{"ball_in_crop": 0.5812, "players_in_crop": 0.5988, "jitter": 0.001658, "seconds_per_min": 1.1899, "per_clip": [{"clip": "long_pass", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 0.6, "players_in_crop": 0.5, "jitter": 0.001355, "seconds_per_min": 1.2089}, {"clip": "occluded", "duration": 12.0, "labels": 60, "ball_labels": 54, "player_boxes": 180, "ball_in_crop": 0.7222, "players_in_crop": 0.7389, "jitter": 0.001839, "seconds_per_min": 1.1857}, {"clip": "slow_dribble", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 1.0, "players_in_crop": 0.6542, "jitter": 0.000765, "seconds_per_min": 1.1854}, {"clip": "white_distractor", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 180, "ball_in_crop": 0.0167, "players_in_crop": 0.5167, "jitter": 0.002673, "seconds_per_min": 1.1797}]}
+```
+
+Sau (T-020):
+
+```text
+{"ball_in_crop": 0.9615, "players_in_crop": 0.5774, "jitter": 0.001892, "seconds_per_min": 4.618, "per_clip": [{"clip": "long_pass", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 0.85, "players_in_crop": 0.3667, "jitter": 0.002154, "seconds_per_min": 4.6741}, {"clip": "occluded", "duration": 12.0, "labels": 60, "ball_labels": 54, "player_boxes": 180, "ball_in_crop": 1.0, "players_in_crop": 0.8833, "jitter": 0.002115, "seconds_per_min": 4.5732}, {"clip": "slow_dribble", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 240, "ball_in_crop": 1.0, "players_in_crop": 0.7417, "jitter": 0.002177, "seconds_per_min": 4.5969}, {"clip": "white_distractor", "duration": 12.0, "labels": 60, "ball_labels": 60, "player_boxes": 180, "ball_in_crop": 1.0, "players_in_crop": 0.3333, "jitter": 0.001121, "seconds_per_min": 4.6278}]}
+```
+
+Thời gian lập kế hoạch cho clip 60 s 1280x720 (white_distractor lặp lại): 4.34 s (giới hạn
+6.0 s).
+
+Clip thật: no data/eval_crop clips available.
+
 ## Video dọc 9:16: đo khung cắt (eval-crop)
 
 Tạo bộ video tổng hợp có nhãn rồi đo baseline crop giữa khung hình:
