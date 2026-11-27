@@ -270,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
                     raise ValueError(f"cannot read {args.match_info}: {exc}") from exc
                 if not isinstance(match, dict):
                     raise ValueError(f"{args.match_info}: expected a JSON object")
-            match.update({k: getattr(args, k) for k in ("away", "competition", "kickoff") if getattr(args, k) is not None})
+            match.update({k: getattr(args, k) for k in ("home", "away", "competition", "kickoff") if getattr(args, k) is not None})
             publish.write_meta(args.out_dir, match or None, backend=args.meta_backend)
         except (ValueError, OSError) as exc:
             print(f"sportscut meta: error: {exc}", file=sys.stderr)
