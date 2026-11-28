@@ -359,3 +359,72 @@ def test_ninety_minute_budget(tmp_path, require_ffmpeg):
 
     print(f"budget: {elapsed:.2f}s for 5400s")
     assert elapsed < 600
+
+
+BOARD = (2, 2, 30, 14)
+
+
+def _toggling(samples, flips):
+    """Box pixels toggle 0/255 in the first `flips` transitions, then hold."""
+    frames = np.zeros((samples, 30, 160), np.uint8)
+    for i in range(samples):
+        if min(i, flips) % 2:
+            frames[i, 2:16, 2:32] = 255
+    return frames
+
+
+def test_plausible_board_width_limit():
+    from sportscut.events.scoreboard import plausible_board
+
+    frames = np.zeros((600, 30, 160), np.uint8)
+    assert plausible_board(frames, (0, 0, 80, 5), []) is True
+    assert plausible_board(frames, (0, 0, 81, 5), []) is False
+
+
+def test_plausible_board_change_count():
+    from sportscut.events.scoreboard import plausible_board
+
+    short = np.zeros((600, 30, 160), np.uint8)
+    assert plausible_board(short, BOARD, [10.0] * 4) is True
+    assert plausible_board(short, BOARD, [10.0] * 5) is False
+    long = np.zeros((3600, 30, 160), np.uint8)
+    assert plausible_board(long, BOARD, [10.0] * 6) is True
+    assert plausible_board(long, BOARD, [10.0] * 7) is False
+
+
+def test_plausible_board_busy_fraction():
+    from sportscut.events.scoreboard import plausible_board
+
+    assert plausible_board(_toggling(101, 25), BOARD, []) is True
+    assert plausible_board(_toggling(101, 26), BOARD, []) is False
+    assert plausible_board(_toggling(1, 0), BOARD, []) is True
+
+
+def test_board_changes_and_reverts_reject_implausible_box(monkeypatch):
+    from sportscut.events import scoreboard
+
+    calls = []
+
+    def no_reverts(*args):
+        raise AssertionError("find_reverts must not run")
+
+    def changes(frames, box):
+        calls.append(box)
+        return []
+
+    monkeypatch.setattr(scoreboard, "find_reverts", no_reverts)
+    monkeypatch.setattr(scoreboard, "score_changes", changes)
+    monkeypatch.setattr(
+        scoreboard, "sample_top_band", lambda v: np.zeros((600, 30, 160), np.uint8)
+    )
+    monkeypatch.setattr(scoreboard, "find_box", lambda f: (0, 7, 160, 1))
+    assert scoreboard.board_changes("m.mp4") is None
+    assert scoreboard.board_reverts("m.mp4") == []
+    assert len(calls) == 2
+
+    clock = _toggling(101, 100)
+    monkeypatch.setattr(scoreboard, "sample_top_band", lambda v: clock)
+    monkeypatch.setattr(scoreboard, "find_box", lambda f: BOARD)
+    assert scoreboard.board_changes("m.mp4") is None
+    assert scoreboard.board_reverts("m.mp4") == []
+    assert len(calls) == 4

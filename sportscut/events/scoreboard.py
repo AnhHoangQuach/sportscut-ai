@@ -31,6 +31,12 @@ BOARD_ONLY_SCORE = 3.0
 CONF_BOARD = 0.9
 CONF_BOARD_ONLY = 0.6
 CONF_ROAR_ONLY = 0.4
+MAX_BOARD_W = 80  # half of media.BAND_W (160): real boards sit in a corner
+MAX_CHANGES = 4  # a board may change at most max(4, seconds/600) times
+SECONDS_PER_CHANGE = 600  # assumption: <= ~1 real score change per 10 minutes
+BUSY_FRAC = 0.25  # flipping in > 25% of samples is a clock/pan, not a score
+GOAL_BEFORE = 12.0  # goal clip: build-up and shot before the roar onset
+GOAL_AFTER = 10.0  # ... and the celebration after it
 
 Box = tuple[int, int, int, int]
 
@@ -88,13 +94,32 @@ def find_box(frames: np.ndarray) -> Box | None:
     return left, top, right - left + 1, bottom - top + 1
 
 
-def score_changes(frames: np.ndarray, box: Box) -> list[float]:
-    """Return stable scoreboard state changes, timed at each transition start."""
+def _flips(frames: np.ndarray, box: Box) -> np.ndarray:
+    """Per-sample share of box pixels that changed by >= FLIP_DIFF; flips[0] == 0."""
     x, y, width, height = box
     board = frames[:, y : y + height, x : x + width].astype(np.int16)
     flips = np.zeros(len(board), dtype=np.float64)
     if len(board) > 1:
         flips[1:] = np.mean(np.abs(board[1:] - board[:-1]) >= FLIP_DIFF, axis=(1, 2))
+    return flips
+
+
+def plausible_board(frames: np.ndarray, box: Box, changes: list[float]) -> bool:
+    """False when the box is too wide, changes too often, or never settles."""
+    if box[2] > MAX_BOARD_W:
+        return False
+    if len(changes) > max(MAX_CHANGES, len(frames) / SECONDS_PER_CHANGE):
+        return False
+    flips = _flips(frames, box)
+    busy = float(np.mean(flips[1:] >= CHANGE_FRAC)) if len(flips) > 1 else 0.0
+    return busy <= BUSY_FRAC
+
+
+def score_changes(frames: np.ndarray, box: Box) -> list[float]:
+    """Return stable scoreboard state changes, timed at each transition start."""
+    x, y, width, height = box
+    board = frames[:, y : y + height, x : x + width].astype(np.int16)
+    flips = _flips(frames, box)
 
     changes = []
     sample = 1
@@ -121,11 +146,22 @@ def score_changes(frames: np.ndarray, box: Box) -> list[float]:
     return changes
 
 
-def board_changes(video: str | Path) -> list[float] | None:
-    """Return scoreboard change times, or None when no board is visible."""
+def _board(video: str | Path) -> tuple[np.ndarray, Box, list[float]] | None:
+    """Sample the band once; return (frames, box, changes) for a plausible board."""
     frames = sample_top_band(video)
     box = find_box(frames)
-    return None if box is None else score_changes(frames, box)
+    if box is None:
+        return None
+    changes = score_changes(frames, box)
+    if not plausible_board(frames, box, changes):
+        return None
+    return frames, box, changes
+
+
+def board_changes(video: str | Path) -> list[float] | None:
+    """Return scoreboard change times, or None when no plausible board is visible."""
+    board = _board(video)
+    return None if board is None else board[2]
 
 
 def find_reverts(
@@ -151,30 +187,34 @@ def find_reverts(
 
 def board_reverts(video: str | Path) -> list[tuple[float, float]]:
     """Return scoreboard change pairs that restore the earlier state."""
-    frames = sample_top_band(video)
-    box = find_box(frames)
-    if box is None:
-        return []
-    changes = score_changes(frames, box)
-    return find_reverts(frames, box, changes)
+    board = _board(video)
+    return [] if board is None else find_reverts(*board)
 
 
-def roar(residual: np.ndarray, start: float, end: float) -> tuple[float, int]:
-    """Find the peak second and sustained-above-baseline run around it."""
+def _roar_bounds(
+    residual: np.ndarray, start: float, end: float
+) -> tuple[float, int, int]:
+    """Return (peak time, left, right) of the sustained run around the segment's loudest second; left == right when there is no run."""
     first = max(0, math.floor(start))
     stop = min(len(residual), math.ceil(end))
     if first >= stop:
-        return float(start), 0
+        return float(start), 0, 0
     peak = first + int(np.argmax(residual[first:stop]))
     if residual[peak] < ROAR_DB:
-        return peak + 0.5, 0
+        return peak + 0.5, peak, peak
     left = peak
     while left > 0 and residual[left - 1] >= ROAR_DB:
         left -= 1
     right = peak + 1
     while right < len(residual) and residual[right] >= ROAR_DB:
         right += 1
-    return peak + 0.5, right - left
+    return peak + 0.5, left, right
+
+
+def roar(residual: np.ndarray, start: float, end: float) -> tuple[float, int]:
+    """Find the peak second and sustained-above-baseline run around it."""
+    peak, left, right = _roar_bounds(residual, start, end)
+    return peak, right - left
 
 
 def match_goals(
@@ -264,6 +304,62 @@ def tag_goals(
     duration = probe_duration(video)
     residual = loudness_residual(extract_audio(video))
     changes = board_changes(video)
-    return match_goals(
+    tagged = match_goals(
         list(segments), residual, changes, duration, min_len, max_len
     )
+    return shape_goals(tagged, residual, duration, min_len, max_len)
+
+
+def _by_time(segment: Segment) -> tuple[float, float]:
+    return segment.start, segment.end
+
+
+def _merge(group: list[Segment]) -> Segment:
+    base = max(
+        sorted(group, key=_by_time),
+        key=lambda s: -math.inf if s.score is None else s.score,
+    )
+    return replace(
+        base,
+        start=min(s.start for s in group),
+        end=max(s.end for s in group),
+        event_confidence=max(s.event_confidence for s in group),
+    )
+
+
+def shape_goals(
+    segments: list[Segment],
+    residual: np.ndarray,
+    duration: float,
+    min_len: float = 10,
+    max_len: float = 30,
+) -> list[Segment]:
+    """Give roar goals a build-up-to-celebration window, merge overlapping goals, drop non-goals they cover."""
+    length = min(max(GOAL_BEFORE + GOAL_AFTER, min_len), max_len)
+    before = length * GOAL_BEFORE / (GOAL_BEFORE + GOAL_AFTER)
+    goals, others = [], []
+    for segment in segments:
+        if segment.event != "goal":
+            others.append(segment)
+            continue
+        if segment.event_confidence != CONF_BOARD_ONLY:
+            _peak, left, right = _roar_bounds(residual, segment.start, segment.end)
+            if right - left >= ROAR_SEC:
+                start, end = place_window(float(left), length, duration, before)
+                segment = replace(segment, start=start, end=end)
+        goals.append(segment)
+
+    groups: list[list[Segment]] = []
+    for goal in sorted(goals, key=_by_time):
+        if groups and goal.start < max(s.end for s in groups[-1]):
+            groups[-1].append(goal)
+        else:
+            groups.append([goal])
+    merged = [group[0] if len(group) == 1 else _merge(group) for group in groups]
+
+    kept = [
+        s
+        for s in others
+        if not any(s.start < g.end and g.start < s.end for g in merged)
+    ]
+    return sorted(merged + kept, key=_by_time)

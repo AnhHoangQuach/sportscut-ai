@@ -117,3 +117,7 @@ No other module changes. pipeline.run, evaluate_dir, tag_incidents and tag_saves
 - Tester integration (require_ffmpeg, build tests/fixtures/eval_phone into tmp): AC9 via `python -m sportscut eval <tmp> --json` as a subprocess (one JSON line), goal_coverage >= 0.9 and unchanged f1/precision/recall/precision_at_5; per case no overlapping goal segments
 - Tester docs checks: AC10 README block equals the live phone line and the DECISIONS lines; AC11 T-013 spec line order
 - Full run: `python -m pytest -q`, quoting the summary line; both eval JSONs quoted in the PR
+
+## Deviations
+- Step 0: the branch base (fedde1c) did not contain T-057, but T-057 had since been merged to `main` (2c25c8e). Instead of re-implementing it, the Developer ran `git merge --no-commit --no-ff main` in the worktree (no commit; the orchestrator's commit records the merge), so T-058 sits on top of T-057 and the diff against main is only T-058.
+- tests/test_t057_acceptance.py::test_ac10_spec_notes asserted that the T-013 spec's second-to-last line is the T-057 note, which contradicts AC11 (T-058 note directly before the final T-055 line). The T-013 check now ignores the single `Updated by T-058:` line and then makes the same assertions, so the T-057 note still has to sit directly before T-055 among the older notes. This is the only edit to that test beyond the planned README-block one.
