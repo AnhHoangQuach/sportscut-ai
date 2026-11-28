@@ -49,7 +49,7 @@ def test_ac2_query_and_constants():
     for bad in (-0.1, 1.01, float("nan"), float("inf"), True, "0.5"):
         with pytest.raises(ValueError) as e: Q("red", 10, bad)
         assert str(e.value) == MSG
-    assert P.NUMBER_SPAN == 2.0 and P.NUMBER_WIDTH == 1280 and 0.5 <= P.TRACK_GATE <= 2.0 and 1.2 <= P.TRACK_MERGE <= 1.6 and 0.3 <= P.MIN_CONFIDENCE <= 0.8
+    assert P.NUMBER_SPAN == 2.0 and P.NUMBER_WIDTH == 1280 and 0.5 <= P.TRACK_GATE <= 2.0 and 1.2 <= P.TRACK_MERGE <= 1.6 and 0.3 <= P.MIN_CONFIDENCE <= 0.8 and P.NUMBER_GROUP_MAX == 20.0
 def test_ac3_hidden_number_far_box_none_and_no_decode(monkeypatch):
     sc = moving(5.0, hide=1.0); fk = Fake(monkeypatch, sc); rd = Rec(fk)
     ((n, c),) = P._read_numbers("v.mp4", [touch(sc, 5.0)], rd)
@@ -77,6 +77,9 @@ def test_ac3_windows_grouping_and_clip_end(monkeypatch):
     Fake(monkeypatch, hs); assert P._read_numbers("v.mp4", [touch(hs, 5.0), touch(hs, 6.0)], Rec())[0] == alone[0]
     Fake(monkeypatch, sc, keep=0.5); out = P._read_numbers("v.mp4", [a, b, touch(sc, 15.1)], Rec())
     assert len(out) == 3 and all(isinstance(c, float) for _, c in out)
+    fk = Fake(monkeypatch, lambda t: [(300, 150, RED, 7)]); chain = [T(5.1 + 3 * i, "red", None, .5, (300, 150, 16, 32)) for i in range(10)]
+    votes = P._read_numbers("v.mp4", chain, Rec()); assert len(fk.calls) >= 2 and all(on_grid(s) and d <= P.NUMBER_GROUP_MAX + .2 + 1e-6 for s, d in fk.calls)
+    assert all(any(s - 1e-6 <= x.t - 2 and x.t + 2 <= s + d + 1e-6 for s, d in fk.calls) for x in chain) and votes == [P._read_numbers("v.mp4", [x], Rec())[0] for x in chain] and votes[0][0] == 7
 def test_ac4_identity_kept_through_crossing(monkeypatch):
     def scene(t): return [(300, 150, RED, 9), (round(300 + 40 * (t - 5.6)), 150, RED, 7)]  # 8 px / 0.2 s, crossing at 5.6
     fk = Fake(monkeypatch, scene); rd = Rec(fk)
@@ -170,7 +173,7 @@ def test_ac11_readme_section():
     for need in ("--min-confidence", "python -m sportscut player match.mp4 --team red --number 10 --min-confidence 0.3 --out reel", "góc rộng", "data/eval_player/"): assert need in s
     for bad in ("SPORTSCUT_NUMBER_READER", "easyocr", "[ocr]", "download-models --ocr"): assert bad not in s
     block = re.search(r"```text\n(.*?)```", s, re.S).group(1); consts = dict(re.findall(r"^(\w+) = ([\d.]+)", block, re.M))
-    for mod, names in ((P, "NUMBER_SPAN NUMBER_WIDTH TRACK_GATE TRACK_MERGE MIN_CONFIDENCE"), (jersey, "VOTE_MIN_READS INK_CONTRAST INK_MIN_PIXELS NUMBER_TOP DIGIT_MIN_SCORE")):
+    for mod, names in ((P, "NUMBER_SPAN NUMBER_WIDTH TRACK_GATE TRACK_MERGE MIN_CONFIDENCE NUMBER_GROUP_MAX"), (jersey, "VOTE_MIN_READS INK_CONTRAST INK_MIN_PIXELS NUMBER_TOP DIGIT_MIN_SCORE")):
         for name in names.split(): assert float(consts[name]) == getattr(mod, name), name
     before, after = (json.loads(re.search(label + r"\s*```json\n(.*)\n```", s).group(1)) for label in ("Trước T-033:", "Sau T-033:"))
     assert before["id_accuracy"] == 0.0 and after["f1"] >= .85 and after["id_accuracy"] >= .75
