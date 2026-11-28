@@ -118,7 +118,7 @@ def test_ac5_real_set_touch_shape(detections):
     for name, touches in detections.items():
         assert touches and [t.t for t in touches] == sorted(t.t for t in touches), name
         for t in touches:
-            assert t.team in {"red", "blue"} and t.number is None and 0 < t.confidence <= 1
+            assert t.team in {"red", "blue"} and (t.number is None or (type(t.number) is int and 1 <= t.number <= 99)) and 0 < t.confidence <= 1
             assert abs(t.t * 5 - round(t.t * 5)) < 1e-6 and t.t == round(t.t, 4)
             assert len(t.bbox) == 4 and all(type(v) is int for v in t.bbox)
 def test_ac6_closeups_and_missing_file(synthetic_video, tmp_path):

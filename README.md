@@ -291,6 +291,50 @@ Lọc clip theo sự kiện và chỉ giữ các pha được xếp hạng cao n
 sportscut cut match.mp4 --out clips --events goal --top 5
 ```
 
+## Số áo cầu thủ (T-033)
+
+`find_touches` giờ đọc **số áo** của cầu thủ chạm bóng. Với mỗi lần chạm bóng của đội được chọn, SportsCut lấy
+±2 giây quanh pha chạm ở 5 khung/giây, bám khối cầu thủ chạm bóng (bỏ qua khung hai cầu thủ dính nhau, để không
+đọc nhầm số của người kia), đọc số trên từng khung bằng bộ đọc chữ số numpy rồi bỏ phiếu theo độ tin cậy. Chỉ
+những pha có số áo bỏ phiếu trùng với `--number` mới được giữ. `detect_touches` cũng điền số áo khi phiếu đủ
+tin cậy.
+
+```bash
+python -m sportscut player match.mp4 --team red --number 10 --min-confidence 0.3 --out reel
+```
+
+`--min-confidence` thấp hơn cho nhiều pha chạm hơn, cao hơn thì ít pha sai hơn (mặc định 0.5).
+
+Giới hạn đã biết: ở `góc rộng` số áo thường quá nhỏ để đọc. Độ phủ (recall) trên trận thật chỉ đo được khi PO
+cung cấp bộ nhãn `data/eval_player/`. Bộ đọc mới chỉ được đo trên phông chữ số của video tổng hợp.
+
+Các hằng số (trong `sportscut/player.py` và `sportscut/jersey.py`):
+
+```text
+NUMBER_SPAN = 2.0     # số giây đọc trước và sau mỗi pha chạm
+NUMBER_WIDTH = 1280   # chiều rộng giải mã tối đa của khung đọc số, không phóng to
+TRACK_GATE = 1.0      # khoảng cách tối đa tới tâm dự đoán mỗi mẫu 5 Hz, nhân chiều cao khối trước
+TRACK_MERGE = 1.3     # khối rộng/cao hơn mức này nhân khối gốc là hai cầu thủ dính nhau
+MIN_CONFIDENCE = 0.5  # độ tin cậy phiếu tối thiểu mặc định
+VOTE_MIN_READS = 3    # số lần đọc của số thắng để phiếu đạt độ tin cậy đầy đủ
+INK_CONTRAST = 80     # chênh lệch độ sáng tối thiểu của điểm ảnh chữ số
+INK_MIN_PIXELS = 6    # ít điểm ảnh chữ số hơn = không đọc được
+NUMBER_TOP = 0.6      # chỉ tìm số trong 60 % hàng trên của khung cắt
+DIGIT_MIN_SCORE = 0.6 # tương quan mẫu tối thiểu để chấp nhận một lần đọc
+```
+
+Trước T-033:
+
+```json
+{"f1": 0.5827, "precision": 0.4205, "recall": 0.9487, "touch_f1_any": 0.9737, "team_accuracy": 1.0, "id_accuracy": 0.0, "seconds_per_min": 2.5283, "per_clip": [{"clip": "dribble", "duration": 20.0, "touches": 13, "queries": 4, "f1": 0.6667, "precision": 0.5, "recall": 1.0, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 0.0, "seconds_per_min": 2.7468}, {"clip": "near_miss", "duration": 20.0, "touches": 6, "queries": 5, "f1": 0.5, "precision": 0.3333, "recall": 1.0, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 0.0, "seconds_per_min": 2.3237}, {"clip": "number_hidden", "duration": 20.0, "touches": 8, "queries": 3, "f1": 0.7273, "precision": 0.5714, "recall": 1.0, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 0.0, "seconds_per_min": 2.6347}, {"clip": "short_passes", "duration": 24.0, "touches": 12, "queries": 6, "f1": 0.4762, "precision": 0.3333, "recall": 0.8333, "touch_f1_any": 0.9091, "team_accuracy": 1.0, "id_accuracy": 0.0, "seconds_per_min": 2.5047}]}
+```
+
+Sau T-033:
+
+```json
+{"f1": 0.9474, "precision": 0.973, "recall": 0.9231, "touch_f1_any": 0.9737, "team_accuracy": 1.0, "id_accuracy": 0.973, "seconds_per_min": 3.6995, "per_clip": [{"clip": "dribble", "duration": 20.0, "touches": 13, "queries": 4, "f1": 1.0, "precision": 1.0, "recall": 1.0, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 1.0, "seconds_per_min": 3.9595}, {"clip": "near_miss", "duration": 20.0, "touches": 6, "queries": 5, "f1": 1.0, "precision": 1.0, "recall": 1.0, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 1.0, "seconds_per_min": 3.4744}, {"clip": "number_hidden", "duration": 20.0, "touches": 8, "queries": 3, "f1": 0.875, "precision": 0.875, "recall": 0.875, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 0.875, "seconds_per_min": 3.91}, {"clip": "short_passes", "duration": 24.0, "touches": 12, "queries": 6, "f1": 0.9091, "precision": 1.0, "recall": 0.8333, "touch_f1_any": 0.9091, "team_accuracy": 1.0, "id_accuracy": 1.0, "seconds_per_min": 3.6236}]}
+```
+
 ## Đội theo màu áo (T-032)
 
 `detect_touches` giờ gán **đội** cho mỗi lần chạm bóng theo màu áo. Mỗi giây lấy một khung, gom các điểm ảnh

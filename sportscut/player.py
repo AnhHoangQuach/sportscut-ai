@@ -2,11 +2,11 @@ import math
 import os
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
-from sportscut import media, reframe
+from sportscut import jersey, media, reframe
 
 
 KICK_SPAN = 1         # samples before/after used for velocity (tunable 1..3)
@@ -35,6 +35,12 @@ TEAM_MIN_PIXELS = 50      # fixed
 TEAM_MAX_PIXELS = 20000   # fixed
 TEAM_ITERS = 20           # fixed
 
+NUMBER_SPAN = 2.0     # seconds read before and after each touch (fixed)
+NUMBER_WIDTH = 1280   # max decode width of the number crops, never upscaled (fixed)
+TRACK_GATE = 1.0      # max distance from the predicted centre per 5 Hz sample, times the previous box height (tunable 0.5..2.0)
+TRACK_MERGE = 1.3     # a blob wider or taller than this times the seed box is two merged players (tunable 1.2..1.6)
+MIN_CONFIDENCE = 0.5  # default min vote confidence (tunable 0.3..0.8)
+
 
 def normalize_team(team: str) -> str:
     value = team.strip().lower() if isinstance(team, str) else ""
@@ -48,11 +54,17 @@ def normalize_team(team: str) -> str:
 class PlayerQuery:
     team: str
     number: int
+    min_confidence: float = MIN_CONFIDENCE
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "team", normalize_team(self.team))
         if type(self.number) is not int or not 1 <= self.number <= 99:
             raise ValueError("player number must be an integer from 1 to 99")
+        value = self.min_confidence
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(value) or not 0 <= value <= 1):
+            raise ValueError("min confidence must be between 0 and 1")
+        object.__setattr__(self, "min_confidence", float(value))
 
 
 @dataclass(frozen=True)
@@ -314,15 +326,94 @@ def _analyse(video: str | os.PathLike[str]) -> tuple[list[Touch], TeamColours | 
     return suppress_touches(raw), colours
 
 
+def _read_numbers(
+    video: str | os.PathLike[str], touches: Sequence[Touch], reader: jersey.NumberReader
+) -> list[tuple[int | None, float]]:
+    """One (number, confidence) vote per touch, read from the toucher tracked within NUMBER_SPAN."""
+    votes: list[tuple[int | None, float]] = [(None, 0.0)] * len(touches)
+    todo = [i for i, touch in enumerate(touches) if touch.bbox is not None]
+    if not todo:
+        return votes
+    width, height = media.probe_size(video)
+    nw = min(width, NUMBER_WIDTH)
+    nh = max(2, 2 * round(height * nw / width / 2))
+    s = max(1, nw // min(reframe.ANALYSIS_WIDTH, nw))
+    f, hz = nw / width / s, reframe.SAMPLE_HZ
+    groups: list[list] = []  # [lo, hi, touch indices]
+    for lo, hi, i in sorted(
+        (max(0, math.floor((touches[i].t - NUMBER_SPAN) * hz + 1e-6) / hz),
+         math.ceil((touches[i].t + NUMBER_SPAN) * hz - 1e-6) / hz, i) for i in todo
+    ):
+        if groups and lo <= groups[-1][1] + 1e-9:
+            groups[-1][1] = max(groups[-1][1], hi)
+            groups[-1][2].append(i)
+        else:
+            groups.append([lo, hi, [i]])
+    centre = lambda b: (b[0] + b[2] / 2, b[1] + b[3] / 2)
+    dist = lambda a, b: math.hypot(a[0] - b[0], a[1] - b[1])
+    for lo, hi, members in groups:
+        frames = media.sample_window(video, round(lo, 4), round(hi - lo + 1 / hz, 4), hz, nw, nh)
+        cache: dict[int, list[tuple[int, int, int, int]]] = {}
+        blobs = lambda k: cache[k] if k in cache else cache.setdefault(k, player_blobs(frames[k][::s, ::s]))
+        for i in members:
+            t = touches[i].t
+            span = [k for k in range(len(frames)) if abs(lo + k / hz - t) <= NUMBER_SPAN + 1e-6]
+            if not span:
+                continue
+            k0 = min(span, key=lambda k: abs(lo + k / hz - t))
+            bx, by, sw, sh = (value * f for value in touches[i].bbox)
+            target = (bx + sw / 2, by + sh / 2)
+            seed = min(blobs(k0), key=lambda b: dist(centre(b), target), default=None)
+            if seed is None or dist(centre(seed), target) > TRACK_GATE * sh:
+                continue
+            merged = lambda b: b[2] > TRACK_MERGE * sw or b[3] > TRACK_MERGE * sh
+            kept = {} if merged(seed) else {k0: seed}
+            for step in (1, -1):
+                v, c, hp, k = (0.0, 0.0), centre(seed), seed[3], k0 + step
+                while span[0] <= k <= span[-1]:
+                    p = (c[0] + v[0], c[1] + v[1])
+                    near = [b for b in blobs(k) if dist(centre(b), p) <= TRACK_GATE * hp]
+                    if not near:
+                        break
+                    best = min(near, key=lambda b: dist(centre(b), p))
+                    if merged(best):
+                        c = p
+                    else:
+                        v, c, hp = (centre(best)[0] - c[0], centre(best)[1] - c[1]), centre(best), best[3]
+                        kept[k] = best
+                    k += step
+            crops = [frames[k][y * s:(y + h) * s, x * s:(x + w) * s] for k, (x, y, w, h) in sorted(kept.items())]
+            if reader.max_reads is not None and len(crops) > reader.max_reads:
+                picks = np.linspace(0, len(crops) - 1, reader.max_reads)
+                crops = [crops[j] for j in sorted({int(round(float(v))) for v in picks})]
+            votes[i] = jersey.vote([reader.read(crop) for crop in crops])
+    return votes
+
+
 def detect_touches(video: str | os.PathLike[str]) -> list[Touch]:
-    """Touch candidates by any player: ball kicks next to a player blob (wide shots only)."""
-    return _analyse(video)[0]
+    """Touch candidates by any player (wide shots only), numbered when the vote is confident."""
+    reader = jersey.get_reader()
+    touches, _ = _analyse(video)
+    labelled = [touch for touch in touches if touch.team is not None]
+    votes = iter(_read_numbers(video, labelled, reader))
+    out = []
+    for touch in touches:
+        number, conf = next(votes) if touch.team is not None else (None, 0.0)
+        out.append(replace(touch, number=number) if number is not None and conf >= MIN_CONFIDENCE else touch)
+    return out
 
 
 def find_touches(video: str | os.PathLike[str], query: PlayerQuery) -> list[Touch]:
-    """Every touch by the queried team (the number is ignored until T-033)."""
+    """Touches by the queried team whose voted jersey number matches with enough confidence."""
+    reader = jersey.get_reader()
     touches, colours = _analyse(video)
     if colours is None:
         return []
     team = pick_team(query.team, colours)
-    return [touch for touch in touches if touch.team == team]
+    same = [touch for touch in touches if touch.team == team]
+    votes = _read_numbers(video, same, reader)
+    return [
+        replace(touch, number=n)
+        for touch, (n, c) in zip(same, votes)
+        if n == query.number and c >= query.min_confidence
+    ]

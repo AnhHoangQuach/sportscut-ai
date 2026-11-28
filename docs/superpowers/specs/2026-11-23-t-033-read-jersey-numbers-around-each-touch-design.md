@@ -174,3 +174,12 @@ T-033 was split into three slices; T-051 is the first and is library-only (no CL
 - `get_reader()` always returns `DigitReader()` and ignores `SPORTSCUT_NUMBER_READER` until the OCR slice.
 - Not landed yet: player number filtering around touches, `sportscut player --min-confidence`, `OcrReader`
   and `download-models --ocr` (later slices).
+
+Updated by T-052: landed `player._read_numbers`, `PlayerQuery.min_confidence` (default MIN_CONFIDENCE 0.5,
+validated to [0, 1]), number filtering in `detect_touches`/`find_touches`, `sportscut player --min-confidence`
+and the README section `## Số áo cầu thủ (T-033)`. The §3 tracker is no longer a plain nearest-centre tracker:
+each direction from the seed predicts the next centre with constant velocity (gate TRACK_GATE x previous box
+height around the prediction), and a blob wider or taller than TRACK_MERGE (1.3) x the seed box is two merged
+players, so the walk coasts on the prediction and reads no crop. Reason: the blocked T-033 attempt measured the
+plain tracker at best number_hidden f1 0.7143, because blue 8 crosses another player and the track jumped to
+that player. OcrReader, SPORTSCUT_NUMBER_READER and `download-models --ocr` are left for T-053.

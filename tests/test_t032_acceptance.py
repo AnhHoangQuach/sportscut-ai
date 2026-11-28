@@ -50,6 +50,7 @@ def _patch(mp, shirts):
     frames = np.stack([_frame(shirts, (112 + 6 * min(i, 7), 82 + 6 * max(i - 7, 0)), False) for i in range(15)])
     mp.setattr(media, "probe_size", lambda v: (640, 360)); mp.setattr(media, "sample_frames", lambda *a: frames)
 def test_ac8_detect_touches_team(monkeypatch):
+    monkeypatch.setattr(P, "_read_numbers", lambda v, xs, r: [(None, 0.0)] * len(xs))
     for toucher, team in ((RED, "red"), (BLUE, "blue")):
         _patch(monkeypatch, [((150, 60), toucher), ((20, 20), BLUE), ((60, 140), BLUE), ((280, 30), BLUE), ((250, 140), RED), ((20, 100), RED)])
         (t,) = P.detect_touches("c.mp4"); assert (t.t, t.team, t.number) == (1.4, team, None) and P._analyse("c.mp4")[0] == [t]
@@ -57,15 +58,17 @@ def test_ac8_detect_touches_team(monkeypatch):
 def test_ac9_find_touches_and_cli(monkeypatch, synthetic_video, tmp_path, capsys):
     ts, calls = [P.Touch(1.0, "red", None, .5, None), P.Touch(2.0, "blue", None, .5, None), P.Touch(3.0, "red", 7, .5, None), P.Touch(4.0, None, None, .5, None)], []
     def fake(colours): monkeypatch.setattr(P, "_analyse", lambda v: calls.append(v) or (ts, colours))
-    fake(C); assert P.find_touches("x.mp4", Q("red", 10)) == [ts[0], ts[2]] and calls == ["x.mp4"]
-    assert P.find_touches("x", Q("sky", 99)) == [ts[1]] and P.find_touches("x", Q("#ff1010", 1)) == [ts[0], ts[2]] and P.detect_touches("x") == ts
+    monkeypatch.setattr(P, "_read_numbers", lambda v, xs, r: [(10, .9) if x.team == "red" else (99, .9) for x in xs])
+    fake(C); assert P.find_touches("x.mp4", Q("red", 10)) == [dataclasses.replace(ts[0], number=10), dataclasses.replace(ts[2], number=10)] and calls == ["x.mp4"]
+    assert P.find_touches("x", Q("sky", 99)) == [dataclasses.replace(ts[1], number=99)] and P.find_touches("x", Q("#ff1010", 1)) == []
+    assert P.detect_touches("x") == [dataclasses.replace(ts[0], number=10), dataclasses.replace(ts[1], number=99), dataclasses.replace(ts[2], number=10), ts[3]]
     with pytest.raises(ValueError, match="equally close"): P.find_touches("x", Q("#ff00ff", 7))
     fake(None); assert P.find_touches("x", Q("red", 10)) == []
     fake(C); assert main(["player", str(synthetic_video), "--team", "#ff00ff", "--number", "7", "--out", str(tmp_path / "o")]) == 2
     err = capsys.readouterr().err; assert "sportscut player: error:" in err and "equally close" in err
 def test_ac10_eval_player_gate_and_queries(eval_set, capsys):
     assert main(["eval-player", str(eval_set), "--json"]) == 0; r = json.loads(capsys.readouterr().out); floor = {"dribble": 1, "near_miss": 1, "number_hidden": 1, "short_passes": .9091}
-    assert r["team_accuracy"] >= .95 and r["touch_f1_any"] >= .9737 and r["f1"] > 0 and r["id_accuracy"] == 0 and 0 < r["seconds_per_min"] <= 6
+    assert r["team_accuracy"] >= .95 and r["touch_f1_any"] >= .9737 and r["f1"] > 0 and r["id_accuracy"] >= .75 and 0 < r["seconds_per_min"] <= 6
     assert {e["clip"]: e["touch_f1_any"] >= floor[e["clip"]] for e in r["per_clip"]} == dict.fromkeys(floor, True)
     for name in build.CASES:
         clip = eval_set / name / "clip.mp4"; det = P.detect_touches(clip); assert det and {t.team for t in det} <= {"red", "blue"}

@@ -93,3 +93,11 @@ The before and after JSON goes in the README and the PR.
 - `docs/superpowers/specs/2026-11-23-t-031-detect-ball-touches-by-any-player-design.md`
 - `docs/superpowers/specs/2026-11-23-t-029-build-the-player-touch-eval-synthetic-design.md`
 - `docs/superpowers/specs/2026-11-23-t-030-add-sportscut-player-cli-that-cuts-design.md`
+
+## Updated by T-033
+
+- Landed in T-052 (2026-11-28): find_touches now reads jersey numbers (the number vote) around each touch of the
+  mapped team and keeps only touches whose voted number equals the query with confidence >= min_confidence.
+- detect_touches fills Touch.number when the vote confidence >= MIN_CONFIDENCE; new `sportscut player --min-confidence`.
+- This supersedes the T-032 'number ignored' rule and T-032 AC8 (detect_touches == _analyse(video)[0]).
+- The OCR backend follows in T-053.
