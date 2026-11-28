@@ -234,3 +234,8 @@ Each of these has a test in the test plan.
   far bbox, bbox=None, no decode for [] / all-None, 1 vs 2 sample_window calls on the 0.2 s grid, t=0.4 gives
   start 0.0, grouping independence, truncated window). Every planned assert is still there.
 - No tuning was needed: the defaults TRACK_GATE 1.0, TRACK_MERGE 1.3 and MIN_CONFIDENCE 0.5 pass the gate on the first run.
+- Review round 1 (Tech Lead): §1 step 3 said 'each group is one call' with no limit on its length. Touches less
+  than about 4.2 s apart chained into one sample_window call covering a whole possession (≈ 13.8 MB per second at
+  1280×720), which runs out of memory on real matches. Added `NUMBER_GROUP_MAX = 20.0` (fixed): a touch merges into
+  the current group only when `lo <= cur_hi + 1e-9 and hi - cur_lo <= NUMBER_GROUP_MAX + 1e-9`. Each touch's window
+  stays inside its own group on the 0.2 s grid, so votes and AC9 are unchanged. The README constants block lists it.

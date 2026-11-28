@@ -81,10 +81,10 @@ def test_read_numbers_gates_jump_max_reads_missing_bbox_and_windows(monkeypatch)
     monkeypatch.setattr(media, "probe_size", lambda *a: pytest.fail("decoded"))
     monkeypatch.setattr(media, "sample_window", lambda *a: pytest.fail("decoded"))
     assert player._read_numbers("x.mp4", [], recorder()) == [] and player._read_numbers("x.mp4", [nobox], recorder()) == [(None, 0.0)]
-    for times, n_calls in (((5.0, 6.0), 1), ((5.0, 15.0), 2), ((0.4,), 1)):
+    for times, n_calls in (((5.0, 6.0), 1), ((5.0, 15.0), 2), (tuple(5.0 + 3 * i for i in range(10)), 2), ((0.4,), 1)):
         install(monkeypatch, calls=(calls := []))
         player._read_numbers("x.mp4", [touch(t) for t in times], recorder())
-        assert len(calls) == n_calls
+        assert len(calls) == n_calls and all(d <= player.NUMBER_GROUP_MAX + 0.2 + 1e-6 for _, d in calls)
         assert all(start >= 0 and abs(start * 5 - round(start * 5)) < 1e-6 for start, _ in calls)
     assert calls[0][0] == 0.0
     a, b = touch(T), touch(6.0)
@@ -128,8 +128,8 @@ def test_cli_min_confidence(tmp_path, monkeypatch, capsys) -> None:
     assert main(args + ["--min-confidence", "1.5"]) == 2 and not out.exists()
     assert "sportscut player: error: min confidence must be between 0 and 1" in capsys.readouterr().err
     monkeypatch.setattr(reel, "probe_duration", lambda video: 10.0)
-    monkeypatch.setattr(player, "find_touches", lambda video, query: queries.append(query) or PlayerQuery("x", 1))
-    assert [main(args + extra) for extra in (["--min-confidence", "0.3"], [])] == [2, 2]  # 'x' is a bad team
+    monkeypatch.setattr(player, "find_touches", lambda video, query: queries.append(query) or [])
+    assert [main(args + extra) for extra in (["--min-confidence", "0.3"], [])] == [0, 0]
     assert queries == [PlayerQuery("blue", 8, 0.3), PlayerQuery("blue", 8)]
     with pytest.raises(SystemExit):
         main(["player", "--help"])

@@ -316,6 +316,7 @@ NUMBER_WIDTH = 1280   # chiều rộng giải mã tối đa của khung đọc s
 TRACK_GATE = 1.0      # khoảng cách tối đa tới tâm dự đoán mỗi mẫu 5 Hz, nhân chiều cao khối trước
 TRACK_MERGE = 1.3     # khối rộng/cao hơn mức này nhân khối gốc là hai cầu thủ dính nhau
 MIN_CONFIDENCE = 0.5  # độ tin cậy phiếu tối thiểu mặc định
+NUMBER_GROUP_MAX = 20.0  # số giây tối đa giải mã trong một cửa sổ gộp
 VOTE_MIN_READS = 3    # số lần đọc của số thắng để phiếu đạt độ tin cậy đầy đủ
 INK_CONTRAST = 80     # chênh lệch độ sáng tối thiểu của điểm ảnh chữ số
 INK_MIN_PIXELS = 6    # ít điểm ảnh chữ số hơn = không đọc được
@@ -332,7 +333,7 @@ Trước T-033:
 Sau T-033:
 
 ```json
-{"f1": 0.9474, "precision": 0.973, "recall": 0.9231, "touch_f1_any": 0.9737, "team_accuracy": 1.0, "id_accuracy": 0.973, "seconds_per_min": 3.6995, "per_clip": [{"clip": "dribble", "duration": 20.0, "touches": 13, "queries": 4, "f1": 1.0, "precision": 1.0, "recall": 1.0, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 1.0, "seconds_per_min": 3.9595}, {"clip": "near_miss", "duration": 20.0, "touches": 6, "queries": 5, "f1": 1.0, "precision": 1.0, "recall": 1.0, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 1.0, "seconds_per_min": 3.4744}, {"clip": "number_hidden", "duration": 20.0, "touches": 8, "queries": 3, "f1": 0.875, "precision": 0.875, "recall": 0.875, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 0.875, "seconds_per_min": 3.91}, {"clip": "short_passes", "duration": 24.0, "touches": 12, "queries": 6, "f1": 0.9091, "precision": 1.0, "recall": 0.8333, "touch_f1_any": 0.9091, "team_accuracy": 1.0, "id_accuracy": 1.0, "seconds_per_min": 3.6236}]}
+{"f1": 0.9474, "precision": 0.973, "recall": 0.9231, "touch_f1_any": 0.9737, "team_accuracy": 1.0, "id_accuracy": 0.973, "seconds_per_min": 3.7686, "per_clip": [{"clip": "dribble", "duration": 20.0, "touches": 13, "queries": 4, "f1": 1.0, "precision": 1.0, "recall": 1.0, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 1.0, "seconds_per_min": 3.9157}, {"clip": "near_miss", "duration": 20.0, "touches": 6, "queries": 5, "f1": 1.0, "precision": 1.0, "recall": 1.0, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 1.0, "seconds_per_min": 3.4334}, {"clip": "number_hidden", "duration": 20.0, "touches": 8, "queries": 3, "f1": 0.875, "precision": 0.875, "recall": 0.875, "touch_f1_any": 1.0, "team_accuracy": 1.0, "id_accuracy": 0.875, "seconds_per_min": 3.9491}, {"clip": "short_passes", "duration": 24.0, "touches": 12, "queries": 6, "f1": 0.9091, "precision": 1.0, "recall": 0.8333, "touch_f1_any": 0.9091, "team_accuracy": 1.0, "id_accuracy": 1.0, "seconds_per_min": 3.8446}]}
 ```
 
 ## Đội theo màu áo (T-032)

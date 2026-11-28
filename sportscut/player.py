@@ -40,6 +40,7 @@ NUMBER_WIDTH = 1280   # max decode width of the number crops, never upscaled (fi
 TRACK_GATE = 1.0      # max distance from the predicted centre per 5 Hz sample, times the previous box height (tunable 0.5..2.0)
 TRACK_MERGE = 1.3     # a blob wider or taller than this times the seed box is two merged players (tunable 1.2..1.6)
 MIN_CONFIDENCE = 0.5  # default min vote confidence (tunable 0.3..0.8)
+NUMBER_GROUP_MAX = 20.0  # max seconds decoded in one merged window (fixed)
 
 
 def normalize_team(team: str) -> str:
@@ -344,7 +345,7 @@ def _read_numbers(
         (max(0, math.floor((touches[i].t - NUMBER_SPAN) * hz + 1e-6) / hz),
          math.ceil((touches[i].t + NUMBER_SPAN) * hz - 1e-6) / hz, i) for i in todo
     ):
-        if groups and lo <= groups[-1][1] + 1e-9:
+        if groups and lo <= groups[-1][1] + 1e-9 and hi - groups[-1][0] <= NUMBER_GROUP_MAX + 1e-9:
             groups[-1][1] = max(groups[-1][1], hi)
             groups[-1][2].append(i)
         else:
