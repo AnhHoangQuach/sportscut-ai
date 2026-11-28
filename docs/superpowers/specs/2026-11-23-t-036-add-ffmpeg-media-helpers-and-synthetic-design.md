@@ -74,4 +74,6 @@ Updated by T-018: sportscut.media also owns filter_video(path, video_filter, des
 
 Updated by T-021: sportscut.media also owns find_font(), which resolves a Vietnamese-capable font through fontconfig (fc-list :lang=vi, ordered by fc-match -s) and raises MediaError when none exists.
 
+Updated by T-056: extract_audio(path) and sample_top_band(path) keep a one-entry cache each, keyed by (resolved path, size, mtime_ns), and return read-only arrays (AC5's 'writable' no longer holds); a changed file or a failed decode is never served from the cache.
+
 Updated by T-004: sportscut.media also exposes require_ffmpeg() (both tools on PATH, else MediaError) and has_audio(path) -> bool (ffprobe audio-stream check; ffprobe failures raise MediaError).
