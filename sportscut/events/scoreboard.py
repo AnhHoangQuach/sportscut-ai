@@ -31,6 +31,10 @@ BOARD_ONLY_SCORE = 3.0
 CONF_BOARD = 0.9
 CONF_BOARD_ONLY = 0.6
 CONF_ROAR_ONLY = 0.4
+MAX_BOARD_W = 80  # half of media.BAND_W (160): real boards sit in a corner
+MAX_CHANGES = 4  # a board may change at most max(4, seconds/600) times
+SECONDS_PER_CHANGE = 600  # assumption: <= ~1 real score change per 10 minutes
+BUSY_FRAC = 0.25  # flipping in > 25% of samples is a clock/pan, not a score
 
 Box = tuple[int, int, int, int]
 
@@ -88,13 +92,32 @@ def find_box(frames: np.ndarray) -> Box | None:
     return left, top, right - left + 1, bottom - top + 1
 
 
-def score_changes(frames: np.ndarray, box: Box) -> list[float]:
-    """Return stable scoreboard state changes, timed at each transition start."""
+def _flips(frames: np.ndarray, box: Box) -> np.ndarray:
+    """Per-sample share of box pixels that changed by >= FLIP_DIFF; flips[0] == 0."""
     x, y, width, height = box
     board = frames[:, y : y + height, x : x + width].astype(np.int16)
     flips = np.zeros(len(board), dtype=np.float64)
     if len(board) > 1:
         flips[1:] = np.mean(np.abs(board[1:] - board[:-1]) >= FLIP_DIFF, axis=(1, 2))
+    return flips
+
+
+def plausible_board(frames: np.ndarray, box: Box, changes: list[float]) -> bool:
+    """False when the box is too wide, changes too often, or never settles."""
+    if box[2] > MAX_BOARD_W:
+        return False
+    if len(changes) > max(MAX_CHANGES, len(frames) / SECONDS_PER_CHANGE):
+        return False
+    flips = _flips(frames, box)
+    busy = float(np.mean(flips[1:] >= CHANGE_FRAC)) if len(flips) > 1 else 0.0
+    return busy <= BUSY_FRAC
+
+
+def score_changes(frames: np.ndarray, box: Box) -> list[float]:
+    """Return stable scoreboard state changes, timed at each transition start."""
+    x, y, width, height = box
+    board = frames[:, y : y + height, x : x + width].astype(np.int16)
+    flips = _flips(frames, box)
 
     changes = []
     sample = 1
@@ -121,11 +144,22 @@ def score_changes(frames: np.ndarray, box: Box) -> list[float]:
     return changes
 
 
-def board_changes(video: str | Path) -> list[float] | None:
-    """Return scoreboard change times, or None when no board is visible."""
+def _board(video: str | Path) -> tuple[np.ndarray, Box, list[float]] | None:
+    """Sample the band once; return (frames, box, changes) for a plausible board."""
     frames = sample_top_band(video)
     box = find_box(frames)
-    return None if box is None else score_changes(frames, box)
+    if box is None:
+        return None
+    changes = score_changes(frames, box)
+    if not plausible_board(frames, box, changes):
+        return None
+    return frames, box, changes
+
+
+def board_changes(video: str | Path) -> list[float] | None:
+    """Return scoreboard change times, or None when no plausible board is visible."""
+    board = _board(video)
+    return None if board is None else board[2]
 
 
 def find_reverts(
@@ -151,12 +185,8 @@ def find_reverts(
 
 def board_reverts(video: str | Path) -> list[tuple[float, float]]:
     """Return scoreboard change pairs that restore the earlier state."""
-    frames = sample_top_band(video)
-    box = find_box(frames)
-    if box is None:
-        return []
-    changes = score_changes(frames, box)
-    return find_reverts(frames, box, changes)
+    board = _board(video)
+    return [] if board is None else find_reverts(*board)
 
 
 def roar(residual: np.ndarray, start: float, end: float) -> tuple[float, int]:

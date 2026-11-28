@@ -292,6 +292,14 @@ Baseline đo trong T-055:
 
 Precision và độ phủ bàn thắng thấp là dự kiến, chưa đặt ngưỡng. Mô hình tín hiệu này chỉ là giả lập cho đến khi PO thêm nhãn vào data/eval/.
 
+Từ T-057, một vùng ở dải trên chỉ được coi là bảng tỷ số khi hợp lý: nó bị bỏ qua nếu rộng hơn nửa khung hình (hàng rào, mái nhà, đường chân trời), đổi trạng thái nhiều hơn max(4, thời lượng/600 s) lần, hoặc nhấp nháy trong hơn 25% số mẫu (đồng hồ chạy, lia máy). Khi đó bàn thắng dùng quy tắc tiếng reo (độ tin cậy 0,4), còn pha cứu thua và tỷ số bị hoàn lại bị tắt cho video đó. Một video truyền hình có đồng hồ chạy trong bảng tỷ số cũng mất bảng và pha cứu thua vì cùng lý do.
+
+Kết quả sau T-057:
+
+```json
+{"f1": 0.7692, "precision": 0.625, "recall": 1.0, "event_accuracy": 1.0, "per_event": {"goal": {"precision": 0.6667, "recall": 1.0, "f1": 0.8}, "save": {"precision": null, "recall": null, "f1": null}, "red_card": {"precision": null, "recall": null, "f1": null}, "controversy": {"precision": null, "recall": null, "f1": null}, "other": {"precision": 0.6, "recall": 1.0, "f1": 0.75}}, "precision_at_5": 0.8, "goal_coverage": 0.0, "per_match": [{"match": "pitch_a", "labels": 5, "predictions": 8, "f1": 0.7692, "precision": 0.625, "recall": 1.0, "event_accuracy": 1.0, "precision_at_5": 0.8}, {"match": "pitch_b", "labels": 5, "predictions": 8, "f1": 0.7692, "precision": 0.625, "recall": 1.0, "event_accuracy": 1.0, "precision_at_5": 0.8}]}
+```
+
 ## Theo dõi cầu thủ: xuất video tổng hợp (player)
 
 ```bash
