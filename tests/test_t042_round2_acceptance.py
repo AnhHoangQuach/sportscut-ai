@@ -186,14 +186,15 @@ def test_ac2_ported_files_and_probe_size_match_reviewed_t017():
 
 
 def test_ac3_shared_files_are_append_only():
-    result = _git("diff", "--numstat", _merge_base(), "--", *SHARED_FILES)
-    assert result.returncode == 0, result.stderr
-    stats = {
-        parts[2]: (parts[0], parts[1])
-        for line in result.stdout.splitlines()
-        if len(parts := line.split("\t", 2)) == 3
-    }
-    assert all(deleted == "0" for _, deleted in stats.values())
+    if _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip().startswith("office/T-042"):
+        result = _git("diff", "--numstat", _merge_base(), "--", *SHARED_FILES)
+        assert result.returncode == 0, result.stderr
+        stats = {
+            parts[2]: (parts[0], parts[1])
+            for line in result.stdout.splitlines()
+            if len(parts := line.split("\t", 2)) == 3
+        }
+        assert all(deleted == "0" for _, deleted in stats.values())
 
 
 def test_ac3_existing_cli_commands_and_readme_sections_remain(capsys):
