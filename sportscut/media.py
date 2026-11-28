@@ -7,6 +7,8 @@ import numpy as np
 SAMPLE_RATE = 16_000
 BAND_W = 160
 BAND_H = 30
+_audio_cache: tuple[object, np.ndarray] | None = None  # (key, read-only float32 array)
+_band_cache: tuple[object, np.ndarray] | None = None  # (key, read-only uint8 (n,30,160) array)
 class MediaError(RuntimeError):
     """Any ffmpeg/ffprobe discovery, probing or decoding failure."""
 def find_tool(name: str) -> str:
@@ -80,26 +82,45 @@ def probe_size(path: str | Path) -> tuple[int, int]:
     return int(width), int(height)
 
 
+def _cache_key(p: Path) -> tuple[str, int, int]:
+    """Identity of a media file's current content: (resolved path, size, mtime_ns)."""
+    st = p.stat()
+    return (str(p.resolve()), st.st_size, st.st_mtime_ns)
+
+
 def extract_audio(path: str | Path) -> np.ndarray:
+    global _audio_cache
     p = Path(path)
     if not p.is_file():
         raise MediaError(f"media file not found: {path}")
     ffmpeg = find_tool("ffmpeg")
+    key = _cache_key(p)
+    cached = _audio_cache
+    if cached is not None and cached[0] == key:
+        return cached[1]
     args = [ffmpeg, "-v", "error", "-nostdin", "-i", str(p), "-vn", "-ac", "1",
             "-ar", str(SAMPLE_RATE), "-f", "f32le", "pipe:1"]
     result = subprocess.run(args, capture_output=True, check=False)
     if result.returncode:
         detail = _failure_detail(result.stderr, result.returncode)
         raise MediaError(f"ffmpeg failed for {path}: {detail}")
-    return np.frombuffer(result.stdout, dtype="<f4").astype(np.float32)
+    audio = np.frombuffer(result.stdout, dtype="<f4").astype(np.float32)
+    audio.flags.writeable = False
+    _audio_cache = (key, audio)
+    return audio
 
 
 def sample_top_band(path: str | Path) -> np.ndarray:
     """Sample one tiny grayscale top-band frame per second."""
+    global _band_cache
     p = Path(path)
     if not p.is_file():
         raise MediaError(f"media file not found: {path}")
     ffmpeg = find_tool("ffmpeg")
+    key = _cache_key(p)
+    cached = _band_cache
+    if cached is not None and cached[0] == key:
+        return cached[1]
     args = [
         ffmpeg,
         "-v",
@@ -122,9 +143,12 @@ def sample_top_band(path: str | Path) -> np.ndarray:
         raise MediaError(f"ffmpeg failed for {path}: {detail}")
     frame_size = BAND_W * BAND_H
     count = len(result.stdout) // frame_size
-    return np.frombuffer(result.stdout, np.uint8)[: count * frame_size].reshape(
+    band = np.frombuffer(result.stdout, np.uint8)[: count * frame_size].reshape(
         count, BAND_H, BAND_W
     )
+    band.flags.writeable = False
+    _band_cache = (key, band)
+    return band
 
 
 def sample_frames(path: str | Path, fps: float, width: int, height: int) -> np.ndarray:
