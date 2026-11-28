@@ -59,4 +59,5 @@ Add `sportscut/events/scoreboard.py`. It samples frames at 1 fps, downscaled (ff
 - `docs/superpowers/specs/2026-11-23-t-012-let-users-filter-by-event-and-design.md`
 - `docs/superpowers/specs/2026-11-23-t-023-add-clip-facts-a-template-metadata-design.md`
 - `docs/superpowers/specs/2026-11-23-t-036-add-ffmpeg-media-helpers-and-synthetic-design.md`
+Updated by T-057: a found box is trusted only if scoreboard.plausible_board passes (width <= 80 px, at most max(4, seconds/600) stable changes, flips in <= 25% of samples); otherwise board_changes is None (roar-only goals at 0.4, no saves) and board_reverts is []. This replaces 'a found box is always trusted'.
 Updated by T-055: evaluate_dir calls detect.find_highlights(video, top=None) like pipeline.run and adds top-level goal_coverage.

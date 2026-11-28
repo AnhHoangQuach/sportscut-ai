@@ -158,7 +158,7 @@ def test_ac1_find_reverts_sorts_changes_and_returns_time_order():
 
 def test_ac2_board_reverts_composes_helpers_in_order(monkeypatch):
     calls = []
-    frames = object()
+    frames = np.zeros((20, 30, 160), np.uint8)
     box = (1, 2, 3, 4)
     changes = [5.0, 9.0]
     reverts = [(5.0, 9.0)]
