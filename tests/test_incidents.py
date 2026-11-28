@@ -585,7 +585,7 @@ def test_evaluate_dir_chains_goals_incidents_saves(tmp_path, monkeypatch):
     tagged = [Segment(0, 3, 1, "incidents")]
     saved = [Segment(0, 3, 1, "final", "red_card", 0.5)]
     calls = []
-    monkeypatch.setattr(evaluate.detect, "find_highlights", lambda value: found)
+    monkeypatch.setattr(evaluate.detect, "find_highlights", lambda value, **kw: found)
     monkeypatch.setattr(
         evaluate.scoreboard,
         "tag_goals",

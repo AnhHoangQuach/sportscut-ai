@@ -463,7 +463,7 @@ def test_ac11_evaluate_dir_chains_goals_incidents_saves(tmp_path, monkeypatch):
     calls = []
     outputs = {}
 
-    def find(video):
+    def find(video, **kw):
         calls.append(("find", video))
         return [Segment(0, 5, 1, "found")]
 

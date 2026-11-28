@@ -1,0 +1,27 @@
+[
+ {
+  "start": 46.0,
+  "end": 54.0,
+  "type": "chance"
+ },
+ {
+  "start": 110.0,
+  "end": 126.0,
+  "type": "goal"
+ },
+ {
+  "start": 266.0,
+  "end": 274.0,
+  "type": "chance"
+ },
+ {
+  "start": 385.0,
+  "end": 401.0,
+  "type": "goal"
+ },
+ {
+  "start": 516.0,
+  "end": 524.0,
+  "type": "chance"
+ }
+]

@@ -293,7 +293,7 @@ def test_ac9_evaluate_scores_tag_saves_output_after_tag_goals(tmp_path, monkeypa
     goals = [Segment(0, 3, 2, "after goals")]
     saved = [Segment(0, 3, 2, "after saves", "save", 0.6)]
     calls = []
-    monkeypatch.setattr(detect, "find_highlights", lambda value: detected)
+    monkeypatch.setattr(detect, "find_highlights", lambda value, **kw: detected)
     monkeypatch.setattr(scoreboard, "tag_goals", lambda value, segments: goals)
     monkeypatch.setattr(incidents, "tag_incidents", lambda _video, segments: segments)
 

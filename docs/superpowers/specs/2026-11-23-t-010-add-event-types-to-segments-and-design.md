@@ -67,3 +67,4 @@ Without --json, the same report is printed with indent=2.
 - Updated by T-023: `commentary.ClipFacts` carries the manifest entry's validated `event` into the
   deterministic Vietnamese metadata template. The event vocabulary and existing
   `sportscut eval` F1 gate are unchanged.
+Updated by T-055: evaluate_dir calls detect.find_highlights(video, top=None) like pipeline.run and adds top-level goal_coverage.

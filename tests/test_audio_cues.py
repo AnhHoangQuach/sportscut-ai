@@ -389,7 +389,7 @@ def test_evaluate_dir_runs_tag_saves_on_tag_goals_output(tmp_path, monkeypatch):
     saves = [Segment(0.0, 3.0, 5.0, "after saves", "save", 0.6)]
     calls = []
 
-    monkeypatch.setattr(evaluate.detect, "find_highlights", lambda value: detected)
+    monkeypatch.setattr(evaluate.detect, "find_highlights", lambda value, **kw: detected)
 
     def fake_goals(value, segments):
         calls.append(("goals", value, segments))

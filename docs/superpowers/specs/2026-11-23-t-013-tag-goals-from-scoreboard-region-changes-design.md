@@ -59,3 +59,4 @@ Add `sportscut/events/scoreboard.py`. It samples frames at 1 fps, downscaled (ff
 - `docs/superpowers/specs/2026-11-23-t-012-let-users-filter-by-event-and-design.md`
 - `docs/superpowers/specs/2026-11-23-t-023-add-clip-facts-a-template-metadata-design.md`
 - `docs/superpowers/specs/2026-11-23-t-036-add-ffmpeg-media-helpers-and-synthetic-design.md`
+Updated by T-055: evaluate_dir calls detect.find_highlights(video, top=None) like pipeline.run and adds top-level goal_coverage.

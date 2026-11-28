@@ -416,7 +416,7 @@ def test_eval_oracle_matches_all_labels(eval_set: Path, monkeypatch) -> None:
     from sportscut import detect
     from sportscut.evaluate import evaluate_dir
 
-    monkeypatch.setattr(detect, "find_highlights", _label_segments)
+    monkeypatch.setattr(detect, "find_highlights", lambda video, **kw: _label_segments(video))
     report = evaluate_dir(eval_set)
     assert report["f1"] == report["precision"] == report["recall"] == 1.0
     assert report["event_accuracy"] == 1.0
@@ -432,7 +432,7 @@ def test_eval_all_other_baseline_shape(eval_set: Path, monkeypatch) -> None:
     from sportscut.evaluate import evaluate_dir
 
     monkeypatch.setattr(detect, "find_highlights",
-                        lambda video: _label_segments(video, "other"))
+                        lambda video, **kw: _label_segments(video, "other"))
     monkeypatch.setattr(scoreboard, "tag_goals",
                         lambda video, segments, **kw: list(segments))
     monkeypatch.setattr(incidents, "tag_incidents", lambda _video, segments: segments)
@@ -455,7 +455,7 @@ def test_eval_cli_real_detector_json(eval_set: Path, capsys) -> None:
     report = json.loads(captured.out)
     assert set(report) == {
         "f1", "precision", "recall", "event_accuracy", "per_event",
-        "precision_at_5", "per_match",
+        "precision_at_5", "goal_coverage", "per_match",
     }
     assert [item["match"] for item in report["per_match"]] == sorted(build.MATCHES)
     assert sum(item["predictions"] for item in report["per_match"]) > 0
