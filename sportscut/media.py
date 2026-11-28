@@ -1,3 +1,4 @@
+import math
 import shutil
 import subprocess
 import tempfile
@@ -136,6 +137,25 @@ def sample_frames(path: str | Path, fps: float, width: int, height: int) -> np.n
         "-vf", f"fps={fps},scale={width}:{height}:flags=area",
         "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
     ]
+    return _run_frames(args, path, width, height)
+
+
+def sample_window(path: str | Path, start: float, duration: float, fps: float, width: int, height: int) -> np.ndarray:
+    """RGB frames of [start, start+duration) sampled at fps, scaled to width x height: uint8 (n, height, width, 3)."""
+    p = Path(path)
+    if not p.is_file():
+        raise MediaError(f"media file not found: {path}")
+    if not (math.isfinite(start) and math.isfinite(duration)) or start < 0 or duration <= 0:
+        raise ValueError("window start must be >= 0 and duration > 0")
+    args = [
+        find_tool("ffmpeg"), "-v", "error", "-nostdin", "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
+        "-i", str(p), "-an", "-sn", "-vf", f"fps={fps},scale={width}:{height}:flags=area",
+        "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
+    ]
+    return _run_frames(args, path, width, height)
+
+
+def _run_frames(args: list[str], path: str | Path, width: int, height: int) -> np.ndarray:
     result = subprocess.run(args, capture_output=True, check=False)
     if result.returncode:
         detail = _failure_detail(result.stderr, result.returncode)
