@@ -9,6 +9,7 @@ from sportscut.media import MediaError
 
 FUNCS = ["extract_audio", "sample_top_band"]
 BAND = media.BAND_W * media.BAND_H
+REAL_FIND_TOOL = media.find_tool
 
 
 def _payload(func: str, fill: int) -> bytes:
@@ -56,17 +57,14 @@ def test_hit_returns_same_readonly_object(func, fake, video):
     assert not first.flags.writeable
     with pytest.raises(ValueError):
         first[0] = 0
-    if func == "extract_audio":
-        assert first.dtype == np.float32 and first.ndim == 1
-    else:
-        assert first.dtype == np.uint8 and first.shape == (2, 30, 160)
+    expected = (np.float32, (8,)) if func == "extract_audio" else (np.uint8, (2, 30, 160))
+    assert (first.dtype, first.shape) == expected
 
 
 @pytest.mark.parametrize("func", FUNCS)
 def test_size_change_redecodes(func, fake, video):
     getattr(media, func)(video)
-    with video.open("ab") as fh:
-        fh.write(b"x")
+    video.write_bytes(video.read_bytes() + b"x")
     fake.fill = 5
     fresh = getattr(media, func)(video)
     assert fake.count(func) == 2
@@ -101,15 +99,12 @@ def test_deleted_cached_file_raises_not_found(func, video):
 
 
 @pytest.mark.parametrize("func", FUNCS)
-def test_missing_tool_beats_cache(func, monkeypatch, video):
+def test_missing_tool_beats_cache(func, monkeypatch, video, tmp_path):
     getattr(media, func)(video)
-    monkeypatch.setattr(media, "find_tool", _missing)
+    monkeypatch.setattr(media, "find_tool", REAL_FIND_TOOL)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     with pytest.raises(MediaError, match="^ffmpeg not found on PATH; install ffmpeg$"):
         getattr(media, func)(video)
-
-
-def _missing(name: str) -> str:
-    raise MediaError(f"{name} not found on PATH; install ffmpeg")
 
 
 @pytest.mark.parametrize("func", FUNCS)

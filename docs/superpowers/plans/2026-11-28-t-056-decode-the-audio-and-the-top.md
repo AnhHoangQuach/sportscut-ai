@@ -93,3 +93,8 @@ It is separated from the paragraphs around it by blank lines. Nothing else in th
 - test_ac4_readonly_on_real_video: extract_audio and sample_top_band on the mixed video return non-writeable arrays with dtype float32 and uint8 and band shape[1:] == (30, 160)
 - test_ac8_t036_note: the spec contains the exact T-056 paragraph and the last paragraph starts with 'Updated by T-004:'
 - Commands: `python -m pytest -q` (full suite green), the two eval commands with an empty diff (AC7), `git diff --stat main...` (AC9), and the Tech Lead's `time sportscut cut` before/after (AC10)
+
+## Deviations
+
+- AC7 / step 7, player eval: `diff /tmp/t056_player_before.json /tmp/t056_player_after.json` cannot be empty on any two runs, because `seconds_per_min` (sportscut/eval_player.py:69) is wall time from `time.perf_counter()`. With every `seconds_per_min` key dropped, before and after JSON are equal (checked with a small json compare). The highlight eval diff is empty byte for byte.
+- tests/test_media_cache.py::test_missing_tool_beats_cache uses the real `find_tool` with an empty PATH instead of a fake raiser, so the exact message comes from production code.
