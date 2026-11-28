@@ -7,6 +7,7 @@ from pathlib import Path
 from sportscut import __version__
 from sportscut import eval_crop
 from sportscut import evaluate
+from sportscut import jersey
 from sportscut import subtitles
 from sportscut.commentary import eval_meta
 from sportscut.commentary import publish
@@ -183,6 +184,9 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="download the Vietnamese Piper voice used by cut --voiceover instead",
     )
+    download_parser.add_argument(
+        "--ocr", action="store_true", help="download the EasyOCR models used to read jersey numbers instead"
+    )
 
     args = parser.parse_args(argv)
     if args.command == "cut" and args.score_box is not None and not args.vertical:
@@ -195,6 +199,8 @@ def main(argv: list[str] | None = None) -> int:
         cut_parser.error("--home, --away, --competition, --kickoff and --match-info need --meta or --voiceover")
     if args.command == "cut" and args.meta_backend is not None and not args.meta:
         cut_parser.error("--meta-backend needs --meta")
+    if args.command == "download-models" and args.ocr and args.tts:
+        download_parser.error("--ocr and --tts cannot be combined")
     if args.command is None:
         parser.print_help()
         return 0
@@ -274,6 +280,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"sportscut eval-crop: error: {exc}", file=sys.stderr)
             return 2
         print(json.dumps(report) if args.json else json.dumps(report, indent=2))
+        return 0
+
+    if args.command == "download-models" and args.ocr:
+        try:
+            path = jersey.download_ocr_models()
+        except ImportError:
+            print("sportscut download-models: error: needs the [ocr] extra: pip install 'sportscut[ocr]'", file=sys.stderr)
+            return 1
+        except Exception as exc:
+            print(f"sportscut download-models: error: {exc}", file=sys.stderr)
+            return 1
+        print(f"downloaded EasyOCR models to {path}")
         return 0
 
     if args.command == "download-models" and args.tts:

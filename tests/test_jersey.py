@@ -74,11 +74,19 @@ def test_digit_reader_dark_on_light_blank_and_deterministic() -> None:
 
 @pytest.mark.parametrize("value", [None, "ocr", "tesseract"])
 def test_get_reader_ignores_env(monkeypatch: pytest.MonkeyPatch, value: str | None) -> None:
+    monkeypatch.setattr(jersey, "ocr_available", lambda: False)
     if value is None:
         monkeypatch.delenv("SPORTSCUT_NUMBER_READER", raising=False)
     else:
         monkeypatch.setenv("SPORTSCUT_NUMBER_READER", value)
-    assert isinstance(jersey.get_reader(), jersey.DigitReader)
+    if value is None:
+        assert isinstance(jersey.get_reader(), jersey.DigitReader)
+    elif value == "ocr":
+        with pytest.raises(ValueError, match="download-models --ocr"):
+            jersey.get_reader()
+    else:
+        with pytest.raises(ValueError, match="must be auto, digits or ocr"):
+            jersey.get_reader()
 
 
 def test_constants_and_protocol() -> None:
@@ -87,10 +95,8 @@ def test_constants_and_protocol() -> None:
     assert typing.Protocol in jersey.NumberReader.__mro__
     assert {"name", "max_reads"} <= set(jersey.NumberReader.__annotations__)
     assert callable(jersey.NumberReader.read)
-    for missing in ("OcrReader", "ocr_available", "download_ocr_models", "READER_ENV"):
-        assert not hasattr(jersey, missing)
-    source = Path(jersey.__file__).read_text()
-    assert "easyocr" not in source and "environ" not in source
+    for name in ("OcrReader", "ocr_available", "download_ocr_models", "READER_ENV"):
+        assert hasattr(jersey, name)
 
 
 def test_jersey_imports_numpy_only() -> None:
@@ -101,7 +107,7 @@ def test_jersey_imports_numpy_only() -> None:
             roots |= {alias.name for alias in node.names}
         elif isinstance(node, ast.ImportFrom):
             roots.add(node.module)
-    assert roots <= {"math", "collections.abc", "typing", "numpy", "__future__"}, roots
+    assert roots <= {"math", "os", "re", "importlib.util", "pathlib", "collections.abc", "typing", "numpy", "__future__"}, roots
     code = ("import sys, sportscut.jersey; print(sorted(m for m in "
             "('sportscut.player', 'sportscut.media', 'easyocr') if m in sys.modules))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)

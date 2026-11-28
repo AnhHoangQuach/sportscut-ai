@@ -308,6 +308,19 @@ python -m sportscut player match.mp4 --team red --number 10 --min-confidence 0.3
 Giới hạn đã biết: ở `góc rộng` số áo thường quá nhỏ để đọc. Độ phủ (recall) trên trận thật chỉ đo được khi PO
 cung cấp bộ nhãn `data/eval_player/`. Bộ đọc mới chỉ được đo trên phông chữ số của video tổng hợp.
 
+Có hai bộ đọc số áo: `digits` (numpy, có sẵn) và `ocr` (EasyOCR, tùy chọn). Muốn dùng EasyOCR, cài extra và tải
+mô hình một lần:
+
+```bash
+pip install 'sportscut[ocr]'
+sportscut download-models --ocr
+```
+
+Biến môi trường `SPORTSCUT_NUMBER_READER` chọn bộ đọc: `auto` (mặc định: dùng OCR khi đã có extra và mô hình,
+nếu không thì dùng `digits`), `digits` hoặc `ocr` (báo lỗi kèm lệnh cài đặt khi thiếu extra hoặc mô hình). Mô hình
+được lưu trong `~/.cache/sportscut/easyocr` (hoặc `$XDG_CACHE_HOME/sportscut/easyocr`), không bao giờ được tải
+trong lúc chạy lệnh và không được commit vào git.
+
 Các hằng số (trong `sportscut/player.py` và `sportscut/jersey.py`):
 
 ```text
@@ -322,6 +335,8 @@ INK_CONTRAST = 80     # chênh lệch độ sáng tối thiểu của điểm �
 INK_MIN_PIXELS = 6    # ít điểm ảnh chữ số hơn = không đọc được
 NUMBER_TOP = 0.6      # chỉ tìm số trong 60 % hàng trên của khung cắt
 DIGIT_MIN_SCORE = 0.6 # tương quan mẫu tối thiểu để chấp nhận một lần đọc
+OCR_SCALE = 4         # hệ số phóng to khung cắt trước khi OCR
+OCR_MAX_READS = 4     # số lần OCR tối đa mỗi pha chạm
 ```
 
 Trước T-033:

@@ -171,7 +171,7 @@ def test_ac11_readme_section():
     assert heads.count(heads[i]) == 1 and heads[i - 1] == "## Theo dõi cầu thủ: xuất video tổng hợp (player)" and heads[i + 1] == "## Đội theo màu áo (T-032)"
     s = _section(text)
     for need in ("--min-confidence", "python -m sportscut player match.mp4 --team red --number 10 --min-confidence 0.3 --out reel", "góc rộng", "data/eval_player/"): assert need in s
-    for bad in ("SPORTSCUT_NUMBER_READER", "easyocr", "[ocr]", "download-models --ocr"): assert bad not in s
+    for need in ("SPORTSCUT_NUMBER_READER", "pip install 'sportscut[ocr]'", "download-models --ocr"): assert need in s
     block = re.search(r"```text\n(.*?)```", s, re.S).group(1); consts = dict(re.findall(r"^(\w+) = ([\d.]+)", block, re.M))
     for mod, names in ((P, "NUMBER_SPAN NUMBER_WIDTH TRACK_GATE TRACK_MERGE MIN_CONFIDENCE NUMBER_GROUP_MAX"), (jersey, "VOTE_MIN_READS INK_CONTRAST INK_MIN_PIXELS NUMBER_TOP DIGIT_MIN_SCORE")):
         for name in names.split(): assert float(consts[name]) == getattr(mod, name), name
