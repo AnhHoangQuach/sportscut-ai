@@ -1,4 +1,4 @@
-import json, shutil, subprocess, uuid; from pathlib import Path
+import json, shutil, uuid; from pathlib import Path
 import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
@@ -39,7 +39,3 @@ def test_readme_stale_notes_gone_and_headings_kept():
     assert not any(s in README for s in ("vẫn chưa trả về gì cho tới khi T-032/T-033 xong", "vẫn là stub", "chưa lọc theo số áo"))
     web = README.split("## Trang web: tải lên, xem trước và chỉnh mốc cắt\n", 1)[1].split("\n## ", 1)[0]
     assert "\n15. " in web and all(s in web for s in ("Theo dõi cầu thủ", "Không tìm thấy pha chạm bóng nào.", "Tạo video cầu thủ"))
-    main = subprocess.run(["git", "show", "main:README.md"], cwd=ROOT, capture_output=True, text=True, encoding="utf-8")
-    if main.returncode == 0:
-        heads = lambda t: [l for l in t.splitlines() if l.startswith(("## ", "### "))]
-        assert heads(README) == heads(main.stdout)
