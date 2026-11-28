@@ -110,9 +110,11 @@ def test_ac4_pyproject():
     assert opt["ocr"] == ["easyocr>=1.7"] and p["dependencies"] == ["numpy>=1.26"]
     assert {"api", "youtube", "llm", "asr", "tts", "dev", "ocr"} <= set(opt) and not any("easyocr" in x for x in opt["dev"])
     assert opt["tts"] == ["piper-tts>=1.3"]
-def test_ac5_import_isolation():
+def test_ac5_import_isolation(tmp_path):
+    (tmp_path / "easyocr.py").write_text(FAKE)  # importable fake: a top-level (even try/except) import would load it
     code = "import sys, sportscut.jersey, sportscut.player; print('easyocr' in sys.modules)"
-    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=ROOT, check=True)
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(tmp_path), str(ROOT)])}
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=ROOT, check=True, env=env)
     assert out.stdout.strip() == "False"
     tree = ast.parse((ROOT / "sportscut/jersey.py").read_text()); roots = set()
     for node in tree.body:
@@ -124,6 +126,8 @@ def test_ac5_import_isolation():
     funcs = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
     inside = {id(x) for f in funcs for x in ast.walk(f)}
     assert all(id(n) in inside for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id == "easyocr")
+    imps = [n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom)) and "easyocr" in ast.dump(n)]
+    assert imps and all(id(n) in inside for n in imps)
 def test_ac6_root_conftest_forces_digits():
     assert os.environ["SPORTSCUT_NUMBER_READER"] == "digits" and type(jersey.get_reader()) is jersey.DigitReader
     src = (ROOT / "conftest.py").read_text()
