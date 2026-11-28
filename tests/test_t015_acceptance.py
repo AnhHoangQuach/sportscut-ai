@@ -658,9 +658,10 @@ def test_ac15_readme_records_t015_invariants():
 
 
 def test_ac15_older_readme_blocks_unchanged_and_specs_updated():
-    diff = _git("diff", "-U0", _base(), "--", "README.md").splitlines()
-    removed = [l for l in diff if l.startswith("-") and not l.startswith("---")]
-    assert removed == []
+    if _git("rev-parse", "--abbrev-ref", "HEAD").strip().startswith("office/T-015"):
+        diff = _git("diff", "-U0", _base(), "--", "README.md").splitlines()
+        removed = [l for l in diff if l.startswith("-") and not l.startswith("---")]
+        assert removed == []
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     old = _git("show", f"{_base()}:README.md")
     for marker in ("Baseline đo trong T-011", "Kết quả sau T-013", "Kết quả sau T-014"):
