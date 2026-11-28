@@ -130,6 +130,13 @@ def score_case(segments: Sequence[Segment], labels: Sequence[Label]) -> dict:
             "p5_total": len(top), "events": events}
 
 
+def covered_goals(segments: Sequence[Segment], labels: Sequence[Label]) -> int:
+    """Number of goal labels fully inside (inclusive) at least one segment whose event is 'goal'."""
+    goals = [segment for segment in segments if segment.event == "goal"]
+    return sum(any(s.start <= label.start and label.end <= s.end for s in goals)
+               for label in labels if label.type == "goal")
+
+
 def summarize(counts: dict) -> dict:
     precision, recall, f1 = prf(counts["tp"], counts["fp"], counts["fn"])
     rounded = lambda value: round(value, 4)
@@ -169,15 +176,17 @@ def evaluate_dir(path: str | Path) -> dict:
         raise ValueError(f"no eval cases found in {root}")
     totals = {"tp": 0, "fp": 0, "fn": 0, "type_hits": 0, "p5_hits": 0, "p5_total": 0,
               "events": {event: {"tp": 0, "fp": 0, "fn": 0} for event in EVENT_TYPES}}
-    per_match = []
+    per_match, goal_labels, goals_covered = [], 0, 0
     for case, video, labels in prepared:
         segments = audio_cues.tag_saves(
             video,
             incidents.tag_incidents(
-                video, scoreboard.tag_goals(video, detect.find_highlights(video))
+                video, scoreboard.tag_goals(video, detect.find_highlights(video, top=None))
             ),
         )
         counts = score_case(segments, labels)
+        goal_labels += sum(label.type == "goal" for label in labels)
+        goals_covered += covered_goals(segments, labels)
         for key in ("tp", "fp", "fn", "type_hits", "p5_hits", "p5_total"):
             totals[key] += counts[key]
         for event in EVENT_TYPES:
@@ -186,4 +195,5 @@ def evaluate_dir(path: str | Path) -> dict:
         metrics = summarize(counts)
         per_match.append({"match": case.name, "labels": len(labels), "predictions": len(segments),
                           **{key: metrics[key] for key in ("f1", "precision", "recall", "event_accuracy", "precision_at_5")}})
-    return {**summarize(totals), "per_match": per_match}
+    goal_coverage = round(goals_covered / goal_labels, 4) if goal_labels else None
+    return {**summarize(totals), "goal_coverage": goal_coverage, "per_match": per_match}

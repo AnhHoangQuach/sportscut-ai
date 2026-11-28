@@ -189,7 +189,7 @@ def test_t010_ac10_real_cli_burst_json_and_pretty(burst_video: Path, tmp_path: P
     json_output = capsys.readouterr().out
     assert json_output.count("\n") == 1
     report = json.loads(json_output)
-    assert list(report) == ["f1", "precision", "recall", "event_accuracy", "per_event", "precision_at_5", "per_match"]
+    assert list(report) == ["f1", "precision", "recall", "event_accuracy", "per_event", "precision_at_5", "goal_coverage", "per_match"]
     assert (report["f1"], report["precision"], report["recall"]) == (.6667, .6667, .6667)
     assert report["event_accuracy"] == 0.0 and report["precision_at_5"] == .6667
     assert report["per_event"]["goal"]["recall"] == 0.0
@@ -301,7 +301,7 @@ def test_t010_ac9_sums_cases_in_sorted_order(tmp_path: Path, monkeypatch) -> Non
     }
     calls = []
 
-    def fake(video):
+    def fake(video, **kw):
         calls.append(Path(video).parent.name)
         return by_case[Path(video).parent.name]
 

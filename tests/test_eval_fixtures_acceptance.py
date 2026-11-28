@@ -465,7 +465,7 @@ def test_acceptance_eval_oracles(acceptance_eval_set, monkeypatch, reported_even
 
     output, _ = acceptance_eval_set
 
-    def fake_find_highlights(video):
+    def fake_find_highlights(video, **kwargs):
         labels = json.loads((Path(video).parent / "labels.json").read_text())
         return [
             Segment(
@@ -502,7 +502,7 @@ def test_acceptance_real_eval_cli_json(acceptance_eval_set, capsys):
     assert captured.err == ""
     assert len(captured.out.splitlines()) == 1
     report = json.loads(captured.out)
-    assert set(report) == REPORT_KEYS
+    assert set(report) == REPORT_KEYS | {"goal_coverage"}
     assert [row["match"] for row in report["per_match"]] == list(EXPECTED_MATCHES)
     assert sum(row["predictions"] for row in report["per_match"]) > 0
 

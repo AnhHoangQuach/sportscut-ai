@@ -274,6 +274,24 @@ Kết quả sau T-015 (thẻ đỏ = còi + dừng trận ≥ 8 giây + cận c�
 
 Các ngưỡng của T-015 (dừng trận ≥ 8 giây cho thẻ đỏ và ≥ 30 giây cho tranh cãi, tiếng la ó 20–220 Hz ≥ 10 giây, ≥ 2 khung hình có giữa khung chủ yếu là màu đỏ trong 15 giây sau tiếng còi, tỷ số được coi là hoàn lại khi bảng trở về trạng thái cũ trong vòng 180 giây) chỉ được chỉnh trên bộ video tổng hợp. Muốn chỉnh cho trận thật cần bộ nhãn data/eval/ do PO gán. Đây là các heuristic chỉ dùng ffmpeg nên độ tin cậy thấp (`event_confidence` 0,5 cho thẻ đỏ và tỷ số bị hoàn lại, 0,4 cho tranh cãi). Nhận diện pha chiếu lại (replay) và nhận diện thẻ/trọng tài bằng mô hình thị giác là việc sau này, sẽ nằm trong gói tùy chọn `[vision]`.
 
+### Kết quả đo video quay điện thoại (R-010)
+
+```bash
+python tests/fixtures/eval_phone/build.py && python -m sportscut eval tests/fixtures/eval_phone --json
+```
+
+Bộ này mô phỏng video quay bằng điện thoại: 2 trận 600 s quay từ đường biên, không có bảng tỷ số, hàng rào/mái nhà ở dải trên của khung hình dịch vài pixel mỗi khi lia máy. Bàn thắng là tiếng reo 7–8 s mạnh hơn nền +12 dB ở dải 300–3000 Hz, rồi tiếng còi giao bóng khoảng 40 s sau. Nhãn bàn thắng là [t0−10, t0+6], gồm cả pha dẫn tới bàn thắng. `chance` là tiếng hô 2–3 s. Một cơn gió < 300 Hz dài 8–10 s không được gán nhãn.
+
+`goal_coverage` là tỷ lệ nhãn bàn thắng nằm trọn trong một đoạn dự đoán `goal` (`null` khi không có nhãn bàn thắng). Từ T-055, `eval` gọi `find_highlights(video, top=None)` giống `cut`, nên chấm đúng các ứng viên mà `cut` dùng.
+
+Baseline đo trong T-055:
+
+```json
+{"f1": 0.7692, "precision": 0.625, "recall": 1.0, "event_accuracy": 0.6, "per_event": {"goal": {"precision": null, "recall": 0.0, "f1": null}, "save": {"precision": null, "recall": null, "f1": null}, "red_card": {"precision": null, "recall": null, "f1": null}, "controversy": {"precision": null, "recall": null, "f1": null}, "other": {"precision": 0.375, "recall": 1.0, "f1": 0.5455}}, "precision_at_5": 0.8, "goal_coverage": 0.0, "per_match": [{"match": "pitch_a", "labels": 5, "predictions": 8, "f1": 0.7692, "precision": 0.625, "recall": 1.0, "event_accuracy": 0.6, "precision_at_5": 0.8}, {"match": "pitch_b", "labels": 5, "predictions": 8, "f1": 0.7692, "precision": 0.625, "recall": 1.0, "event_accuracy": 0.6, "precision_at_5": 0.8}]}
+```
+
+Precision và độ phủ bàn thắng thấp là dự kiến, chưa đặt ngưỡng. Mô hình tín hiệu này chỉ là giả lập cho đến khi PO thêm nhãn vào data/eval/.
+
 ## Theo dõi cầu thủ: xuất video tổng hợp (player)
 
 ```bash

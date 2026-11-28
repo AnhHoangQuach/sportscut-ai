@@ -109,7 +109,7 @@ def test_evaluate_dir_validates_then_aggregates(tmp_path: Path, monkeypatch) -> 
     from sportscut.evaluate import evaluate_dir
 
     called = []
-    monkeypatch.setattr(detect, "find_highlights", lambda video: called.append(Path(video).parent.name) or [seg(0, 10)])
+    monkeypatch.setattr(detect, "find_highlights", lambda video, **kw: called.append(Path(video).parent.name) or [seg(0, 10)])
     monkeypatch.setattr(scoreboard, "tag_goals", lambda video, segments, **kw: list(segments))
     monkeypatch.setattr(incidents, "tag_incidents", lambda _video, segments: segments)
     monkeypatch.setattr(audio_cues, "tag_saves", lambda video, segments, **kw: list(segments))
@@ -139,7 +139,7 @@ def test_evaluate_dir_ignores_hidden_video_metadata(tmp_path: Path, monkeypatch)
     video.touch()
     (case / "._video.mp4").touch()
     seen = []
-    monkeypatch.setattr(detect, "find_highlights", lambda path: seen.append(path) or [])
+    monkeypatch.setattr(detect, "find_highlights", lambda path, **kw: seen.append(path) or [])
     monkeypatch.setattr(scoreboard, "tag_goals", lambda video, segments, **kw: list(segments))
     monkeypatch.setattr(incidents, "tag_incidents", lambda _video, segments: segments)
     monkeypatch.setattr(audio_cues, "tag_saves", lambda video, segments, **kw: list(segments))
