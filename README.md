@@ -197,8 +197,9 @@ là lúc quả bóng **đổi hướng hoặc đổi tốc độ** rõ rệt (v�
 - Bóng lăn ngang qua cầu thủ mà không đổi hướng/tốc độ (tình huống "suýt chạm") **không** tính là chạm.
 - Bóng dừng hẳn cạnh chân cầu thủ không tính là chạm; lần chạm tiếp theo của người nhận mới được tính.
 - Cảnh cận (close-up) không thấy sân thì không có ứng viên nào.
-- Ứng viên chưa có đội và số áo (`team`/`number` là `null`), nên `find_touches` và lệnh `sportscut player`
-  vẫn chưa trả về gì cho tới khi T-032/T-033 xong.
+- `detect_touches` điền đội cho mỗi ứng viên (T-032, xem mục "Đội theo màu áo (T-032)") và số áo khi phiếu đủ
+  tin cậy (T-033, xem mục "Số áo cầu thủ (T-033)"); `find_touches` và lệnh `sportscut player` trả về các pha
+  chạm của đúng cầu thủ được hỏi (`--team`, `--number`).
 
 Xem các ứng viên của từng clip (khoá `candidates` trong mỗi mục `per_clip`):
 
@@ -282,8 +283,18 @@ python -m sportscut player match.mp4 --team red --number 10 --out reel
 Mỗi pha chạm được lấy thêm 3 giây trước và 2 giây sau; các đoạn cách nhau dưới
 4 giây được gộp. Có thể đổi các giá trị mặc định bằng `--pre`, `--post` và
 `--merge-gap`. Thư mục đầu ra chứa `player_red_10.mp4` và `player.json`; nếu
-không có pha chạm thì chỉ có manifest. Việc phát hiện pha chạm vẫn là stub cho
-đến khi T-031..T-033 hoàn thành.
+không có pha chạm thì chỉ có manifest. Cách tìm pha chạm được mô tả trong các mục
+"Phát hiện chạm bóng (T-031)", "Đội theo màu áo (T-032)" và "Số áo cầu thủ (T-033)";
+`--min-confidence` (mặc định 0.5) đặt độ tin cậy tối thiểu của phiếu số áo.
+
+`player.json` chứa:
+
+- `query`: `{"team": ..., "number": ...}`, màu đội đã chuẩn hoá và số áo được hỏi;
+- `touches`: mỗi pha chạm có `t` (giây), `team`, `number`, `confidence`, `bbox`, cùng `start`/`end`
+  của đoạn clip chứa pha đó (`null` nếu không đoạn nào chứa nó);
+- `clips`: các đoạn `{"start", "end"}` đã ghép vào video, theo thứ tự thời gian;
+- `total_duration`: tổng độ dài các đoạn, tính bằng giây;
+- `reel`: tên tệp video, `null` khi không có pha chạm.
 
 Lọc clip theo sự kiện và chỉ giữ các pha được xếp hạng cao nhất:
 
@@ -364,7 +375,7 @@ hai nhóm quá gần nhau được gộp lại; hai nhóm lớn nhất còn lạ
 - Nếu màu yêu cầu cách đều hai màu áo (chênh lệch ≤ 5 %), lệnh báo lỗi và thoát với mã 2:
   `sportscut player: error: team colour '#ff00ff' is equally close to both team shirts (red, blue); use --team red, --team blue or a closer #rrggbb`
   (API `POST /players` trả HTTP 422).
-- Chưa đọc số áo (T-033), nên video tổng hợp hiện chứa **mọi lần chạm bóng của cả đội đó**, chưa lọc theo số áo.
+- Từ T-033, `find_touches` chỉ giữ các pha chạm của đội đó có số áo bỏ phiếu trùng `--number` (xem mục "Số áo cầu thủ (T-033)").
 
 Giới hạn đã biết:
 
@@ -457,6 +468,23 @@ Mỗi lần `PUT` thay thế hoàn toàn danh sách cũ (danh sách rỗng cũng
 đa 50 đoạn và không có lịch sử hoàn tác. Clip mới dùng tên có phiên bản để trình
 duyệt không phát lại bản đã cache.
 
+Tạo video tổng hợp các pha chạm bóng của một cầu thủ (`POST /players`) từ một tệp mới hoặc từ video của
+một job có sẵn, rồi tải video về:
+
+```bash
+curl -F file=@match.mp4 -F team=red -F number=10 http://127.0.0.1:8000/players
+curl -F job_id=JOB_ID -F team=red -F number=10 http://127.0.0.1:8000/players
+curl -o reel.mp4 "<reel_url>"
+```
+
+Phản hồi có dạng `{"job_id":"...","touches":[...],"reel_url":"http://127.0.0.1:8000/players/JOB_ID/reel/player_red_10.mp4"}`.
+`touches` giống khoá `touches` của `player.json`, còn `reel_url` là `null` khi không có pha chạm nào. `team`
+nhận tên màu hoặc `#rrggbb`, `number` là số nguyên 1–99, và API dùng độ tin cậy mặc định 0.5. `file` và `job_id`
+loại trừ lẫn nhau: gửi cả hai hoặc không gửi cái nào đều trả 422. Màu đội hoặc số áo sai (kể cả màu cách đều hai
+đội) trả 422, `job_id` không tồn tại trả 404, video tải lên không hợp lệ trả 400 và upload quá lớn trả 413. Khi
+gửi tệp, API tạo một job mới; video gốc của job đó phát được qua `GET /highlights/JOB_ID/source`. Yêu cầu chạy
+đồng bộ như `/highlights`.
+
 Hiện việc xử lý diễn ra đồng bộ, chưa có xác thực, các thư mục job thành công
 không tự xóa, và server mặc định chỉ lắng nghe trên localhost.
 
@@ -489,6 +517,11 @@ sportscut serve
     mô tả 1–300 ký tự, 3–8 hashtag dạng `#ChuKhongDau`, như `eval-meta`).
 14. Sau khi "Lưu" cắt lại clip, chữ của từng đoạn trở về mặc định, chữ của cả video được giữ. Nút
     "Lồng tiếng" hiện khi một đoạn có bản lồng tiếng.
+15. Mục "Theo dõi cầu thủ" trên trang `http://127.0.0.1:8000/` tạo video tổng hợp cho một cầu thủ. Chọn
+    "Tệp video" hoặc nhập "Mã công việc có sẵn" (chỉ một trong hai). Chọn "Màu áo" hoặc gõ tên màu vào ô
+    "Hoặc tên màu áo (ví dụ: red, blue)" (tên màu được ưu tiên), nhập "Số áo" rồi nhấn "Tạo video cầu thủ".
+    Trang hiện "Video tổng hợp" và danh sách "Các pha chạm bóng"; nhấn một pha (ví dụ "3.0 s") để tua video
+    gốc tới lúc đó. Khi không có pha chạm nào, trang hiện "Không tìm thấy pha chạm bóng nào."
 
 Trang trả về lỗi 404 nếu `JOB_ID` không tồn tại.
 
