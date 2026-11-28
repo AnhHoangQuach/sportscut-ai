@@ -35,7 +35,7 @@ def test_unknown_job_404_and_no_touches_200(root, synthetic_video, monkeypatch):
     assert r.status_code == 200 and set(body) == {"job_id", "touches", "reel_url"} and body["touches"] == [] and body["reel_url"] is None
     assert all(k in PARA for k in ("reel_url", "job_id", "touches", "null", "đồng bộ")) and "nền" not in PARA and "async" not in PARA.lower()
 
-def test_readme_stale_notes_gone_and_headings_kept():
+def test_readme_stale_notes_gone_and_web_step_15():
     assert not any(s in README for s in ("vẫn chưa trả về gì cho tới khi T-032/T-033 xong", "vẫn là stub", "chưa lọc theo số áo"))
     web = README.split("## Trang web: tải lên, xem trước và chỉnh mốc cắt\n", 1)[1].split("\n## ", 1)[0]
     assert "\n15. " in web and all(s in web for s in ("Theo dõi cầu thủ", "Không tìm thấy pha chạm bóng nào.", "Tạo video cầu thủ"))
