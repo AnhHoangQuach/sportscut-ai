@@ -62,3 +62,11 @@ Implement touch candidates in `sportscut/player.py`. Read frames at 5 fps, scale
 - `docs/superpowers/specs/2026-11-25-t-045-follow-the-players-with-a-smoothed-design.md`
 - `docs/superpowers/specs/2026-11-23-t-030-add-sportscut-player-cli-that-cuts-design.md`
 - T-032 (2026-11-27): detect_touches fills Touch.team from two shirt-colour clusters; find_touches returns every touch by the queried team (number ignored until T-033), superseding T-031 AC10 (find_touches == []).
+
+## Updated by T-033
+
+- Landed in T-052 (2026-11-28): find_touches now reads jersey numbers (the number vote) around each touch of the
+  mapped team and keeps only touches whose voted number equals the query with confidence >= min_confidence.
+- detect_touches fills Touch.number when the vote confidence >= MIN_CONFIDENCE; new `sportscut player --min-confidence`.
+- This supersedes the T-032 'number ignored' rule and T-032 AC8 (detect_touches == _analyse(video)[0]).
+- The OCR backend follows in T-053.

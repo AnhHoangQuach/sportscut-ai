@@ -168,8 +168,9 @@ def test_detect_touches_labels_team(monkeypatch: pytest.MonkeyPatch) -> None:
     assert colours is not None and set(colours.names) == {"red", "blue"} and len(touches) == 1
     touch = touches[0]
     assert touch.t == 1.4 and touch.team == "red" and touch.number is None and touch.bbox == (300, 120, 16, 32)
+    monkeypatch.setattr(player, "_read_numbers", lambda video, touches, reader: [(None, 0.0)] * len(touches))
     assert player.detect_touches("clip.mp4") == touches
-    assert player.find_touches("clip.mp4", PlayerQuery("red", 99)) == touches
+    assert player.find_touches("clip.mp4", PlayerQuery("red", 99)) == []
     assert player.find_touches("clip.mp4", PlayerQuery("sky", 1)) == []
 
 
@@ -177,10 +178,11 @@ def test_find_touches_team_only_single_pass(monkeypatch: pytest.MonkeyPatch) -> 
     values = [Touch(1, "red", None, 1, None), Touch(2, "blue", None, 1, None), Touch(3, "red", 7, 1, None)]
     calls, result = [], [values, pure_colours()]
     monkeypatch.setattr(player, "_analyse", lambda video: (calls.append(video), tuple(result))[1])
-    assert player.find_touches("x.mp4", PlayerQuery("red", 10)) == [values[0], values[2]]
+    monkeypatch.setattr(player, "_read_numbers", lambda video, touches, reader: [{1: (10, .9), 2: (3, .9), 3: (7, .9)}[t.t] for t in touches])
+    assert player.find_touches("x.mp4", PlayerQuery("red", 10)) == [Touch(1, "red", 10, 1, None)]
     assert calls == ["x.mp4"]
-    assert player.find_touches("x.mp4", PlayerQuery("#0000ff", 3)) == [values[1]]
-    assert player.detect_touches("x.mp4") == values
+    assert player.find_touches("x.mp4", PlayerQuery("#0000ff", 3)) == [Touch(2, "blue", 3, 1, None)]
+    assert player.detect_touches("x.mp4") == [Touch(1, "red", 10, 1, None), Touch(2, "blue", 3, 1, None), values[2]]
     with pytest.raises(ValueError, match="equally close"):
         player.find_touches("x.mp4", PlayerQuery("#ff00ff", 7))
     result[1] = None
@@ -204,7 +206,7 @@ def test_eval_player_team_gate(require_ffmpeg, tmp_path: Path) -> None:
     build.build_all(tmp_path)
     report = evaluate_dir(tmp_path)
     assert report["team_accuracy"] >= 0.95 and report["touch_f1_any"] >= 0.9737
-    assert report["f1"] > 0.0 and report["id_accuracy"] == 0.0 and report["seconds_per_min"] <= 6.0
+    assert report["f1"] > 0.0 and report["id_accuracy"] >= 0.75 and report["seconds_per_min"] <= 6.0
     for entry in report["per_clip"]:
         assert entry["touch_f1_any"] >= T031_CLIP_F1[entry["clip"]], entry["clip"]
     for name in build.CASES:

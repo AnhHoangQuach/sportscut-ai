@@ -55,4 +55,5 @@ def test_detect_touches_stub_and_find_filters(monkeypatch: pytest.MonkeyPatch) -
 
     colours = TeamColours(((1.0, 0.0, 1.0), (-0.5, -0.866025, 1.0)), ("red", "blue"))
     monkeypatch.setattr("sportscut.player._analyse", lambda _: (values, colours))
-    assert find_touches("x.mp4", PlayerQuery("red", 10)) == [values[0], values[1]]
+    monkeypatch.setattr("sportscut.player._read_numbers", lambda video, touches, reader: [(t.number, 1.0) for t in touches])
+    assert find_touches("x.mp4", PlayerQuery("red", 10)) == [values[0]]

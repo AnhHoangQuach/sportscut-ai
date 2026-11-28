@@ -115,3 +115,11 @@ Wire `sportscut player VIDEO --team T --number N --out DIR [--pre 3 --post 2 --m
   queried team (`--team` name or #rrggbb mapped to the nearest shirt-colour cluster; number ignored until
   T-033), so `sportscut player` now writes a non-empty reel. A team colour equally close to both clusters
   raises ValueError, which reuses this spec's exit-2 / HTTP 422 path. The CLI contract above is unchanged.
+
+## Updated by T-033
+
+- Landed in T-052 (2026-11-28): find_touches now reads jersey numbers (the number vote) around each touch of the
+  mapped team and keeps only touches whose voted number equals the query with confidence >= min_confidence.
+- detect_touches fills Touch.number when the vote confidence >= MIN_CONFIDENCE; new `sportscut player --min-confidence`.
+- This supersedes the T-032 'number ignored' rule and T-032 AC8 (detect_touches == _analyse(video)[0]).
+- The OCR backend follows in T-053.

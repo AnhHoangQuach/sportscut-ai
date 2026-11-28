@@ -15,7 +15,7 @@ from sportscut.detect import find_highlights
 from sportscut.eval_player import evaluate_dir
 from sportscut.media import MediaError
 from sportscut.pipeline import PipelineError, run
-from sportscut.player import PlayerQuery
+from sportscut.player import MIN_CONFIDENCE, PlayerQuery
 from sportscut.ranking import parse_events
 from sportscut.reel import MANIFEST_NAME, make_player_reel
 
@@ -167,6 +167,11 @@ def main(argv: list[str] | None = None) -> int:
     player_parser.add_argument("--pre", type=float, default=3.0)
     player_parser.add_argument("--post", type=float, default=2.0)
     player_parser.add_argument("--merge-gap", type=float, default=4.0)
+    player_parser.add_argument(
+        "--min-confidence", type=float, default=MIN_CONFIDENCE,
+        help=f"minimum jersey-number vote confidence 0..1 (default {MIN_CONFIDENCE}); "
+        "lower finds more touches, higher keeps fewer wrong ones",
+    )
     serve_parser = subparsers.add_parser("serve", help="serve the highlights HTTP API")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8000)
@@ -210,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "player":
         try:
-            query = PlayerQuery(args.team, args.number)
+            query = PlayerQuery(args.team, args.number, args.min_confidence)
             manifest = make_player_reel(
                 args.video, query, args.out, args.pre, args.post, args.merge_gap
             )
