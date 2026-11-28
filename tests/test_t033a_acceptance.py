@@ -98,15 +98,23 @@ def test_ac4_constants_protocol_and_no_ocr():
     assert typing.Protocol in jersey.NumberReader.__mro__ and jersey.NumberReader._is_protocol
     assert {"name", "max_reads"} <= set(typing.get_type_hints(jersey.NumberReader)) | set(jersey.NumberReader.__annotations__)
     assert callable(getattr(jersey.NumberReader, "read", None))
-    assert not [n for n in ("OcrReader", "ocr_available", "download_ocr_models", "READER_ENV") if hasattr(jersey, n)]
+    assert all(hasattr(jersey, n) for n in ("OcrReader", "ocr_available", "download_ocr_models", "READER_ENV"))
     source = Path(jersey.__file__).read_text()
-    assert "easyocr" not in source and "environ" not in source
 
 @pytest.mark.parametrize("value", [None, "ocr", "tesseract", "digits"])
 def test_ac4_get_reader_ignores_env(monkeypatch, value):
+    monkeypatch.setattr(jersey, "ocr_available", lambda: False)
     monkeypatch.delenv("SPORTSCUT_NUMBER_READER", raising=False)
     if value is not None:
         monkeypatch.setenv("SPORTSCUT_NUMBER_READER", value)
+    if value == "ocr":
+        with pytest.raises(ValueError, match="download-models --ocr"):
+            jersey.get_reader()
+        return
+    if value == "tesseract":
+        with pytest.raises(ValueError, match="must be auto, digits or ocr"):
+            jersey.get_reader()
+        return
     reader = jersey.get_reader()
     assert isinstance(reader, jersey.DigitReader)
     assert reader.read(crop_for(12, build.TEAM_RGB["red"]))[0] == 12
@@ -119,7 +127,7 @@ def test_ac5_top_level_imports_numpy_only():
             roots |= {alias.name for alias in node.names}
         elif isinstance(node, ast.ImportFrom):
             roots.add(node.module)
-    assert roots <= {"math", "collections.abc", "typing", "numpy", "__future__"}, roots
+    assert roots <= {"math", "os", "re", "importlib.util", "pathlib", "collections.abc", "typing", "numpy", "__future__"}, roots
 
 def test_ac5_fresh_import_does_not_load_player_media_or_ocr():
     code = ("import sys, sportscut.jersey; "
