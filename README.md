@@ -300,6 +300,14 @@ Kết quả sau T-057:
 {"f1": 0.7692, "precision": 0.625, "recall": 1.0, "event_accuracy": 1.0, "per_event": {"goal": {"precision": 0.6667, "recall": 1.0, "f1": 0.8}, "save": {"precision": null, "recall": null, "f1": null}, "red_card": {"precision": null, "recall": null, "f1": null}, "controversy": {"precision": null, "recall": null, "f1": null}, "other": {"precision": 0.6, "recall": 1.0, "f1": 0.75}}, "precision_at_5": 0.8, "goal_coverage": 0.0, "per_match": [{"match": "pitch_a", "labels": 5, "predictions": 8, "f1": 0.7692, "precision": 0.625, "recall": 1.0, "event_accuracy": 1.0, "precision_at_5": 0.8}, {"match": "pitch_b", "labels": 5, "predictions": 8, "f1": 0.7692, "precision": 0.625, "recall": 1.0, "event_accuracy": 1.0, "precision_at_5": 0.8}]}
 ```
 
+Từ T-058, mỗi bàn thắng có tiếng reo kéo dài được cắt thành một clip từ 12 s trước khi tiếng reo bắt đầu đến 10 s sau đó (giữ tỉ lệ 12:10 khi bị giới hạn bởi --min-len/--max-len); các đoạn bàn thắng chồng nhau được gộp thành một, đoạn khác chồng lên bàn thắng bị bỏ.
+
+Kết quả sau T-058:
+
+```json
+{"f1": 0.7692, "precision": 0.625, "recall": 1.0, "event_accuracy": 1.0, "per_event": {"goal": {"precision": 0.6667, "recall": 1.0, "f1": 0.8}, "save": {"precision": null, "recall": null, "f1": null}, "red_card": {"precision": null, "recall": null, "f1": null}, "controversy": {"precision": null, "recall": null, "f1": null}, "other": {"precision": 0.6, "recall": 1.0, "f1": 0.75}}, "precision_at_5": 0.8, "goal_coverage": 1.0, "per_match": [{"match": "pitch_a", "labels": 5, "predictions": 8, "f1": 0.7692, "precision": 0.625, "recall": 1.0, "event_accuracy": 1.0, "precision_at_5": 0.8}, {"match": "pitch_b", "labels": 5, "predictions": 8, "f1": 0.7692, "precision": 0.625, "recall": 1.0, "event_accuracy": 1.0, "precision_at_5": 0.8}]}
+```
+
 ## Theo dõi cầu thủ: xuất video tổng hợp (player)
 
 ```bash

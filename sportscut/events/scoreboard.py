@@ -35,6 +35,8 @@ MAX_BOARD_W = 80  # half of media.BAND_W (160): real boards sit in a corner
 MAX_CHANGES = 4  # a board may change at most max(4, seconds/600) times
 SECONDS_PER_CHANGE = 600  # assumption: <= ~1 real score change per 10 minutes
 BUSY_FRAC = 0.25  # flipping in > 25% of samples is a clock/pan, not a score
+GOAL_BEFORE = 12.0  # goal clip: build-up and shot before the roar onset
+GOAL_AFTER = 10.0  # ... and the celebration after it
 
 Box = tuple[int, int, int, int]
 
@@ -189,22 +191,30 @@ def board_reverts(video: str | Path) -> list[tuple[float, float]]:
     return [] if board is None else find_reverts(*board)
 
 
-def roar(residual: np.ndarray, start: float, end: float) -> tuple[float, int]:
-    """Find the peak second and sustained-above-baseline run around it."""
+def _roar_bounds(
+    residual: np.ndarray, start: float, end: float
+) -> tuple[float, int, int]:
+    """Return (peak time, left, right) of the sustained run around the segment's loudest second; left == right when there is no run."""
     first = max(0, math.floor(start))
     stop = min(len(residual), math.ceil(end))
     if first >= stop:
-        return float(start), 0
+        return float(start), 0, 0
     peak = first + int(np.argmax(residual[first:stop]))
     if residual[peak] < ROAR_DB:
-        return peak + 0.5, 0
+        return peak + 0.5, peak, peak
     left = peak
     while left > 0 and residual[left - 1] >= ROAR_DB:
         left -= 1
     right = peak + 1
     while right < len(residual) and residual[right] >= ROAR_DB:
         right += 1
-    return peak + 0.5, right - left
+    return peak + 0.5, left, right
+
+
+def roar(residual: np.ndarray, start: float, end: float) -> tuple[float, int]:
+    """Find the peak second and sustained-above-baseline run around it."""
+    peak, left, right = _roar_bounds(residual, start, end)
+    return peak, right - left
 
 
 def match_goals(
@@ -294,6 +304,62 @@ def tag_goals(
     duration = probe_duration(video)
     residual = loudness_residual(extract_audio(video))
     changes = board_changes(video)
-    return match_goals(
+    tagged = match_goals(
         list(segments), residual, changes, duration, min_len, max_len
     )
+    return shape_goals(tagged, residual, duration, min_len, max_len)
+
+
+def _by_time(segment: Segment) -> tuple[float, float]:
+    return segment.start, segment.end
+
+
+def _merge(group: list[Segment]) -> Segment:
+    base = max(
+        sorted(group, key=_by_time),
+        key=lambda s: -math.inf if s.score is None else s.score,
+    )
+    return replace(
+        base,
+        start=min(s.start for s in group),
+        end=max(s.end for s in group),
+        event_confidence=max(s.event_confidence for s in group),
+    )
+
+
+def shape_goals(
+    segments: list[Segment],
+    residual: np.ndarray,
+    duration: float,
+    min_len: float = 10,
+    max_len: float = 30,
+) -> list[Segment]:
+    """Give roar goals a build-up-to-celebration window, merge overlapping goals, drop non-goals they cover."""
+    length = min(max(GOAL_BEFORE + GOAL_AFTER, min_len), max_len)
+    before = length * GOAL_BEFORE / (GOAL_BEFORE + GOAL_AFTER)
+    goals, others = [], []
+    for segment in segments:
+        if segment.event != "goal":
+            others.append(segment)
+            continue
+        if segment.event_confidence != CONF_BOARD_ONLY:
+            _peak, left, right = _roar_bounds(residual, segment.start, segment.end)
+            if right - left >= ROAR_SEC:
+                start, end = place_window(float(left), length, duration, before)
+                segment = replace(segment, start=start, end=end)
+        goals.append(segment)
+
+    groups: list[list[Segment]] = []
+    for goal in sorted(goals, key=_by_time):
+        if groups and goal.start < max(s.end for s in groups[-1]):
+            groups[-1].append(goal)
+        else:
+            groups.append([goal])
+    merged = [group[0] if len(group) == 1 else _merge(group) for group in groups]
+
+    kept = [
+        s
+        for s in others
+        if not any(s.start < g.end and g.start < s.end for g in merged)
+    ]
+    return sorted(merged + kept, key=_by_time)

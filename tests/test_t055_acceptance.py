@@ -134,7 +134,7 @@ def test_ac9_ac10_ac11_phone_eval_matches_readme_and_decisions(require_ffmpeg, t
     section = text[text.index(heading):text.index(PLAYER)]
     assert all(w in section for w in (PHONE_CMD, "goal_coverage", "top=None"))
     block = section.split("Baseline đo trong T-055:\n\n```json\n", 1)[1].split("\n```", 1)[0]
-    assert section.split("Kết quả sau T-057:\n\n```json\n", 1)[1].split("\n```", 1)[0] == line
+    assert section.split("Kết quả sau T-058:\n\n```json\n", 1)[1].split("\n```", 1)[0] == line
     decisions = [l for l in (ROOT / "docs/superpowers/DECISIONS.md").read_text(encoding="utf-8").splitlines()
                  if "T-055 (R-010)" in l and "phone eval baseline" in l]
     assert len(decisions) == 1 and decisions[0].endswith(block)

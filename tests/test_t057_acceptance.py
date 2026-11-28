@@ -117,12 +117,14 @@ def test_ac7_ac9_phone_eval_cli_readme_and_decisions(phone):
     assert goal["precision"] is not None and goal["precision"] > 0 and goal["recall"] > 0.0, goal
     assert (report["f1"], report["precision"], report["recall"], report["precision_at_5"]) == (0.7692, 0.625, 1.0, 0.8)
     text = (ROOT / "README.md").read_text(encoding="utf-8")
-    marker = "Kết quả sau T-057:\n\n```json\n" + line + "\n```\n"
+    # T-058 changed the live line (goal_coverage); the historic T-057 block must equal its DECISIONS line
+    block = text.split("Kết quả sau T-057:\n\n```json\n", 1)[1].split("\n```", 1)[0]
+    marker = "Kết quả sau T-057:\n\n```json\n" + block + "\n```\n"
     assert text.count("Kết quả sau T-057:") == 1 and text.count(marker) == 1
     assert text.index("Baseline đo trong T-055:") < text.index(marker) < text.index(PLAYER)
     hits = [l for l in (ROOT / "docs/superpowers/DECISIONS.md").read_text(encoding="utf-8").splitlines()
             if "T-057 (R-010): phone eval after T-057" in l]
-    assert len(hits) == 1 and hits[0].endswith(line) and "phone eval baseline" not in hits[0]
+    assert len(hits) == 1 and hits[0].endswith(block) and "phone eval baseline" not in hits[0]
 
 
 def test_ac9_earlier_readme_blocks_unchanged():
@@ -137,7 +139,7 @@ def test_ac10_spec_notes():
     def lines(slug):
         return (SPECS / f"2026-11-23-{slug}-design.md").read_text(encoding="utf-8").rstrip("\n").splitlines()
     for slug in ("t-013-tag-goals-from-scoreboard-region-changes", "t-015-tag-red-cards-and-controversial-incidents"):
-        got = lines(slug)
+        got = [l for l in lines(slug) if not l.startswith("Updated by T-058:")]  # T-058 inserts before T-055
         assert got[-1].startswith("Updated by T-055:") and got[-2].startswith("Updated by T-057:"), slug
         assert sum(l.startswith("Updated by T-057:") for l in got) == 1
     t014 = lines("t-014-tag-saves-using-whistle-detection-and")
