@@ -155,6 +155,8 @@ def _round2_with_numstat(monkeypatch, stdout: str):
     calls = []
 
     def fake_git(*args):
+        if args[:1] == ("rev-parse",):
+            return subprocess.CompletedProcess(list(args), 0, stdout="office/T-042\n", stderr="")
         calls.append(list(args))
         return subprocess.CompletedProcess(list(args), 0, stdout=stdout, stderr="")
 
