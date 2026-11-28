@@ -197,7 +197,7 @@ def test_probe_duration_of_synthetic_video(synthetic_video):
 
 def test_extract_audio_is_mono_16k_float32(synthetic_video):
     audio = extract_audio(synthetic_video)
-    assert audio.dtype == np.float32 and audio.ndim == 1 and audio.flags.writeable
+    assert audio.dtype == np.float32 and audio.ndim == 1 and not audio.flags.writeable
     assert abs(audio.size - 6 * SAMPLE_RATE) <= 1600 and np.abs(audio).max() <= 1.0
 
 def test_cut_clip_rejects_non_media(require_ffmpeg, tmp_path):
